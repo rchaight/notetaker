@@ -154,7 +154,7 @@ Gantt schedule is computed by topologically sorting DependencyEdges over Task du
 - [x] Put `NavigationSplitView` shell in `App/Shell/` with three placeholder tabs (Notes / To-Do / Projects) and a Settings scene. Confirm Liquid Glass appears automatically by compiling against the 26+ SDK.
 - [x] Add Info.plist iCloud entitlements + the `NSUbiquitousContainers` key; App Sandbox + Hardened Runtime ON. *(iCloud container entitlement itself deferred to M1 step 1 — requires a real signing cert; sandbox + hardened runtime + NSUbiquitousContainers are in and launch-verified.)*
 - [x] Set up **CI** (GitHub Actions, macOS runner): `xcodebuild build test` for both destinations on every PR; SwiftFormat/SwiftLint check. Add a `CLAUDE.md` documenting the architecture, module boundaries, and the "files are truth / index is derived" invariant so the coding agent respects it.
-- [ ] Branch-protect `main`; work on feature branches → PRs.
+- [x] Branch-protect `main`; work on feature branches → PRs. *(Pushed with CI green; branch protection returned 403 — private repo on GitHub Free. User decision at checkpoint: make public, upgrade to Pro, or proceed unprotected.)*
 
 **Done:** CI green; app launches empty on Mac + iOS Simulator; all packages compile and their stub tests pass; iCloud container provisioned.
 **Effort:** ~2–3 days.

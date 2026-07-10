@@ -12,17 +12,17 @@ Loop-engineering state file. Read this + PLAN.md at the start of every pass.
 
 ## Current state
 
-- **Phase**: building — user approved build start 2026-07-10
-- **Current milestone**: M0 — repo bootstrap
+- **Phase**: M0 complete — milestone checkpoint
+- **Current milestone**: M0 done (next: M1 — iCloud storage + sync skeleton)
 - **Failure streak**: 0
-- **Awaiting user checkpoint**: no
+- **Awaiting user checkpoint**: **YES — M0 review. Before M1 can touch iCloud: (1) sign into Xcode with your Apple ID so a development cert exists, (2) decide on branch protection (repo is private on GitHub Free), (3) launch the app and look at the shell.**
 - **Environment note**: Xcode 26.6 (SDKs macOS/iOS 26.5) — deployment targets set to 26.0 (Liquid Glass baseline), forward-compatible with OS 27. Developer ID cert present (team 6A2NHN89Q8).
 
 ## Milestone checkpoints
 
 | Milestone | Completed | User reviewed |
 |---|---|---|
-| M0 — Repo bootstrap (Xcode project, packages, iCloud entitlements, CI) | | |
+| M0 — Repo bootstrap (Xcode project, packages, iCloud entitlements, CI) | ✅ 2026-07-10 | pending |
 | M1 — iCloud storage + sync skeleton (VaultKit) | | |
 | M2 — Markdown editor, Liquid Glass (MarkdownKit + EditorKit) | | |
 | M3 — Inline todos + index + master To-Do list (IndexKit + TaskEngine) | | |
@@ -47,3 +47,5 @@ Loop-engineering state file. Read this + PLAN.md at the start of every pass.
 | 5 | 2026-07-10 | M0.5 app shell: adaptive tabs + NavigationSplitView + Settings | ✅ | Builds green macOS + iOS Simulator; Liquid Glass from 26 SDK |
 | 6 | 2026-07-10 | M0.6 sandbox + hardened runtime + NSUbiquitousContainers | ✅ | Launch-verified on macOS; entitlements confirmed in signed binary. iCloud container entitlement deferred to M1 (needs real cert). |
 | 7 | 2026-07-10 | M0.7 CI (GitHub Actions) + CLAUDE.md + SwiftFormat | ✅ | ci.yml: package tests + both-platform builds + format lint on macos-26 runner; repo formatted clean locally |
+| 8 | 2026-07-10 | M0.8 push + first CI + branch protection | ✅ | Pushed to rchaight/notetaker; CI run #1 green (build-and-test + format). Protection 403: private repo on Free plan — user decision. |
+| 9 | 2026-07-10 | M0 done-criteria verify | ✅ | App launches on macOS (sandboxed) and iOS Simulator (iPhone 17 Pro). iCloud container provisioning deferred to M1 (needs Xcode sign-in). **M0 COMPLETE — checkpoint.** |
