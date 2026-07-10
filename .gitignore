@@ -1,0 +1,35 @@
+# Xcode / Swift
+DerivedData/
+build/
+dist/
+*.xcuserstate
+xcuserdata/
+*.xccheckout
+*.moved-aside
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+timeline.xctimeline
+playground.xcworkspace
+
+# SPM
+.build/
+.swiftpm/
+Package.resolved.lock
+
+# Python engine (conversion helper, if vendored later)
+.venv/
+__pycache__/
+*.pyc
+
+# Secrets / local config
+.env
+*.local.xcconfig
+
+# macOS
+.DS_Store
+
+# Claude Code harness artifacts
+.claude/scheduled_tasks.lock
