@@ -46,6 +46,11 @@ targets:
         CFBundleDisplayName: Notetaker
         LSApplicationCategoryType: public.app-category.productivity
         UILaunchScreen: {}
+        NSUbiquitousContainers:
+          iCloud.com.rchaight.notetaker:
+            NSUbiquitousContainerIsDocumentScopePublic: true
+            NSUbiquitousContainerSupportedFolderLevels: Any
+            NSUbiquitousContainerName: Notetaker
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.rchaight.notetaker
@@ -53,3 +58,4 @@ targets:
         # Ad-hoc signing until an Apple Development cert exists (sign into
         # Xcode with the Apple ID). Required before M1's iCloud entitlements.
         CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_ENTITLEMENTS: App/Notetaker.entitlements

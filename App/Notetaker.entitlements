@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<!--
+	iCloud container entitlements land in M1 once an Apple Development
+	certificate exists (restricted entitlements cannot ship under the
+	current ad-hoc signature):
+	  com.apple.developer.icloud-container-identifiers
+	  com.apple.developer.icloud-services (CloudDocuments)
+	  com.apple.developer.ubiquity-container-identifiers
+	-->
+</dict>
+</plist>

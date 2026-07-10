@@ -152,7 +152,7 @@ Gantt schedule is computed by topologically sorting DependencyEdges over Task du
 - [x] Add the empty local packages from 1.4 (`VaultKit`, `MarkdownKit`, `EditorKit`, `IndexKit`, `TaskEngine`, `ProjectKit`, `ConversionKit`, `AIKit`, `SecurityKit`, `AppIntentsKit`) with stub `public` APIs + one passing test each; wire them into the app target.
 - [x] Add pinned SPM deps: `swift-markdown`, `GRDB.swift`. (Others added in their milestones.)
 - [x] Put `NavigationSplitView` shell in `App/Shell/` with three placeholder tabs (Notes / To-Do / Projects) and a Settings scene. Confirm Liquid Glass appears automatically by compiling against the 26+ SDK.
-- [ ] Add Info.plist iCloud entitlements + the `NSUbiquitousContainers` key; App Sandbox + Hardened Runtime ON.
+- [x] Add Info.plist iCloud entitlements + the `NSUbiquitousContainers` key; App Sandbox + Hardened Runtime ON. *(iCloud container entitlement itself deferred to M1 step 1 — requires a real signing cert; sandbox + hardened runtime + NSUbiquitousContainers are in and launch-verified.)*
 - [ ] Set up **CI** (GitHub Actions, macOS runner): `xcodebuild build test` for both destinations on every PR; SwiftFormat/SwiftLint check. Add a `CLAUDE.md` documenting the architecture, module boundaries, and the "files are truth / index is derived" invariant so the coding agent respects it.
 - [ ] Branch-protect `main`; work on feature branches → PRs.
 

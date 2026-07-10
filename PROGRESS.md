@@ -45,3 +45,4 @@ Loop-engineering state file. Read this + PLAN.md at the start of every pass.
 | 3 | 2026-07-10 | M0.3 ten local packages + stub tests | ✅ | 10/10 `swift test` pass; app builds on macOS + iOS Simulator with all packages linked |
 | 4 | 2026-07-10 | M0.4 SPM deps: swift-markdown → MarkdownKit, GRDB → IndexKit | ✅ | Deps resolved and exercised by tests (parse blocks; in-memory SQLite query) |
 | 5 | 2026-07-10 | M0.5 app shell: adaptive tabs + NavigationSplitView + Settings | ✅ | Builds green macOS + iOS Simulator; Liquid Glass from 26 SDK |
+| 6 | 2026-07-10 | M0.6 sandbox + hardened runtime + NSUbiquitousContainers | ✅ | Launch-verified on macOS; entitlements confirmed in signed binary. iCloud container entitlement deferred to M1 (needs real cert). |
