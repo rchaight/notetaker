@@ -41,3 +41,4 @@ Loop-engineering state file. Read this + PLAN.md at the start of every pass.
 | — | 2026-07-10 | scaffold | ✅ | Loop contract written; awaiting research workflow + PLAN.md |
 | — | 2026-07-10 | research + plan | ✅ | 12-agent workflow done: RESEARCH.md (10 sections), FEATURES.md, PLAN.md (68 checkbox steps, M0–M10). Paused at pre-build checkpoint. |
 | 1 | 2026-07-10 | M0.1 repo init + .gitignore/LICENSE/README | ✅ | git init -b main, remote → rchaight/notetaker; docs included in initial commit |
+| 2 | 2026-07-10 | M0.2 Xcode project (XcodeGen) | ✅ | macOS build green. Ad-hoc signing (no Apple Development cert yet — user must sign into Xcode before M1). iOS 26.5 sim platform downloading in background. |

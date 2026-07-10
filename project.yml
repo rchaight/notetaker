@@ -1,0 +1,33 @@
+name: Notetaker
+options:
+  bundleIdPrefix: com.rchaight
+  createIntermediateGroups: true
+  deploymentTarget:
+    iOS: "26.0"
+    macOS: "26.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    DEVELOPMENT_TEAM: 6A2NHN89Q8
+    CODE_SIGN_STYLE: Automatic
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  Notetaker:
+    type: application
+    supportedDestinations: [iOS, macOS]
+    sources:
+      - App
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Notetaker
+        LSApplicationCategoryType: public.app-category.productivity
+        UILaunchScreen: {}
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.rchaight.notetaker
+        ENABLE_HARDENED_RUNTIME: YES
+        # Ad-hoc signing until an Apple Development cert exists (sign into
+        # Xcode with the Apple ID). Required before M1's iCloud entitlements.
+        CODE_SIGN_IDENTITY: "-"

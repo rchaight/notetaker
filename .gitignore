@@ -33,3 +33,6 @@ __pycache__/
 
 # Claude Code harness artifacts
 .claude/scheduled_tasks.lock
+
+# XcodeGen output (regenerate with `xcodegen generate`)
+Notetaker.xcodeproj/
