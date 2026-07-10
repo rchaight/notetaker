@@ -1,5 +1,5 @@
-import Testing
 @testable import IndexKit
+import Testing
 
 @Test func moduleName() {
     #expect(IndexKitInfo.name == "IndexKit")

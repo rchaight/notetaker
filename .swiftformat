@@ -1,0 +1,6 @@
+# Keep close to Swift defaults; low-friction for generated + hand-written code.
+--swiftversion 6.0
+--indent 4
+--maxwidth 120
+--disable wrapMultilineStatementBraces, andOperator
+--exclude build, Notetaker.xcodeproj, Packages/*/.build

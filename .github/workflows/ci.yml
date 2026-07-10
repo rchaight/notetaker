@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select latest Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Package tests
+        run: |
+          set -euo pipefail
+          for PKG in Packages/*/; do
+            echo "=== $PKG ==="
+            (cd "$PKG" && swift test)
+          done
+
+      - name: Build app (macOS)
+        run: |
+          xcodebuild -project Notetaker.xcodeproj -scheme Notetaker \
+            -destination 'platform=macOS' build CODE_SIGNING_ALLOWED=NO
+
+      - name: Build app (iOS Simulator)
+        run: |
+          xcodebuild -project Notetaker.xcodeproj -scheme Notetaker \
+            -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO
+
+  format:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SwiftFormat
+        run: brew install swiftformat
+      - name: Lint formatting
+        run: swiftformat --lint .

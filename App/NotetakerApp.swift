@@ -8,9 +8,9 @@ struct NotetakerApp: App {
         }
 
         #if os(macOS)
-        Settings {
-            SettingsView()
-        }
+            Settings {
+                SettingsView()
+            }
         #endif
     }
 }
