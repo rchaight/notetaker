@@ -12,12 +12,34 @@ settings:
     CODE_SIGN_STYLE: Automatic
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
+packages:
+  VaultKit: { path: Packages/VaultKit }
+  MarkdownKit: { path: Packages/MarkdownKit }
+  EditorKit: { path: Packages/EditorKit }
+  IndexKit: { path: Packages/IndexKit }
+  TaskEngine: { path: Packages/TaskEngine }
+  ProjectKit: { path: Packages/ProjectKit }
+  ConversionKit: { path: Packages/ConversionKit }
+  AIKit: { path: Packages/AIKit }
+  SecurityKit: { path: Packages/SecurityKit }
+  AppIntentsKit: { path: Packages/AppIntentsKit }
 targets:
   Notetaker:
     type: application
     supportedDestinations: [iOS, macOS]
     sources:
       - App
+    dependencies:
+      - package: VaultKit
+      - package: MarkdownKit
+      - package: EditorKit
+      - package: IndexKit
+      - package: TaskEngine
+      - package: ProjectKit
+      - package: ConversionKit
+      - package: AIKit
+      - package: SecurityKit
+      - package: AppIntentsKit
     info:
       path: App/Info.plist
       properties:
