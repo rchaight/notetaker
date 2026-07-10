@@ -43,3 +43,4 @@ Loop-engineering state file. Read this + PLAN.md at the start of every pass.
 | 1 | 2026-07-10 | M0.1 repo init + .gitignore/LICENSE/README | ✅ | git init -b main, remote → rchaight/notetaker; docs included in initial commit |
 | 2 | 2026-07-10 | M0.2 Xcode project (XcodeGen) | ✅ | macOS build green. Ad-hoc signing (no Apple Development cert yet — user must sign into Xcode before M1). iOS sim platform installed; iOS Simulator build green. |
 | 3 | 2026-07-10 | M0.3 ten local packages + stub tests | ✅ | 10/10 `swift test` pass; app builds on macOS + iOS Simulator with all packages linked |
+| 4 | 2026-07-10 | M0.4 SPM deps: swift-markdown → MarkdownKit, GRDB → IndexKit | ✅ | Deps resolved and exercised by tests (parse blocks; in-memory SQLite query) |
