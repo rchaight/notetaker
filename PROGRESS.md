@@ -44,3 +44,4 @@ Loop-engineering state file. Read this + PLAN.md at the start of every pass.
 | 2 | 2026-07-10 | M0.2 Xcode project (XcodeGen) | ✅ | macOS build green. Ad-hoc signing (no Apple Development cert yet — user must sign into Xcode before M1). iOS sim platform installed; iOS Simulator build green. |
 | 3 | 2026-07-10 | M0.3 ten local packages + stub tests | ✅ | 10/10 `swift test` pass; app builds on macOS + iOS Simulator with all packages linked |
 | 4 | 2026-07-10 | M0.4 SPM deps: swift-markdown → MarkdownKit, GRDB → IndexKit | ✅ | Deps resolved and exercised by tests (parse blocks; in-memory SQLite query) |
+| 5 | 2026-07-10 | M0.5 app shell: adaptive tabs + NavigationSplitView + Settings | ✅ | Builds green macOS + iOS Simulator; Liquid Glass from 26 SDK |

@@ -4,8 +4,13 @@ import SwiftUI
 struct NotetakerApp: App {
     var body: some Scene {
         WindowGroup {
-            Text("Notetaker")
-                .padding()
+            AppShell()
         }
+
+        #if os(macOS)
+        Settings {
+            SettingsView()
+        }
+        #endif
     }
 }
