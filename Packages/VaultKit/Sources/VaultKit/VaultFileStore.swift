@@ -41,6 +41,14 @@ public struct VaultFileStore: Sendable {
         }
     }
 
+    /// Coordinated folder creation (rename/move/delete of folders reuse
+    /// `move`/`delete` — NSFileCoordinator and FileManager handle directories).
+    public func createFolder(at url: URL) async throws {
+        try await coordinatedWrite(at: url, options: []) { actualURL in
+            try FileManager.default.createDirectory(at: actualURL, withIntermediateDirectories: true)
+        }
+    }
+
     /// Kicks off download of an iCloud placeholder and returns immediately;
     /// progress surfaces through MetadataQueryObserver snapshots.
     public func startDownloading(_ url: URL) throws {
