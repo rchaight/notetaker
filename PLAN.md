@@ -172,7 +172,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 - [x] Coordinated read/write API (`NSFileCoordinator` + an `NSFilePresenter`); `startDownloadingUbiquitousItem` for placeholders; debounce change notifications.
 - [x] Folder CRUD (create/rename/move/delete) mirroring on-disk structure; external-mutation tolerance (files renamed/deleted by Obsidian/Files.app must not crash the observer).
 - [x] Conflict detection via `NSFileVersion.unresolvedConflictVersionsOfItem` + `*conflicted copy*` sibling scan; expose a resolve API (keep-both default).
-- [ ] macOS `DispatchSource` watcher as complement; security-scoped bookmark handling for user-chosen vault roots (with stale-bookmark re-resolution).
+- [x] macOS `DispatchSource` watcher as complement; security-scoped bookmark handling for user-chosen vault roots (with stale-bookmark re-resolution).
 - [ ] **Test harness:** an XCTest + a tiny debug UI that creates/edits/deletes notes; a manual two-device (Mac + iPhone) offline-edit-then-reconnect matrix; a "delete index, re-scan converges" test.
 **Done:** create/edit/delete a note on Mac, see it on iPhone within seconds and vice versa; induce a conflict (edit same file offline on both) and get a detected conflict surfaced, not silent loss; killing/relaunching mid-sync leaves no corruption.
 **Effort:** ~2 weeks (this is the crown-jewel risk; budget generously).
