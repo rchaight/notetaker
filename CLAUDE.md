@@ -24,11 +24,17 @@ Dependencies point downward only (App → packages; packages never import App). 
 
 ## Build & verify
 
+Two hard environment rules:
+
+1. **Toolchain: Xcode 27 beta.** Prefix every xcodebuild/swift command with `DEVELOPER_DIR=/Applications/Xcode-beta.app` (macOS 27 / iOS 27 SDKs; the App Store Xcode 26.6 at /Applications/Xcode.app is the fallback).
+2. **Build products must live OUTSIDE the repo.** This repo sits under `~/Documents`, which is iCloud-synced — the file provider decorates in-repo build artifacts with xattrs mid-build and codesign fails with "resource fork/detritus" errors, intermittently and on random targets. Always pass an external scratch/derived-data path; never create `build/` or `.build/` inside the repo.
+
 - `Notetaker.xcodeproj` is GENERATED — edit `project.yml`, then `xcodegen generate`. Never hand-edit the pbxproj.
-- Build: `xcodebuild -project Notetaker.xcodeproj -scheme Notetaker -destination 'platform=macOS' build`
-- iOS: same with `-destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO`
-- Package tests: `cd Packages/<Kit> && swift test`
+- Build: `DEVELOPER_DIR=/Applications/Xcode-beta.app xcodebuild -project Notetaker.xcodeproj -scheme Notetaker -destination 'platform=macOS' -derivedDataPath ~/.cache/notetaker-build/DerivedData build`
+- iOS: same with `-destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO` (iOS 27.0 simulator runtime is installed)
+- Package tests: `cd Packages/<Kit> && DEVELOPER_DIR=/Applications/Xcode-beta.app swift test --scratch-path ~/.cache/notetaker-build/<Kit>`
 - Formatting: `swiftformat --lint .`
+- Deployment floor is 26.0 (runs on 26 and 27, built with the 27 SDK). Raise to 27.0 only when a 27-only API is required — check CI runner Xcode availability first.
 
 ## Current signing state
 

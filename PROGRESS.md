@@ -16,7 +16,7 @@ Loop-engineering state file. Read this + PLAN.md at the start of every pass.
 - **Current milestone**: M0 done (next: M1 — iCloud storage + sync skeleton)
 - **Failure streak**: 0
 - **Awaiting user checkpoint**: **YES — M0 review. Before M1 can touch iCloud: (1) sign into Xcode with your Apple ID so a development cert exists, (2) decide on branch protection (repo is private on GitHub Free), (3) launch the app and look at the shell.**
-- **Environment note**: Xcode 26.6 (SDKs macOS/iOS 26.5) — deployment targets set to 26.0 (Liquid Glass baseline), forward-compatible with OS 27. Developer ID cert present (team 6A2NHN89Q8).
+- **Environment note**: toolchain = **Xcode 27.0 beta** (`DEVELOPER_DIR=/Applications/Xcode-beta.app`, macOS/iOS 27 SDKs, iOS 27 sim runtime installed) per user directive. Deployment floor 26.0 until a 27-only API is needed. Developer ID cert present (team 6A2NHN89Q8). ⚠️ Repo is inside iCloud-synced ~/Documents — ALL build products must use external paths (see CLAUDE.md).
 
 ## Milestone checkpoints
 
@@ -49,3 +49,4 @@ Loop-engineering state file. Read this + PLAN.md at the start of every pass.
 | 7 | 2026-07-10 | M0.7 CI (GitHub Actions) + CLAUDE.md + SwiftFormat | ✅ | ci.yml: package tests + both-platform builds + format lint on macos-26 runner; repo formatted clean locally |
 | 8 | 2026-07-10 | M0.8 push + first CI + branch protection | ✅ | Pushed to rchaight/notetaker; CI run #1 green (build-and-test + format). Protection 403: private repo on Free plan — user decision. |
 | 9 | 2026-07-10 | M0 done-criteria verify | ✅ | App launches on macOS (sandboxed) and iOS Simulator (iPhone 17 Pro). iCloud container provisioning deferred to M1 (needs Xcode sign-in). **M0 COMPLETE — checkpoint.** |
+| 10 | 2026-07-10 | ENV: switch to Xcode 27 beta (user directive) | ✅ | Builds + 10/10 package tests green on macOS/iOS 27 SDKs. Diagnosed intermittent codesign "detritus" failures → iCloud-synced ~/Documents decorating in-repo build artifacts; all build output moved to ~/.cache/notetaker-build. |
