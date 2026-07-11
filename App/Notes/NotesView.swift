@@ -6,6 +6,7 @@ import VaultKit
 /// right. Every edit autosaves (debounced, coordinated) to the .md file.
 struct NotesView: View {
     @State private var model = NotesModel()
+    @State private var livePreview = true
 
     var body: some View {
         NavigationSplitView {
@@ -81,10 +82,36 @@ struct NotesView: View {
 
     @ViewBuilder private var detail: some View {
         if model.selectedID != nil {
-            MarkdownEditor(text: Binding(
-                get: { model.noteText },
-                set: { model.noteText = $0; model.textChanged() }
-            ))
+            MarkdownEditor(
+                text: Binding(
+                    get: { model.noteText },
+                    set: { model.noteText = $0; model.textChanged() }
+                ),
+                livePreview: livePreview
+            )
+            .overlay(alignment: .bottomTrailing) {
+                Text("\(wordCount) words")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .glassEffect(.regular, in: .capsule)
+                    .padding(12)
+            }
+            .toolbar {
+                ToolbarItem {
+                    Button(
+                        livePreview ? "Source Mode" : "Live Preview",
+                        systemImage: livePreview ? "chevron.left.forwardslash.chevron.right" : "eye"
+                    ) {
+                        livePreview.toggle()
+                    }
+                    .keyboardShortcut("/", modifiers: [.command])
+                    .help(livePreview
+                        ? "Show all markdown syntax (⌘/)"
+                        : "Hide syntax except on the current line (⌘/)")
+                }
+            }
             .navigationTitle(selectedTitle)
             #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
@@ -100,6 +127,10 @@ struct NotesView: View {
 
     private var selectedTitle: String {
         model.notes.first { $0.id == model.selectedID }.map(noteTitle) ?? "Note"
+    }
+
+    private var wordCount: Int {
+        model.noteText.split(whereSeparator: \.isWhitespace).count
     }
 
     private func noteTitle(_ note: VaultItem) -> String {
