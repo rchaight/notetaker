@@ -2,6 +2,7 @@ import Foundation
 import IndexKit
 import MarkdownKit
 import Observation
+import TaskEngine
 import VaultKit
 
 /// The app-level pipeline: vault files → live derived index → outbound
@@ -193,11 +194,24 @@ final class VaultIndexService {
         let url = root.appendingPathComponent(task.noteId)
         guard let contents = try? await store.readString(at: url) else { return }
 
-        if let result = TaskLineToggler.toggle(
-            contents: contents, anchorLine: task.line, expectedRawLine: task.rawLine
-        ) {
-            try? await store.writeString(result.contents, to: url)
-            try? indexer.index(noteId: task.noteId, contents: result.contents, modifiedAt: nil)
+        let updated: String? = if task.recurrence != nil {
+            // Recurring: completing = advancing the date, box stays open.
+            if let line = TaskLineToggler.locate(
+                contents: contents, anchorLine: task.line, expectedRawLine: task.rawLine
+            ), let completedLine = RecurrenceEngine.completeTaskLine(task.rawLine) {
+                TaskLineToggler.replacingLine(contents, at: line, with: completedLine)
+            } else {
+                nil
+            }
+        } else {
+            TaskLineToggler.toggle(
+                contents: contents, anchorLine: task.line, expectedRawLine: task.rawLine
+            )?.contents
+        }
+
+        if let updated {
+            try? await store.writeString(updated, to: url)
+            try? indexer.index(noteId: task.noteId, contents: updated, modifiedAt: nil)
         } else {
             try? indexer.index(noteId: task.noteId, contents: contents, modifiedAt: nil)
         }

@@ -11,12 +11,21 @@ public struct ParsedTaskMetadata: Equatable, Sendable {
     public let priority: Int?
     /// #tag labels found in the text, without '#'.
     public let labels: [String]
+    /// `&every …` / `&after …` repetition rule.
+    public let recurrence: Recurrence?
 
-    public init(cleanText: String, dueDate: String?, priority: Int?, labels: [String]) {
+    public init(
+        cleanText: String,
+        dueDate: String?,
+        priority: Int?,
+        labels: [String],
+        recurrence: Recurrence? = nil
+    ) {
         self.cleanText = cleanText
         self.dueDate = dueDate
         self.priority = priority
         self.labels = labels
+        self.recurrence = recurrence
     }
 }
 
@@ -35,11 +44,15 @@ public enum TaskTokenParser {
         var working = text
         let dueDate = extractDue(&working, today: today, calendar: calendar)
         let priority = extractPriority(&working)
+        let recurrence = RecurrenceParser.extract(from: &working)
         let labels = tagTokens(in: working)
         let clean = working
             .replacingOccurrences(of: #"\s{2,}"#, with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespaces)
-        return ParsedTaskMetadata(cleanText: clean, dueDate: dueDate, priority: priority, labels: labels)
+        return ParsedTaskMetadata(
+            cleanText: clean, dueDate: dueDate, priority: priority,
+            labels: labels, recurrence: recurrence
+        )
     }
 
     // MARK: - Dates

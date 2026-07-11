@@ -34,10 +34,12 @@ public struct TaskRecord: Codable, Equatable, Sendable, Identifiable, FetchableR
     public var checked: Bool
     public var dueDate: String? // ISO yyyy-MM-dd; TaskEngine owns semantics
     public var priority: Int? // 1 (highest) … 4, nil = none
+    /// Raw recurrence token ("&every 3 days"); nil = one-shot task.
+    public var recurrence: String?
 
     public init(
         id: String, noteId: String, line: Int, text: String, rawLine: String,
-        checked: Bool, dueDate: String? = nil, priority: Int? = nil
+        checked: Bool, dueDate: String? = nil, priority: Int? = nil, recurrence: String? = nil
     ) {
         self.id = id
         self.noteId = noteId
@@ -47,6 +49,7 @@ public struct TaskRecord: Codable, Equatable, Sendable, Identifiable, FetchableR
         self.checked = checked
         self.dueDate = dueDate
         self.priority = priority
+        self.recurrence = recurrence
     }
 }
 

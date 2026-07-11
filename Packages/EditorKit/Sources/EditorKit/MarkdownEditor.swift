@@ -1,5 +1,6 @@
 import MarkdownKit
 import SwiftUI
+import TaskEngine
 
 // TextKit 2 markdown editor with live syntax styling on every keystroke.
 // The underlying storage is always the plain CommonMark source — styling
@@ -118,12 +119,15 @@ import SwiftUI
                 let range = NSRange(location: offset, length: 3)
                 let ns = textView.string as NSString
                 guard NSMaxRange(range) <= ns.length,
-                      let flipped = TaskCheckboxes.toggled(textView.string, tokenAt: range)
+                      let updated = RecurrenceEngine.completeTask(in: textView.string, tokenRange: range)
                 else { return false }
-                let replacement = (flipped as NSString).substring(with: range)
-                // insertText keeps undo working and fires textDidChange,
-                // which updates the binding and restyles.
-                textView.insertText(replacement, replacementRange: range)
+                // Replace just the affected paragraph so undo works and
+                // textDidChange fires (binding + restyle).
+                let lineRange = ns.paragraphRange(for: range)
+                let newLineRange = (updated as NSString)
+                    .paragraphRange(for: NSRange(location: lineRange.location, length: 0))
+                let newLine = (updated as NSString).substring(with: newLineRange)
+                textView.insertText(newLine, replacementRange: lineRange)
                 return true
             }
         }
@@ -264,10 +268,10 @@ import SwiftUI
             @objc func handleCheckboxTap(_ gesture: UITapGestureRecognizer) {
                 guard let textView = gesture.view as? UITextView,
                       let token = checkboxToken(at: gesture.location(in: textView), in: textView),
-                      let flipped = TaskCheckboxes.toggled(textView.text ?? "", tokenAt: token.range)
+                      let updated = RecurrenceEngine.completeTask(in: textView.text ?? "", tokenRange: token.range)
                 else { return }
-                textView.text = flipped
-                text.wrappedValue = flipped
+                textView.text = updated
+                text.wrappedValue = updated
                 restyle(textView)
             }
         }

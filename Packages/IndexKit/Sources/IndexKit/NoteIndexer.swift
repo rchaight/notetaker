@@ -59,7 +59,8 @@ public struct NoteIndexer: Sendable {
                     rawLine: task.rawLine,
                     checked: task.checked,
                     dueDate: parsed.dueDate,
-                    priority: parsed.priority
+                    priority: parsed.priority,
+                    recurrence: parsed.recurrence?.rawToken
                 )
                 try record.save(db)
                 for label in parsed.labels {

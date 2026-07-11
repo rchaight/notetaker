@@ -19,20 +19,36 @@ public enum TaskLineToggler {
         expectedRawLine: String
     ) -> Result? {
         var lines = contents.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-
-        let target: Int
-        if anchorLine >= 0, anchorLine < lines.count, lines[anchorLine] == expectedRawLine {
-            target = anchorLine
-        } else if let relocated = lines.firstIndex(of: expectedRawLine) {
-            // Line moved (edits above it) — same content, new position.
-            target = relocated
-        } else {
-            return nil // drifted: content changed under us, refuse
-        }
-
+        guard let target = locate(in: lines, anchorLine: anchorLine, expectedRawLine: expectedRawLine)
+        else { return nil }
         guard let (flipped, nowChecked) = flipCheckbox(in: lines[target]) else { return nil }
         lines[target] = flipped
         return Result(contents: lines.joined(separator: "\n"), line: target, nowChecked: nowChecked)
+    }
+
+    /// Finds the anchored line (or its relocated exact match); nil = drifted.
+    public static func locate(
+        contents: String,
+        anchorLine: Int,
+        expectedRawLine: String
+    ) -> Int? {
+        let lines = contents.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        return locate(in: lines, anchorLine: anchorLine, expectedRawLine: expectedRawLine)
+    }
+
+    /// Replaces one whole line, preserving every other byte.
+    public static func replacingLine(_ contents: String, at line: Int, with newLine: String) -> String {
+        var lines = contents.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        guard line >= 0, line < lines.count else { return contents }
+        lines[line] = newLine
+        return lines.joined(separator: "\n")
+    }
+
+    private static func locate(in lines: [String], anchorLine: Int, expectedRawLine: String) -> Int? {
+        if anchorLine >= 0, anchorLine < lines.count, lines[anchorLine] == expectedRawLine {
+            return anchorLine
+        }
+        return lines.firstIndex(of: expectedRawLine)
     }
 
     /// Flips the first checkbox token on the line.

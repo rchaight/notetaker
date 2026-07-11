@@ -7,9 +7,10 @@ let package = Package(
     products: [.library(name: "EditorKit", targets: ["EditorKit"])],
     dependencies: [
         .package(path: "../MarkdownKit"),
+        .package(path: "../TaskEngine"),
     ],
     targets: [
-        .target(name: "EditorKit", dependencies: ["MarkdownKit"]),
+        .target(name: "EditorKit", dependencies: ["MarkdownKit", "TaskEngine"]),
         .testTarget(name: "EditorKitTests", dependencies: ["EditorKit"]),
     ]
 )

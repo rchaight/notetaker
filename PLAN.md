@@ -206,7 +206,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 ### M4 — Todo depth: recurrence, dates, labels, saved filters (TaskEngine)
 **Goal:** Todoist/Things-grade todos over the one dataset.
 **Steps:**
-- [ ] **One recurrence engine**, invoked identically from every surface — fixed-schedule AND completion-based ("every 7 days when done"); structurally impossible to mark done without regenerating the next instance (avoid the Dataview footgun).
+- [x] **One recurrence engine**, invoked identically from every surface — fixed-schedule AND completion-based ("every 7 days when done"); structurally impossible to mark done without regenerating the next instance (avoid the Dataview footgun).
 - [ ] NL Quick Add parser as the standard entry path everywhere (one line → date/recurrence/priority/project/labels); `NSDataDetector` baseline, FMF-enhanced in M6.
 - [ ] Start/scheduled vs due date distinction (optional third Planned date).
 - [ ] Free-form Labels as a cross-cutting axis; saved custom Filters (query syntax `priority:P1 AND due:today`) + a visual builder.
