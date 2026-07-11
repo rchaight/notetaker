@@ -207,7 +207,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 **Goal:** Todoist/Things-grade todos over the one dataset.
 **Steps:**
 - [x] **One recurrence engine**, invoked identically from every surface — fixed-schedule AND completion-based ("every 7 days when done"); structurally impossible to mark done without regenerating the next instance (avoid the Dataview footgun).
-- [ ] NL Quick Add parser as the standard entry path everywhere (one line → date/recurrence/priority/project/labels); `NSDataDetector` baseline, FMF-enhanced in M6.
+- [x] NL Quick Add parser as the standard entry path everywhere (one line → date/recurrence/priority/project/labels); `NSDataDetector` baseline, FMF-enhanced in M6.
 - [ ] Start/scheduled vs due date distinction (optional third Planned date).
 - [ ] Free-form Labels as a cross-cutting axis; saved custom Filters (query syntax `priority:P1 AND due:today`) + a visual builder.
 - [ ] In-task nested sub-checkboxes with progress ring; computed relevance/Task Score for auto-sorting undated todos; in-note Completed section.

@@ -174,6 +174,26 @@ final class VaultIndexService {
         return (try? database.openTasks()) ?? []
     }
 
+    /// Quick Add: one parsed line appended to Inbox.md at the vault root.
+    @discardableResult
+    func quickAdd(_ input: String) async -> Bool {
+        guard let root, let indexer,
+              let result = QuickAddParser.parse(input) else { return false }
+        let inbox = root.appendingPathComponent("Inbox.md")
+        let existing = await (try? store.readString(at: inbox)) ?? "# Inbox\n"
+        let updated = (existing.hasSuffix("\n") ? existing : existing + "\n")
+            + result.markdownLine + "\n"
+        do {
+            try await store.writeString(updated, to: inbox)
+            try indexer.index(noteId: "Inbox.md", contents: updated, modifiedAt: nil)
+            knownMTimes["Inbox.md"] = nil
+            tasksVersion += 1
+            return true
+        } catch {
+            return false
+        }
+    }
+
     /// BM25-ranked note ids for a user-typed query. Terms are quoted and
     /// prefix-matched so FTS5 operator characters can't break the query.
     func searchNoteIds(_ query: String) -> [String] {
