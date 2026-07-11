@@ -196,7 +196,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 - [x] `IndexKit`: GRDB schema + `DatabaseMigrator` for Note/Task/Label/OutLink + FTS5 virtual table + IndexMeta; schema-version guard with "drop + full-rebuild from files" recovery.
 - [x] Inbound sync: on VaultKit change → parse via MarkdownKit → extract todos (`- [ ] text >due !priority #tag ^id`), tags, `[[wikilinks]]` → upsert keyed by note id + hash; skip unchanged files by `mtime`+SHA-256; assign/inject durable `^taskid` markers on first index. *(Pipeline done: NoteScanner + TaskTokenParser + NoteIndexer w/ SHA-256 skip. Live VaultKit wiring lands with the To-Do tab (M3.5); durable ^ids deferred — line anchors first.)*
 - [x] Outbound sync: master-list checkbox toggle → coordinated read → locate line by `^taskid` (byte-range cache, fuzzy-rematch fallback) → flip state token → coordinated write → let inbound reconcile. *(TaskLineToggler: anchor line + exact-rawLine relocate + refuse-on-drift; coordinated read/write wiring lands with the To-Do tab.)*
-- [ ] `TaskEngine`: date parsing (`>today`/`>tomorrow`/`>friday` + absolute), P1–P4 priorities, overdue computation.
+- [x] `TaskEngine`: date parsing (`>today`/`>tomorrow`/`>friday` + absolute), P1–P4 priorities, overdue computation.
 - [ ] Master To-Do tab UI: live `@Query`-style list (GRDB reactive), native drag-reorder (WWDC26 list reorder), "jump to note" from any row.
 - [ ] Pre-built smart views: **Inbox** (undated), **Today** (due + overdue), **Upcoming**; **Overdue bucket** so past-due never silently vanishes.
 - [ ] Full-text search UI backed by FTS5 (BM25, phrase/prefix/highlight).
