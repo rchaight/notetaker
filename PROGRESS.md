@@ -12,10 +12,10 @@ Loop-engineering state file. Read this + PLAN.md at the start of every pass.
 
 ## Current state
 
-- **Phase**: M1 checkpoint — all automatable steps done; two-device sync matrix requires the user
-- **Current milestone**: M1 — awaiting two-device verification
+- **Phase**: building — M2 (Markdown editor) in progress
+- **Current milestone**: M2 — MarkdownKit + EditorKit
 - **Failure streak**: 0
-- **Awaiting user checkpoint**: **YES — run the two-device matrix (see checkpoint instructions), then continue the loop**
+- **Awaiting user checkpoint**: no
 - **Branch protection**: proceeding unprotected (private repo, GitHub Free; no user objection at checkpoint — revisit anytime)
 - **Environment note**: toolchain = **Xcode 27.0 beta** (`DEVELOPER_DIR=/Applications/Xcode-beta.app`, macOS/iOS 27 SDKs, iOS 27 sim runtime installed) per user directive. Deployment floor 26.0 until a 27-only API is needed. Developer ID cert present (team 6A2NHN89Q8). ⚠️ Repo is inside iCloud-synced ~/Documents — ALL build products must use external paths (see CLAUDE.md).
 
@@ -24,7 +24,7 @@ Loop-engineering state file. Read this + PLAN.md at the start of every pass.
 | Milestone | Completed | User reviewed |
 |---|---|---|
 | M0 — Repo bootstrap (Xcode project, packages, iCloud entitlements, CI) | ✅ 2026-07-10 | ✅ 2026-07-10 |
-| M1 — iCloud storage + sync skeleton (VaultKit) | | |
+| M1 — iCloud storage + sync skeleton (VaultKit) | ✅ 2026-07-11 | ✅ 2026-07-11 (two-device sync verified both directions on Mac + iPhone; live conflict drill optional/deferred — machinery unit-tested) |
 | M2 — Markdown editor, Liquid Glass (MarkdownKit + EditorKit) | | |
 | M3 — Inline todos + index + master To-Do list (IndexKit + TaskEngine) | | |
 | M4 — Todo depth: recurrence, dates, labels, filters | | |
@@ -59,3 +59,4 @@ Loop-engineering state file. Read this + PLAN.md at the start of every pass.
 | 16 | 2026-07-10 | M1.5 DispatchSource tree watcher + security-scoped bookmarks | ✅ | DirectoryWatcher (per-directory sources, self-refreshing watch set, event-driven test passes); VaultBookmark make/resolve/withAccess with unsandboxed fallback. 33/33 tests. |
 | 17 | 2026-07-10 | M1.6 debug harness + REAL-container smoke | ✅ | Settings→Vault live browser (download badges, keep-both button, create/delete). Headless smoke vs real ubiquity container: **VAULT SMOKE OK** (write/read/enumerate/delete round-trip). iOS build green. **M1 automatable steps done — checkpoint: two-device matrix needs user's iPhone.** |
 | 18 | 2026-07-11 | FIX: Vault harness invisible on iPhone (user-reported at checkpoint) | ✅ | Vault tab added to the main shell on all platforms (#if DEBUG); removed desktop-sized frame. Verified visually in iOS Simulator screenshot. |
+| 19 | 2026-07-11 | M1 CLOSED at checkpoint | ✅ | User verified two-device sync both directions (Mac ↔ iPhone 16 Pro Max, real iCloud). Device install required GUI run (xcodebuild CLI can't see Xcode account session) + verification unblock (VPN/Private Relay + restart). **M1 COMPLETE.** |
