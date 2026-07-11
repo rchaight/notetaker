@@ -74,6 +74,14 @@ public struct MarkdownTheme: @unchecked Sendable {
         [.font: PlatformFont.systemFont(ofSize: 0.01), .foregroundColor: PlatformColor.clear]
     }
 
+    /// The clickable "[ ]" / "[x]" checkbox token.
+    public func checkboxTokenAttributes(checked: Bool) -> [NSAttributedString.Key: Any] {
+        [
+            .font: PlatformFont.monospacedSystemFont(ofSize: baseFontSize, weight: .semibold),
+            .foregroundColor: checked ? secondaryColor : accentColor,
+        ]
+    }
+
     public func attributes(for kind: MarkdownElementKind) -> [NSAttributedString.Key: Any] {
         switch kind {
         case let .heading(level):
@@ -95,10 +103,7 @@ public struct MarkdownTheme: @unchecked Sendable {
         case .taskCheckbox(checked: true):
             [.strikethroughStyle: NSUnderlineStyle.single.rawValue,
              .foregroundColor: secondaryColor]
-        case .taskCheckbox(checked: false):
-            // Unchecked [ ] reads as UI, not syntax (interactive in M3).
-            [.foregroundColor: accentColor]
-        case .listItem, .thematicBreak, .table:
+        case .listItem, .taskCheckbox, .thematicBreak, .table:
             [:]
         }
     }

@@ -110,6 +110,22 @@ import SwiftUI
                     restyle(textView)
                 }
             }
+
+            public func textView(_ textView: NSTextView, clickedOnLink link: Any, at _: Int) -> Bool {
+                guard let url = link as? URL,
+                      let offset = MarkdownHighlighter.toggleOffset(from: url)
+                else { return false }
+                let range = NSRange(location: offset, length: 3)
+                let ns = textView.string as NSString
+                guard NSMaxRange(range) <= ns.length,
+                      let flipped = TaskCheckboxes.toggled(textView.string, tokenAt: range)
+                else { return false }
+                let replacement = (flipped as NSString).substring(with: range)
+                // insertText keeps undo working and fires textDidChange,
+                // which updates the binding and restyles.
+                textView.insertText(replacement, replacementRange: range)
+                return true
+            }
         }
     }
 
@@ -142,6 +158,14 @@ import SwiftUI
             textView.alwaysBounceVertical = true
             textView.textContainerInset = UIEdgeInsets(top: 16, left: 12, bottom: 16, right: 12)
             textView.text = text
+            // Editable UITextViews don't tap links, so checkbox toggles get a
+            // gesture that only fires when the touch lands on a token.
+            let tap = UITapGestureRecognizer(
+                target: context.coordinator,
+                action: #selector(Coordinator.handleCheckboxTap(_:))
+            )
+            tap.delegate = context.coordinator
+            textView.addGestureRecognizer(tap)
             context.coordinator.livePreview = livePreview
             context.coordinator.restyle(textView)
             return textView
@@ -159,7 +183,7 @@ import SwiftUI
         }
 
         @MainActor
-        public final class Coordinator: NSObject, UITextViewDelegate {
+        public final class Coordinator: NSObject, UITextViewDelegate, UIGestureRecognizerDelegate {
             let text: Binding<String>
             let theme: MarkdownTheme
             var livePreview = true
@@ -214,6 +238,37 @@ import SwiftUI
                 if cursorParagraph(textView) != lastCursorLine {
                     restyle(textView)
                 }
+            }
+
+            // MARK: Checkbox taps
+
+            private func checkboxToken(at point: CGPoint, in textView: UITextView) -> TaskCheckboxToken? {
+                guard let position = textView.closestPosition(to: point) else { return nil }
+                let index = textView.offset(from: textView.beginningOfDocument, to: position)
+                let text = textView.text ?? ""
+                let tokens = TaskCheckboxes.tokens(in: text, styled: MarkdownStyler.styleRanges(in: text))
+                // A tap "on" the token includes its trailing edge.
+                return tokens.first {
+                    NSLocationInRange(index, $0.range) || NSMaxRange($0.range) == index
+                }
+            }
+
+            public func gestureRecognizer(
+                _ gestureRecognizer: UIGestureRecognizer,
+                shouldReceive touch: UITouch
+            ) -> Bool {
+                guard let textView = gestureRecognizer.view as? UITextView else { return false }
+                return checkboxToken(at: touch.location(in: textView), in: textView) != nil
+            }
+
+            @objc func handleCheckboxTap(_ gesture: UITapGestureRecognizer) {
+                guard let textView = gesture.view as? UITextView,
+                      let token = checkboxToken(at: gesture.location(in: textView), in: textView),
+                      let flipped = TaskCheckboxes.toggled(textView.text ?? "", tokenAt: token.range)
+                else { return }
+                textView.text = flipped
+                text.wrappedValue = flipped
+                restyle(textView)
             }
         }
     }

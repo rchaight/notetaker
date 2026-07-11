@@ -39,6 +39,23 @@ public enum MarkdownHighlighter {
                 storage.addAttributes(theme.hiddenMarkerAttributes, range: marker)
             }
         }
+        for token in TaskCheckboxes.tokens(in: text, styled: styled)
+            where NSMaxRange(token.range) <= fullRange.length {
+            var attributes = theme.checkboxTokenAttributes(checked: token.checked)
+            attributes[.link] = Self.toggleURL(at: token.range.location)
+            storage.addAttributes(attributes, range: token.range)
+        }
         storage.endEditing()
+    }
+
+    /// Custom scheme the editor intercepts to flip a checkbox token.
+    public static func toggleURL(at utf16Offset: Int) -> URL {
+        URL(string: "notetaker-task://toggle/\(utf16Offset)")!
+    }
+
+    /// The token offset if `url` is a checkbox-toggle link.
+    public static func toggleOffset(from url: URL) -> Int? {
+        guard url.scheme == "notetaker-task", url.host() == "toggle" else { return nil }
+        return Int(url.lastPathComponent)
     }
 }

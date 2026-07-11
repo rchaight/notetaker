@@ -112,6 +112,27 @@ struct HighlighterTests {
         #expect(storage.string == text, "hiding must never mutate characters")
     }
 
+    @Test func checkboxTokenIsStyledAndLinked() {
+        let text = "- [ ] call the dean\n"
+        let styled = storage(text)
+        let tokenOffset = (text as NSString).range(of: "[ ]").location
+        let link = styled.attribute(.link, at: tokenOffset, effectiveRange: nil) as? URL
+        #expect(link != nil)
+        #expect(link.flatMap(MarkdownHighlighter.toggleOffset(from:)) == tokenOffset)
+        let font = styled.attribute(.font, at: tokenOffset, effectiveRange: nil) as? PlatformFont
+        #expect(font?.fontDescriptor.symbolicTraits.contains(monoTrait) ?? false)
+        // The task text itself keeps the base font — only the token is special.
+        let textOffset = (text as NSString).range(of: "call").location
+        let textLink = styled.attribute(.link, at: textOffset, effectiveRange: nil)
+        #expect(textLink == nil)
+    }
+
+    @Test func toggleURLRoundTrip() throws {
+        let url = MarkdownHighlighter.toggleURL(at: 42)
+        #expect(MarkdownHighlighter.toggleOffset(from: url) == 42)
+        #expect(try MarkdownHighlighter.toggleOffset(from: #require(URL(string: "https://x.y/toggle/1"))) == nil)
+    }
+
     @Test func sourceModeShowsAllMarkers() {
         let text = "**bold**\n\n*second*\n"
         let storage = NSTextStorage(string: text)
