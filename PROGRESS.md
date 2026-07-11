@@ -25,7 +25,7 @@ Loop-engineering state file. Read this + PLAN.md at the start of every pass.
 |---|---|---|
 | M0 — Repo bootstrap (Xcode project, packages, iCloud entitlements, CI) | ✅ 2026-07-10 | ✅ 2026-07-10 |
 | M1 — iCloud storage + sync skeleton (VaultKit) | ✅ 2026-07-11 | ✅ 2026-07-11 (two-device sync verified both directions on Mac + iPhone; live conflict drill optional/deferred — machinery unit-tested) |
-| M2 — Markdown editor, Liquid Glass (MarkdownKit + EditorKit) | ✅ 2026-07-11 | pending |
+| M2 — Markdown editor, Liquid Glass (MarkdownKit + EditorKit) | ✅ 2026-07-11 | ✅ 2026-07-11 (checkbox + full marker hiding fixes applied; Writing Tools absent system-wide on this beta — revisit on next macOS 27 seed) |
 | M3 — Inline todos + index + master To-Do list (IndexKit + TaskEngine) | | |
 | M4 — Todo depth: recurrence, dates, labels, filters | | |
 | M5 — Import/conversion pipeline (File-Parser/Docling reuse) | | |
@@ -70,3 +70,4 @@ Loop-engineering state file. Read this + PLAN.md at the start of every pass.
 | — | 2026-07-11 | **M2 COMPLETE — checkpoint** | ✅ | 7/7 plan steps done (passes 20–26). Deferred within-milestone: Focus Mode, NSUserActivity restoration, macOS CommandGroup menus (→ M9), visible-range styling (until real lag observed). |
 | 27 | 2026-07-11 | FIX (M2 checkpoint feedback): hide ALL markers in Live Preview | ✅ | Blockquote '>' prefixes (incl. nested, deduped), fenced-code ``` lines, list bullets '- '/'1. ' now hide off-cursor-line; unchecked '[ ]' styled accent (visible as UI, interactive in M3). 37 tests. Awaiting user word on whether Writing Tools menu is missing. |
 | 28 | 2026-07-11 | FIX (M2 checkpoint feedback): clickable task checkboxes | ✅ | TaskCheckboxes (token find + toggle, 5 tests) pulled forward from M3; token styled semibold-mono accent; click via .link intercept (macOS, undo-safe insertText) / targeted tap gesture (iOS). 44 tests total. |
+| 29 | 2026-07-11 | M2 checkpoint closed: Writing Tools diagnosed as OS-level | ✅ | Missing in TextEdit too → macOS 27 beta seed issue, not app code (FoundationModels reports model AVAILABLE — M6 AI features unaffected). isRichText experiment reverted. Checkbox + marker-hiding fixes user-approved. **M2 reviewed ✓.** |
