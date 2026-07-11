@@ -185,7 +185,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 - [ ] **Live Preview hybrid:** hide markdown syntax markers except on the cursor's line; real `.md` underneath. Source-mode toggle + Focus Mode (fade all but current sentence/paragraph).
 - [ ] Liquid Glass chrome: `glassEffect` + `containerConcentric` toolbars/floating capsules; native menu bar `CommandGroup` (File/Edit/View) on macOS.
 - [ ] Writing Tools: on a plain TextKit-2 text view it's free; for the custom-styled storage bridge via `UIWritingToolsCoordinator`/`NSWritingToolsCoordinator`.
-- [ ] Wire editor ↔ VaultKit: open note = coordinated read; save = coordinated write (debounced/autosave); state restoration via `NSUserActivity` (note + cursor).
+- [x] Wire editor ↔ VaultKit: open note = coordinated read; save = coordinated write (debounced/autosave); state restoration via `NSUserActivity` (note + cursor). *(Done except NSUserActivity restoration — deferred to M2 polish.)*
 - [ ] Performance: incremental/visible-range styling; profile a 50k-word note and a 5k-note vault list (lazy prefetch).
 **Done:** open a `.md`, type Markdown, see live formatting; syntax hides off-cursor-line; the underlying file stays valid CommonMark (diff it in Finder); Writing Tools proofread/rewrite/summarize work inside a note; no lag on a large note.
 **Effort:** ~2.5–3 weeks.

@@ -6,7 +6,7 @@ struct AppShell: View {
     var body: some View {
         TabView {
             Tab("Notes", systemImage: "note.text") {
-                NotesPlaceholder()
+                NotesView()
             }
             Tab("To-Do", systemImage: "checklist") {
                 NavigationStack {
@@ -40,24 +40,6 @@ struct AppShell: View {
             #endif
         }
         .tabViewStyle(.sidebarAdaptable)
-    }
-}
-
-/// Notes gets the three-column skeleton the editor will live in.
-private struct NotesPlaceholder: View {
-    var body: some View {
-        NavigationSplitView {
-            List {
-                Label("All Notes", systemImage: "tray.full")
-            }
-            .navigationTitle("Notes")
-        } detail: {
-            ContentUnavailableView(
-                "No Note Selected",
-                systemImage: "note.text",
-                description: Text("Select or create a note.")
-            )
-        }
     }
 }
 

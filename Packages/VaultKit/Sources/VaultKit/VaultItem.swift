@@ -1,7 +1,7 @@
 import Foundation
 
 /// One file or folder inside the vault, as observed by enumeration.
-public struct VaultItem: Identifiable, Equatable, Sendable {
+public struct VaultItem: Identifiable, Equatable, Hashable, Sendable {
     /// iCloud download state, mapped from NSMetadataUbiquitousItemDownloadingStatus*.
     public enum DownloadState: String, Sendable {
         /// Placeholder only — content not on this device.
