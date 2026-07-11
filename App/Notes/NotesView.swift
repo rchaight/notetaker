@@ -25,7 +25,12 @@ struct NotesView: View {
         } detail: {
             detail
         }
+        // .searchable's toolbar item crashes the AppKit toolbar bridge on
+        // the macOS 27 beta (NSToolbar insert exception) — macOS gets an
+        // in-sidebar field instead; iOS keeps the system search UI.
+        #if os(iOS)
         .searchable(text: $searchText, prompt: "Search all notes")
+        #endif
         .task { await model.start() }
         .onDisappear { Task { await model.flushSave() } }
     }
@@ -41,6 +46,12 @@ struct NotesView: View {
                 description: Text(message)
             )
         case .ready, .readyLocalFallback:
+            #if os(macOS)
+                TextField("Search all notes", text: $searchText)
+                    .textFieldStyle(.roundedBorder)
+                    .padding(.horizontal, 10)
+                    .padding(.top, 6)
+            #endif
             List(selection: Binding(
                 get: { model.selectedID },
                 set: { model.select($0) }

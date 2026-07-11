@@ -3,7 +3,24 @@ import SwiftUI
 @main
 struct NotetakerApp: App {
     init() {
+        // Dev builds change toolbars between installs; restoring a stale
+        // saved toolbar plist crashes SwiftUI's NSToolbar bridge on the
+        // macOS 27 beta (NSException in _insertNewItemWithItemIdentifier).
+        // Purge saved window state before any window is created. Revisit
+        // for proper state restoration at release (M10).
+        Self.purgeSavedWindowState()
         VaultSmoke.runIfRequested()
+    }
+
+    private static func purgeSavedWindowState() {
+        #if os(macOS)
+            guard let library = FileManager.default
+                .urls(for: .libraryDirectory, in: .userDomainMask).first else { return }
+            let savedState = library
+                .appendingPathComponent("Saved Application State", isDirectory: true)
+                .appendingPathComponent("com.rchaight.notetaker.savedState", isDirectory: true)
+            try? FileManager.default.removeItem(at: savedState)
+        #endif
     }
 
     var body: some Scene {
