@@ -12,10 +12,10 @@ Loop-engineering state file. Read this + PLAN.md at the start of every pass.
 
 ## Current state
 
-- **Phase**: building — M1 in progress (user approved continue 2026-07-10; M0 reviewed)
-- **Current milestone**: M1 — iCloud storage + sync skeleton (VaultKit)
+- **Phase**: M1 checkpoint — all automatable steps done; two-device sync matrix requires the user
+- **Current milestone**: M1 — awaiting two-device verification
 - **Failure streak**: 0
-- **Awaiting user checkpoint**: no
+- **Awaiting user checkpoint**: **YES — run the two-device matrix (see checkpoint instructions), then continue the loop**
 - **Branch protection**: proceeding unprotected (private repo, GitHub Free; no user objection at checkpoint — revisit anytime)
 - **Environment note**: toolchain = **Xcode 27.0 beta** (`DEVELOPER_DIR=/Applications/Xcode-beta.app`, macOS/iOS 27 SDKs, iOS 27 sim runtime installed) per user directive. Deployment floor 26.0 until a 27-only API is needed. Developer ID cert present (team 6A2NHN89Q8). ⚠️ Repo is inside iCloud-synced ~/Documents — ALL build products must use external paths (see CLAUDE.md).
 
@@ -57,3 +57,4 @@ Loop-engineering state file. Read this + PLAN.md at the start of every pass.
 | 14 | 2026-07-10 | M1.3 folder CRUD + external-mutation tolerance | ✅ | createFolder, folder move-with-contents, VaultEnumerator tree snapshots (skips vanished items/dangling symlinks); uncoordinated external deletion leaves store usable. 23/23 tests. |
 | 15 | 2026-07-10 | M1.4 conflict detection + keep-both resolution | ✅ | ConflictNaming (sibling-pattern detect, collision-safe keep-both names), VaultConflictCenter over NSFileVersion, coordinated copy(). 30/30 tests; live conflict exercise in M1.6 two-device matrix. |
 | 16 | 2026-07-10 | M1.5 DispatchSource tree watcher + security-scoped bookmarks | ✅ | DirectoryWatcher (per-directory sources, self-refreshing watch set, event-driven test passes); VaultBookmark make/resolve/withAccess with unsandboxed fallback. 33/33 tests. |
+| 17 | 2026-07-10 | M1.6 debug harness + REAL-container smoke | ✅ | Settings→Vault live browser (download badges, keep-both button, create/delete). Headless smoke vs real ubiquity container: **VAULT SMOKE OK** (write/read/enumerate/delete round-trip). iOS build green. **M1 automatable steps done — checkpoint: two-device matrix needs user's iPhone.** |

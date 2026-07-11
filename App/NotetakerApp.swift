@@ -2,6 +2,10 @@ import SwiftUI
 
 @main
 struct NotetakerApp: App {
+    init() {
+        VaultSmoke.runIfRequested()
+    }
+
     var body: some Scene {
         WindowGroup {
             AppShell()
