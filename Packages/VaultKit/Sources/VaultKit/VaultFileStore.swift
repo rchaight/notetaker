@@ -41,6 +41,19 @@ public struct VaultFileStore: Sendable {
         }
     }
 
+    public func copy(from source: URL, to destination: URL) async throws {
+        try await coordinatedWrite(at: destination, options: .forReplacing) { actualDestination in
+            try FileManager.default.createDirectory(
+                at: actualDestination.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            if FileManager.default.fileExists(atPath: actualDestination.path) {
+                try FileManager.default.removeItem(at: actualDestination)
+            }
+            try FileManager.default.copyItem(at: source, to: actualDestination)
+        }
+    }
+
     /// Coordinated folder creation (rename/move/delete of folders reuse
     /// `move`/`delete` — NSFileCoordinator and FileManager handle directories).
     public func createFolder(at url: URL) async throws {
