@@ -12,17 +12,18 @@ Loop-engineering state file. Read this + PLAN.md at the start of every pass.
 
 ## Current state
 
-- **Phase**: M0 complete — milestone checkpoint
-- **Current milestone**: M0 done (next: M1 — iCloud storage + sync skeleton)
+- **Phase**: building — M1 in progress (user approved continue 2026-07-10; M0 reviewed)
+- **Current milestone**: M1 — iCloud storage + sync skeleton (VaultKit)
 - **Failure streak**: 0
-- **Awaiting user checkpoint**: **YES — M0 review. Before M1 can touch iCloud: (1) sign into Xcode with your Apple ID so a development cert exists, (2) decide on branch protection (repo is private on GitHub Free), (3) launch the app and look at the shell.**
+- **Awaiting user checkpoint**: no
+- **Branch protection**: proceeding unprotected (private repo, GitHub Free; no user objection at checkpoint — revisit anytime)
 - **Environment note**: toolchain = **Xcode 27.0 beta** (`DEVELOPER_DIR=/Applications/Xcode-beta.app`, macOS/iOS 27 SDKs, iOS 27 sim runtime installed) per user directive. Deployment floor 26.0 until a 27-only API is needed. Developer ID cert present (team 6A2NHN89Q8). ⚠️ Repo is inside iCloud-synced ~/Documents — ALL build products must use external paths (see CLAUDE.md).
 
 ## Milestone checkpoints
 
 | Milestone | Completed | User reviewed |
 |---|---|---|
-| M0 — Repo bootstrap (Xcode project, packages, iCloud entitlements, CI) | ✅ 2026-07-10 | pending |
+| M0 — Repo bootstrap (Xcode project, packages, iCloud entitlements, CI) | ✅ 2026-07-10 | ✅ 2026-07-10 |
 | M1 — iCloud storage + sync skeleton (VaultKit) | | |
 | M2 — Markdown editor, Liquid Glass (MarkdownKit + EditorKit) | | |
 | M3 — Inline todos + index + master To-Do list (IndexKit + TaskEngine) | | |
@@ -50,3 +51,4 @@ Loop-engineering state file. Read this + PLAN.md at the start of every pass.
 | 8 | 2026-07-10 | M0.8 push + first CI + branch protection | ✅ | Pushed to rchaight/notetaker; CI run #1 green (build-and-test + format). Protection 403: private repo on Free plan — user decision. |
 | 9 | 2026-07-10 | M0 done-criteria verify | ✅ | App launches on macOS (sandboxed) and iOS Simulator (iPhone 17 Pro). iCloud container provisioning deferred to M1 (needs Xcode sign-in). **M0 COMPLETE — checkpoint.** |
 | 10 | 2026-07-10 | ENV: switch to Xcode 27 beta (user directive) | ✅ | Builds + 10/10 package tests green on macOS/iOS 27 SDKs. Diagnosed intermittent codesign "detritus" failures → iCloud-synced ~/Documents decorating in-repo build artifacts; all build output moved to ~/.cache/notetaker-build. |
+| 11 | 2026-07-10 | M1 gate: real signing + iCloud entitlements live | ✅ | Apple Development cert auto-minted via -allowProvisioningUpdates; device + App ID + container iCloud.com.rchaight.notetaker registered; CloudDocuments/ubiquity entitlements verified in binary; launch OK. M0 fully done incl. deferred container provisioning. |

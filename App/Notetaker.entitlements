@@ -8,13 +8,17 @@
 	<true/>
 	<key>com.apple.security.network.client</key>
 	<true/>
-	<!--
-	iCloud container entitlements land in M1 once an Apple Development
-	certificate exists (restricted entitlements cannot ship under the
-	current ad-hoc signature):
-	  com.apple.developer.icloud-container-identifiers
-	  com.apple.developer.icloud-services (CloudDocuments)
-	  com.apple.developer.ubiquity-container-identifiers
-	-->
+	<key>com.apple.developer.icloud-container-identifiers</key>
+	<array>
+		<string>iCloud.com.rchaight.notetaker</string>
+	</array>
+	<key>com.apple.developer.icloud-services</key>
+	<array>
+		<string>CloudDocuments</string>
+	</array>
+	<key>com.apple.developer.ubiquity-container-identifiers</key>
+	<array>
+		<string>iCloud.com.rchaight.notetaker</string>
+	</array>
 </dict>
 </plist>

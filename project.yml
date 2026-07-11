@@ -55,7 +55,4 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.rchaight.notetaker
         ENABLE_HARDENED_RUNTIME: YES
-        # Ad-hoc signing until an Apple Development cert exists (sign into
-        # Xcode with the Apple ID). Required before M1's iCloud entitlements.
-        CODE_SIGN_IDENTITY: "-"
         CODE_SIGN_ENTITLEMENTS: App/Notetaker.entitlements
