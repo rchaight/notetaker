@@ -95,7 +95,10 @@ public struct MarkdownTheme: @unchecked Sendable {
         case .taskCheckbox(checked: true):
             [.strikethroughStyle: NSUnderlineStyle.single.rawValue,
              .foregroundColor: secondaryColor]
-        case .listItem, .taskCheckbox, .thematicBreak, .table:
+        case .taskCheckbox(checked: false):
+            // Unchecked [ ] reads as UI, not syntax (interactive in M3).
+            [.foregroundColor: accentColor]
+        case .listItem, .thematicBreak, .table:
             [:]
         }
     }

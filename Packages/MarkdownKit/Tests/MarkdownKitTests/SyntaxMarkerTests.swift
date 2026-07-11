@@ -45,4 +45,36 @@ struct SyntaxMarkerTests {
     @Test func plainTextHasNoMarkers() {
         #expect(markers("just words\n").isEmpty)
     }
+
+    @Test func blockquoteMarkersHidden() {
+        #expect(markers("> quoted wisdom\n") == ["> "])
+    }
+
+    @Test func nestedBlockquoteMarkersHidden() {
+        #expect(markers("> > deep quote\n") == ["> > "])
+    }
+
+    @Test func fencedCodeBlockHidesFenceLines() {
+        let found = markers("```swift\nlet x = 1\n```\n")
+        #expect(found.contains("```swift"))
+        #expect(found.contains("```"))
+    }
+
+    @Test func listBulletsHidden() {
+        let found = markers("- first\n- second\n")
+        #expect(found == ["- ", "- "])
+    }
+
+    @Test func orderedListNumbersHidden() {
+        let found = markers("1. first\n2. second\n")
+        #expect(found == ["1. ", "2. "])
+    }
+
+    @Test func taskItemHidesBulletKeepsCheckbox() {
+        let text = "- [ ] call the dean\n"
+        let found = markers(text)
+        // The "- " bullet hides; "[ ]" stays visible (styled as UI).
+        #expect(found.contains("- "))
+        #expect(!found.contains { $0.contains("[") })
+    }
 }
