@@ -23,7 +23,7 @@ public struct NoteRecord: Codable, Equatable, Sendable, FetchableRecord, Persist
 
 /// One inline todo extracted from a note line. Rebuildable: every field
 /// derives from the file; `line` anchors outbound writes.
-public struct TaskRecord: Codable, Equatable, Sendable, FetchableRecord, PersistableRecord {
+public struct TaskRecord: Codable, Equatable, Sendable, Identifiable, FetchableRecord, PersistableRecord {
     public static let databaseTableName = "task"
 
     public var id: String // "<noteId>#<line>" until durable ^ids (M3.2)

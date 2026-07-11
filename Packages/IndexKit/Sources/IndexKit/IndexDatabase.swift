@@ -115,6 +115,28 @@ public extension IndexDatabase {
         }
     }
 
+    /// All unchecked tasks, ordered for the master list: priority first
+    /// (nulls last), then due date (nulls last), then stable note/line order.
+    func openTasks() throws -> [TaskRecord] {
+        try queue.read { db in
+            try TaskRecord
+                .filter(Column("checked") == false)
+                .order(
+                    Column("priority").ascNullsLast,
+                    Column("dueDate").ascNullsLast,
+                    Column("noteId"),
+                    Column("line")
+                )
+                .fetchAll(db)
+        }
+    }
+
+    func indexedNoteIds() throws -> [String] {
+        try queue.read { db in
+            try String.fetchAll(db, sql: "SELECT id FROM note")
+        }
+    }
+
     /// Wipes every row (schema intact) — the "delete index, re-scan" path.
     func wipeAllRows() throws {
         try queue.write { db in

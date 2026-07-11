@@ -3,20 +3,15 @@ import SwiftUI
 /// Root shell: three sections as an adaptive TabView (sidebar on Mac/iPad,
 /// tab bar on iPhone). Placeholder content until M1–M3 land.
 struct AppShell: View {
+    @State private var indexService = VaultIndexService()
+
     var body: some View {
         TabView {
             Tab("Notes", systemImage: "note.text") {
                 NotesView()
             }
             Tab("To-Do", systemImage: "checklist") {
-                NavigationStack {
-                    ContentUnavailableView(
-                        "No Tasks Yet",
-                        systemImage: "checklist",
-                        description: Text("Todos you write in notes will appear here.")
-                    )
-                    .navigationTitle("To-Do")
-                }
+                TodoView(service: indexService)
             }
             Tab("Projects", systemImage: "folder") {
                 NavigationStack {
@@ -40,6 +35,7 @@ struct AppShell: View {
             #endif
         }
         .tabViewStyle(.sidebarAdaptable)
+        .task { await indexService.start() }
     }
 }
 
