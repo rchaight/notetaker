@@ -193,7 +193,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 ### M3 — Inline todos + parser/index + master To-Do list (IndexKit + TaskEngine)
 **Goal:** inline `- [ ]` todos authored in any note aggregate into a **live bidirectional** master list; checking anywhere edits the exact source line.
 **Steps:**
-- [ ] `IndexKit`: GRDB schema + `DatabaseMigrator` for Note/Task/Label/OutLink + FTS5 virtual table + IndexMeta; schema-version guard with "drop + full-rebuild from files" recovery.
+- [x] `IndexKit`: GRDB schema + `DatabaseMigrator` for Note/Task/Label/OutLink + FTS5 virtual table + IndexMeta; schema-version guard with "drop + full-rebuild from files" recovery.
 - [ ] Inbound sync: on VaultKit change → parse via MarkdownKit → extract todos (`- [ ] text >due !priority #tag ^id`), tags, `[[wikilinks]]` → upsert keyed by note id + hash; skip unchanged files by `mtime`+SHA-256; assign/inject durable `^taskid` markers on first index.
 - [ ] Outbound sync: master-list checkbox toggle → coordinated read → locate line by `^taskid` (byte-range cache, fuzzy-rematch fallback) → flip state token → coordinated write → let inbound reconcile.
 - [ ] `TaskEngine`: date parsing (`>today`/`>tomorrow`/`>friday` + absolute), P1–P4 priorities, overdue computation.
