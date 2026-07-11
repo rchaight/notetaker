@@ -173,6 +173,17 @@ final class VaultIndexService {
         return (try? database.openTasks()) ?? []
     }
 
+    /// BM25-ranked note ids for a user-typed query. Terms are quoted and
+    /// prefix-matched so FTS5 operator characters can't break the query.
+    func searchNoteIds(_ query: String) -> [String] {
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        guard let database, !trimmed.isEmpty else { return [] }
+        let sanitized = trimmed.split(separator: " ")
+            .map { "\"\($0.replacingOccurrences(of: "\"", with: ""))\"*" }
+            .joined(separator: " ")
+        return (try? database.searchNoteIds(matching: sanitized)) ?? []
+    }
+
     /// Master-list toggle: coordinated read → flip the source line (with
     /// drift protection) → coordinated write → re-index that note. When the
     /// line drifted, we re-index instead of writing — the row corrects

@@ -26,7 +26,7 @@ Loop-engineering state file. Read this + PLAN.md at the start of every pass.
 | M0 — Repo bootstrap (Xcode project, packages, iCloud entitlements, CI) | ✅ 2026-07-10 | ✅ 2026-07-10 |
 | M1 — iCloud storage + sync skeleton (VaultKit) | ✅ 2026-07-11 | ✅ 2026-07-11 (two-device sync verified both directions on Mac + iPhone; live conflict drill optional/deferred — machinery unit-tested) |
 | M2 — Markdown editor, Liquid Glass (MarkdownKit + EditorKit) | ✅ 2026-07-11 | ✅ 2026-07-11 (checkbox + full marker hiding fixes applied; Writing Tools absent system-wide on this beta — revisit on next macOS 27 seed) |
-| M3 — Inline todos + index + master To-Do list (IndexKit + TaskEngine) | | |
+| M3 — Inline todos + index + master To-Do list (IndexKit + TaskEngine) | ✅ 2026-07-11 | pending (deferred within-milestone: jump-to-note, drag-reorder, durable ^task-ids, search-match highlighting) |
 | M4 — Todo depth: recurrence, dates, labels, filters | | |
 | M5 — Import/conversion pipeline (File-Parser/Docling reuse) | | |
 | M6 — AI features (Apple Intelligence / Ollama) | | |
@@ -77,3 +77,4 @@ Loop-engineering state file. Read this + PLAN.md at the start of every pass.
 | 33 | 2026-07-11 | M3.4 TaskEngine smart buckets | ✅ | SmartBuckets: overdue/today/upcoming/inbox by ISO due date, day-boundary safe, garbage dates → inbox (never dropped), isoDay helper. 10 TaskEngine tests. |
 | 34 | 2026-07-11 | M3.5 master To-Do tab live end-to-end (+ M3.6 smart views) | ✅ | VaultIndexService (root resolve + fallback, on-disk index, incremental reindex, prune, placeholder-safe, toggle via TaskLineToggler + coordinated IO), TodoView (Overdue/Today/Upcoming/Inbox sections, priority colors, tap-to-complete). TWO BUGS FOUND+FIXED in verify: double-start race on shared DB; metadata-snapshot-driven prune wiped index on local vaults (observers are now triggers only; disk enumeration is authoritative). Sim DB verified: tasks/labels/FTS correct and persistent. |
 | 35 | 2026-07-11 | Sync-status badges (user feedback: iPhone sync feels slow) | ✅ | Note rows show live iCloud transit state: uploading ↑, not-downloaded ↓, newer-syncing ⟳, conflict ⚠ (no badge = synced). Latency itself is the iOS daemon's scheduling — surfaced, not hidden. |
+| 36 | 2026-07-11 | M3.7 vault-wide FTS search in Notes list | ✅ | .searchable over BM25-ranked noteFTS results; FTS5 operator chars sanitized via quoted prefix terms. **M3 COMPLETE — checkpoint.** |

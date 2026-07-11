@@ -8,7 +8,7 @@ struct AppShell: View {
     var body: some View {
         TabView {
             Tab("Notes", systemImage: "note.text") {
-                NotesView()
+                NotesView(indexService: indexService)
             }
             Tab("To-Do", systemImage: "checklist") {
                 TodoView(service: indexService)

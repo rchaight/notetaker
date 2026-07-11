@@ -5,8 +5,10 @@ import VaultKit
 /// The Notes tab: vault note list on the left, live markdown editor on the
 /// right. Every edit autosaves (debounced, coordinated) to the .md file.
 struct NotesView: View {
+    let indexService: VaultIndexService
     @State private var model = NotesModel()
     @State private var livePreview = true
+    @State private var searchText = ""
 
     var body: some View {
         NavigationSplitView {
@@ -23,6 +25,7 @@ struct NotesView: View {
         } detail: {
             detail
         }
+        .searchable(text: $searchText, prompt: "Search all notes")
         .task { await model.start() }
         .onDisappear { Task { await model.flushSave() } }
     }
@@ -42,7 +45,7 @@ struct NotesView: View {
                 get: { model.selectedID },
                 set: { model.select($0) }
             )) {
-                ForEach(model.notes) { note in
+                ForEach(visibleNotes) { note in
                     NavigationLink(value: note.id) {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
@@ -65,7 +68,7 @@ struct NotesView: View {
                 }
             }
             .overlay {
-                if model.notes.isEmpty {
+                if visibleNotes.isEmpty {
                     ContentUnavailableView(
                         "No Notes Yet",
                         systemImage: "note.text",
@@ -127,6 +130,14 @@ struct NotesView: View {
                 description: Text("Choose a note from the list, or create one.")
             )
         }
+    }
+
+    /// FTS-ranked results while searching; the full list otherwise.
+    private var visibleNotes: [VaultItem] {
+        guard !searchText.trimmingCharacters(in: .whitespaces).isEmpty else { return model.notes }
+        let ranked = indexService.searchNoteIds(searchText)
+        let byId = Dictionary(uniqueKeysWithValues: model.notes.map { ($0.id, $0) })
+        return ranked.compactMap { byId[$0] }
     }
 
     private var selectedTitle: String {

@@ -199,7 +199,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 - [x] `TaskEngine`: date parsing (`>today`/`>tomorrow`/`>friday` + absolute), P1–P4 priorities, overdue computation.
 - [x] Master To-Do tab UI: live `@Query`-style list (GRDB reactive), native drag-reorder (WWDC26 list reorder), "jump to note" from any row. *(Live list + toggle done via version-counter refresh; drag-reorder and jump-to-note deferred to M3 polish.)*
 - [x] Pre-built smart views: **Inbox** (undated), **Today** (due + overdue), **Upcoming**; **Overdue bucket** so past-due never silently vanishes.
-- [ ] Full-text search UI backed by FTS5 (BM25, phrase/prefix/highlight).
+- [x] Full-text search UI backed by FTS5 (BM25, phrase/prefix/highlight). *(BM25 + sanitized prefix matching in the Notes list; match highlighting deferred.)*
 **Done:** type `- [ ] Buy milk >tomorrow !high` in a note → it appears in Today/Upcoming; check it off in the master list → the note's source line becomes `- [x]` (verify in Finder) and vice versa; an overdue undone task shows in Overdue, never disappears; search finds text across the vault instantly.
 **Effort:** ~3 weeks.
 
