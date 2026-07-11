@@ -46,54 +46,62 @@ struct NotesView: View {
                 description: Text(message)
             )
         case .ready, .readyLocalFallback:
-            #if os(macOS)
-                TextField("Search all notes", text: $searchText)
-                    .textFieldStyle(.roundedBorder)
-                    .padding(.horizontal, 10)
-                    .padding(.top, 6)
-            #endif
-            List(selection: Binding(
-                get: { model.selectedID },
-                set: { model.select($0) }
-            )) {
-                ForEach(visibleNotes) { note in
-                    NavigationLink(value: note.id) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(noteTitle(note))
-                                if noteFolder(note) != nil {
-                                    Text(noteFolder(note)!)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
+            // One container view: sibling views here would each receive the
+            // .toolbar/.navigationTitle modifiers (duplicate buttons).
+            VStack(spacing: 0) {
+                #if os(macOS)
+                    TextField("Search all notes", text: $searchText)
+                        .textFieldStyle(.roundedBorder)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                #endif
+                noteList
+            }
+        }
+    }
+
+    private var noteList: some View {
+        List(selection: Binding(
+            get: { model.selectedID },
+            set: { model.select($0) }
+        )) {
+            ForEach(visibleNotes) { note in
+                NavigationLink(value: note.id) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(noteTitle(note))
+                            if noteFolder(note) != nil {
+                                Text(noteFolder(note)!)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
-                            Spacer()
-                            syncBadge(note)
                         }
+                        Spacer()
+                        syncBadge(note)
                     }
-                    .contextMenu {
-                        Button("Delete", systemImage: "trash", role: .destructive) {
-                            model.delete(note)
-                        }
+                }
+                .contextMenu {
+                    Button("Delete", systemImage: "trash", role: .destructive) {
+                        model.delete(note)
                     }
                 }
             }
-            .overlay {
-                if visibleNotes.isEmpty {
-                    ContentUnavailableView(
-                        "No Notes Yet",
-                        systemImage: "note.text",
-                        description: Text("Press ⌘N or tap New Note to create your first markdown note.")
-                    )
-                }
+        }
+        .overlay {
+            if visibleNotes.isEmpty {
+                ContentUnavailableView(
+                    "No Notes Yet",
+                    systemImage: "note.text",
+                    description: Text("Press ⌘N or tap New Note to create your first markdown note.")
+                )
             }
-            .safeAreaInset(edge: .bottom) {
-                if model.state == .readyLocalFallback {
-                    Label("Local vault — iCloud unavailable", systemImage: "icloud.slash")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(6)
-                }
+        }
+        .safeAreaInset(edge: .bottom) {
+            if model.state == .readyLocalFallback {
+                Label("Local vault — iCloud unavailable", systemImage: "icloud.slash")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(6)
             }
         }
     }
