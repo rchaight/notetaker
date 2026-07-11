@@ -7,11 +7,17 @@ let package = Package(
     products: [.library(name: "IndexKit", targets: ["IndexKit"])],
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
+        .package(path: "../MarkdownKit"),
+        .package(path: "../TaskEngine"),
     ],
     targets: [
         .target(
             name: "IndexKit",
-            dependencies: [.product(name: "GRDB", package: "GRDB.swift")]
+            dependencies: [
+                .product(name: "GRDB", package: "GRDB.swift"),
+                "MarkdownKit",
+                "TaskEngine",
+            ]
         ),
         .testTarget(name: "IndexKitTests", dependencies: ["IndexKit"]),
     ]
