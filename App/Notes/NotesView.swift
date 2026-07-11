@@ -44,13 +44,17 @@ struct NotesView: View {
             )) {
                 ForEach(model.notes) { note in
                     NavigationLink(value: note.id) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(noteTitle(note))
-                            if noteFolder(note) != nil {
-                                Text(noteFolder(note)!)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(noteTitle(note))
+                                if noteFolder(note) != nil {
+                                    Text(noteFolder(note)!)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
+                            Spacer()
+                            syncBadge(note)
                         }
                     }
                     .contextMenu {
@@ -140,5 +144,27 @@ struct NotesView: View {
     private func noteFolder(_ note: VaultItem) -> String? {
         let components = note.relativePath.split(separator: "/").dropLast()
         return components.isEmpty ? nil : components.joined(separator: "/")
+    }
+
+    /// Makes iCloud transit visible: slow sync should read as "in flight",
+    /// never as "broken". No badge = fully synced.
+    @ViewBuilder private func syncBadge(_ note: VaultItem) -> some View {
+        if note.hasUnresolvedConflicts {
+            Image(systemName: "exclamationmark.icloud")
+                .foregroundStyle(.orange)
+                .help("Sync conflict — resolve in the Vault tab")
+        } else if note.isUploading {
+            Image(systemName: "icloud.and.arrow.up")
+                .foregroundStyle(.secondary)
+                .help("Uploading to iCloud…")
+        } else if note.downloadState == .notDownloaded {
+            Image(systemName: "icloud.and.arrow.down")
+                .foregroundStyle(.secondary)
+                .help("Not downloaded yet")
+        } else if note.downloadState == .downloaded {
+            Image(systemName: "arrow.clockwise.icloud")
+                .foregroundStyle(.secondary)
+                .help("Newer version syncing down…")
+        }
     }
 }
