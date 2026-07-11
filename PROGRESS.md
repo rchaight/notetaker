@@ -12,10 +12,10 @@ Loop-engineering state file. Read this + PLAN.md at the start of every pass.
 
 ## Current state
 
-- **Phase**: building — M2 (Markdown editor) in progress
-- **Current milestone**: M2 — MarkdownKit + EditorKit
+- **Phase**: M2 complete — milestone checkpoint
+- **Current milestone**: M2 done (next: M3 — inline todos + master To-Do list)
 - **Failure streak**: 0
-- **Awaiting user checkpoint**: no
+- **Awaiting user checkpoint**: **YES — exercise the editor on Mac + iPhone (see checkpoint criteria), then continue the loop**
 - **Branch protection**: proceeding unprotected (private repo, GitHub Free; no user objection at checkpoint — revisit anytime)
 - **Environment note**: toolchain = **Xcode 27.0 beta** (`DEVELOPER_DIR=/Applications/Xcode-beta.app`, macOS/iOS 27 SDKs, iOS 27 sim runtime installed) per user directive. Deployment floor 26.0 until a 27-only API is needed. Developer ID cert present (team 6A2NHN89Q8). ⚠️ Repo is inside iCloud-synced ~/Documents — ALL build products must use external paths (see CLAUDE.md).
 
@@ -25,7 +25,7 @@ Loop-engineering state file. Read this + PLAN.md at the start of every pass.
 |---|---|---|
 | M0 — Repo bootstrap (Xcode project, packages, iCloud entitlements, CI) | ✅ 2026-07-10 | ✅ 2026-07-10 |
 | M1 — iCloud storage + sync skeleton (VaultKit) | ✅ 2026-07-11 | ✅ 2026-07-11 (two-device sync verified both directions on Mac + iPhone; live conflict drill optional/deferred — machinery unit-tested) |
-| M2 — Markdown editor, Liquid Glass (MarkdownKit + EditorKit) | | |
+| M2 — Markdown editor, Liquid Glass (MarkdownKit + EditorKit) | ✅ 2026-07-11 | pending |
 | M3 — Inline todos + index + master To-Do list (IndexKit + TaskEngine) | | |
 | M4 — Todo depth: recurrence, dates, labels, filters | | |
 | M5 — Import/conversion pipeline (File-Parser/Docling reuse) | | |
@@ -67,3 +67,4 @@ Loop-engineering state file. Read this + PLAN.md at the start of every pass.
 | 24 | 2026-07-11 | M2.4 editor chrome: mode toggle + glass capsule | ✅ | Source Mode ↔ Live Preview toolbar toggle (⌘/), Liquid Glass word-count capsule (glassEffect .capsule). Both builds green; Mac app refreshed. Full macOS CommandGroup menus deferred to M9. |
 | 25 | 2026-07-11 | M2.5 Writing Tools enabled | ✅ | writingToolsBehavior = .complete on NSTextView + UITextView (TextKit 2 gives the rest). User-verifiable: right-click → Writing Tools on Mac. |
 | 26 | 2026-07-11 | M2.7 performance: benchmark + keystroke debounce | ✅ | 50k-word styling benchmark (~150ms debug, guarded <3s in CI); restyles debounced 150ms above 20k chars on both platforms (small notes stay instant). One patch-miss fix on the iOS coordinator. |
+| — | 2026-07-11 | **M2 COMPLETE — checkpoint** | ✅ | 7/7 plan steps done (passes 20–26). Deferred within-milestone: Focus Mode, NSUserActivity restoration, macOS CommandGroup menus (→ M9), visible-range styling (until real lag observed). |
