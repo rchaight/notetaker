@@ -93,4 +93,30 @@ struct HighlighterTests {
         let font = styled.attribute(.font, at: 0, effectiveRange: nil) as? PlatformFont
         #expect(font?.pointSize == MarkdownTheme.default.baseFont.pointSize)
     }
+
+    @Test func livePreviewHidesMarkersOffCursorLine() {
+        let text = "**bold** here\n\n*second* line\n"
+        let ns = text as NSString
+        let storage = NSTextStorage(string: text)
+        // Cursor on the first paragraph: its markers stay visible,
+        // the second paragraph's markers collapse.
+        let firstParagraph = ns.paragraphRange(for: NSRange(location: 0, length: 0))
+        MarkdownHighlighter.highlight(storage, hideMarkersOutside: firstParagraph)
+
+        let firstMarkerFont = storage.attribute(.font, at: 0, effectiveRange: nil) as? PlatformFont
+        #expect((firstMarkerFont?.pointSize ?? 0) > 1, "cursor-line markers must stay visible")
+
+        let secondMarkerOffset = ns.range(of: "*second*").location
+        let hiddenFont = storage.attribute(.font, at: secondMarkerOffset, effectiveRange: nil) as? PlatformFont
+        #expect((hiddenFont?.pointSize ?? 1) < 1, "off-line markers must collapse")
+        #expect(storage.string == text, "hiding must never mutate characters")
+    }
+
+    @Test func sourceModeShowsAllMarkers() {
+        let text = "**bold**\n\n*second*\n"
+        let storage = NSTextStorage(string: text)
+        MarkdownHighlighter.highlight(storage, hideMarkersOutside: nil)
+        let font = storage.attribute(.font, at: 0, effectiveRange: nil) as? PlatformFont
+        #expect((font?.pointSize ?? 0) > 1)
+    }
 }

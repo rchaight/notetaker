@@ -68,6 +68,12 @@ public struct MarkdownTheme: @unchecked Sendable {
         .monospacedSystemFont(ofSize: baseFontSize * 0.93, weight: .regular)
     }
 
+    /// Live Preview: markers off the cursor line collapse to a hair-width,
+    /// fully transparent run — attributes only, characters untouched.
+    public var hiddenMarkerAttributes: [NSAttributedString.Key: Any] {
+        [.font: PlatformFont.systemFont(ofSize: 0.01), .foregroundColor: PlatformColor.clear]
+    }
+
     public func attributes(for kind: MarkdownElementKind) -> [NSAttributedString.Key: Any] {
         switch kind {
         case let .heading(level):
