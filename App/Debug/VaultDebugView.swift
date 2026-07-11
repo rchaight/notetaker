@@ -36,7 +36,6 @@ struct VaultDebugView: View {
             }
         }
         .padding()
-        .frame(minWidth: 480, minHeight: 360)
         .onAppear { model.start() }
         .onDisappear { model.stop() }
     }

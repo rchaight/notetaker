@@ -28,6 +28,16 @@ struct AppShell: View {
                     .navigationTitle("Projects")
                 }
             }
+            #if DEBUG
+                // M1 sync-verification harness; visible on every platform in
+                // debug builds only.
+                Tab("Vault", systemImage: "icloud") {
+                    NavigationStack {
+                        VaultDebugView()
+                            .navigationTitle("Vault")
+                    }
+                }
+            #endif
         }
         .tabViewStyle(.sidebarAdaptable)
     }
