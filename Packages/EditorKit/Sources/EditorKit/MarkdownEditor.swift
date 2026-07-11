@@ -53,11 +53,17 @@ import SwiftUI
             }
         }
 
+        @MainActor
         public final class Coordinator: NSObject, NSTextViewDelegate {
             let text: Binding<String>
             let theme: MarkdownTheme
             var livePreview = true
             private var lastCursorLine: NSRange?
+            private var pendingRestyle: Task<Void, Never>?
+
+            /// Above this size, keystroke restyles are debounced so typing
+            /// never waits on a full re-parse (50k words ≈ 150ms debug).
+            private static let debounceThresholdUTF16 = 20000
 
             init(text: Binding<String>, theme: MarkdownTheme) {
                 self.text = text
@@ -71,6 +77,19 @@ import SwiftUI
                 MarkdownHighlighter.highlight(storage, theme: theme, hideMarkersOutside: livePreview ? visible : nil)
             }
 
+            private func scheduleRestyle(_ textView: NSTextView) {
+                pendingRestyle?.cancel()
+                guard (textView.string as NSString).length > Self.debounceThresholdUTF16 else {
+                    restyle(textView)
+                    return
+                }
+                pendingRestyle = Task { [weak self, weak textView] in
+                    try? await Task.sleep(for: .milliseconds(150))
+                    guard !Task.isCancelled, let self, let textView else { return }
+                    restyle(textView)
+                }
+            }
+
             private func cursorParagraph(_ textView: NSTextView) -> NSRange {
                 let ns = textView.string as NSString
                 let selection = textView.selectedRange()
@@ -81,7 +100,7 @@ import SwiftUI
             public func textDidChange(_ notification: Notification) {
                 guard let textView = notification.object as? NSTextView else { return }
                 text.wrappedValue = textView.string
-                restyle(textView)
+                scheduleRestyle(textView)
             }
 
             public func textViewDidChangeSelection(_ notification: Notification) {
@@ -139,11 +158,17 @@ import SwiftUI
             }
         }
 
+        @MainActor
         public final class Coordinator: NSObject, UITextViewDelegate {
             let text: Binding<String>
             let theme: MarkdownTheme
             var livePreview = true
             private var lastCursorLine: NSRange?
+            private var pendingRestyle: Task<Void, Never>?
+
+            /// Above this size, keystroke restyles are debounced so typing
+            /// never waits on a full re-parse.
+            private static let debounceThresholdUTF16 = 20000
 
             init(text: Binding<String>, theme: MarkdownTheme) {
                 self.text = text
@@ -160,6 +185,19 @@ import SwiftUI
                 )
             }
 
+            private func scheduleRestyle(_ textView: UITextView) {
+                pendingRestyle?.cancel()
+                guard ((textView.text ?? "") as NSString).length > Self.debounceThresholdUTF16 else {
+                    restyle(textView)
+                    return
+                }
+                pendingRestyle = Task { [weak self, weak textView] in
+                    try? await Task.sleep(for: .milliseconds(150))
+                    guard !Task.isCancelled, let self, let textView else { return }
+                    restyle(textView)
+                }
+            }
+
             private func cursorParagraph(_ textView: UITextView) -> NSRange {
                 let ns = (textView.text ?? "") as NSString
                 let location = min(textView.selectedRange.location, ns.length)
@@ -168,7 +206,7 @@ import SwiftUI
 
             public func textViewDidChange(_ textView: UITextView) {
                 text.wrappedValue = textView.text
-                restyle(textView)
+                scheduleRestyle(textView)
             }
 
             public func textViewDidChangeSelection(_ textView: UITextView) {
