@@ -31,6 +31,9 @@ import SwiftUI
             textView.usesFindBar = true
             textView.isAutomaticQuoteSubstitutionEnabled = false
             textView.isAutomaticDashSubstitutionEnabled = false
+            // Apple Writing Tools (proofread/rewrite/summarize) — free on
+            // TextKit 2; .complete allows full inline rewrites.
+            textView.writingToolsBehavior = .complete
             textView.textContainerInset = NSSize(width: 16, height: 16)
             textView.string = text
             context.coordinator.livePreview = livePreview
@@ -116,6 +119,7 @@ import SwiftUI
             textView.autocorrectionType = .default
             textView.smartQuotesType = .no
             textView.smartDashesType = .no
+            textView.writingToolsBehavior = .complete
             textView.alwaysBounceVertical = true
             textView.textContainerInset = UIEdgeInsets(top: 16, left: 12, bottom: 16, right: 12)
             textView.text = text
