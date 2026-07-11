@@ -181,7 +181,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 **Goal:** a polished Liquid Glass live-preview CommonMark/GFM editor over real `.md`, with Writing Tools for free.
 **Steps:**
 - [x] `MarkdownKit`: `swift-markdown` parse → AST; one parse drives both editor styling ranges and (later) todo/tag/backlink extraction; YAML frontmatter read/write.
-- [ ] `EditorKit`: TextKit 2 `NSTextView`/`UITextView` behind `NS/UIViewRepresentable`; `NSTextStorageDelegate` live syntax styling on every keystroke (headings, bold/italic, lists, tables, code fences + syntax highlight, task checkboxes, blockquotes, links). Study/reuse `nodes-app/swift-markdown-engine` and `Shpigford/clearly`.
+- [x] `EditorKit`: TextKit 2 `NSTextView`/`UITextView` behind `NS/UIViewRepresentable`; `NSTextStorageDelegate` live syntax styling on every keystroke (headings, bold/italic, lists, tables, code fences + syntax highlight, task checkboxes, blockquotes, links). Study/reuse `nodes-app/swift-markdown-engine` and `Shpigford/clearly`.
 - [ ] **Live Preview hybrid:** hide markdown syntax markers except on the cursor's line; real `.md` underneath. Source-mode toggle + Focus Mode (fade all but current sentence/paragraph).
 - [ ] Liquid Glass chrome: `glassEffect` + `containerConcentric` toolbars/floating capsules; native menu bar `CommandGroup` (File/Edit/View) on macOS.
 - [ ] Writing Tools: on a plain TextKit-2 text view it's free; for the custom-styled storage bridge via `UIWritingToolsCoordinator`/`NSWritingToolsCoordinator`.
