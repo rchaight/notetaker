@@ -168,7 +168,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 ### M1 — iCloud storage + sync skeleton (VaultKit) — DO FIRST
 **Goal:** rock-solid, headless read/write/observe of `.md` files in the iCloud ubiquity container, with conflict detection, provable across two devices offline — before any editor exists.
 **Steps:**
-- [ ] Implement `VaultKit`: open the ubiquity container `Documents/`; `NSMetadataQuery` enumeration + live observation reporting per-item download state.
+- [x] Implement `VaultKit`: open the ubiquity container `Documents/`; `NSMetadataQuery` enumeration + live observation reporting per-item download state.
 - [ ] Coordinated read/write API (`NSFileCoordinator` + an `NSFilePresenter`); `startDownloadingUbiquitousItem` for placeholders; debounce change notifications.
 - [ ] Folder CRUD (create/rename/move/delete) mirroring on-disk structure; external-mutation tolerance (files renamed/deleted by Obsidian/Files.app must not crash the observer).
 - [ ] Conflict detection via `NSFileVersion.unresolvedConflictVersionsOfItem` + `*conflicted copy*` sibling scan; expose a resolve API (keep-both default).
