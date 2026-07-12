@@ -46,6 +46,7 @@ targets:
         CFBundleDisplayName: Notetaker
         LSApplicationCategoryType: public.app-category.productivity
         UILaunchScreen: {}
+        NSLocalNetworkUsageDescription: Notetaker connects to your own homelab servers (Ollama, docling-serve) for AI and document conversion.
         NSUbiquitousContainers:
           iCloud.com.rchaight.notetaker:
             NSUbiquitousContainerIsDocumentScopePublic: true

@@ -22,6 +22,8 @@
 	<string>1</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Notetaker connects to your own homelab servers (Ollama, docling-serve) for AI and document conversion.</string>
 	<key>NSUbiquitousContainers</key>
 	<dict>
 		<key>iCloud.com.rchaight.notetaker</key>

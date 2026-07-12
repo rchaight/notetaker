@@ -85,28 +85,75 @@ final class StubURLProtocol: URLProtocol {
 
 struct ConversionRouterTests {
     @Test func nativeFirstForItsFormats() {
-        let router = ConversionRouter(doclingServeURL: URL(string: "http://homelab.test:5001"))
+        let router = ConversionRouter(doclingServeURL: URL(string: "http://homelab.test:5001"), useLocalEngine: false)
         for ext in ["pdf", "txt", "png", "rtf"] {
             #expect(router.route(fileExtension: ext, serverReachable: true)?.reason == "on-device")
         }
     }
 
     @Test func officeFormatsGoToDocling() {
-        let router = ConversionRouter(doclingServeURL: URL(string: "http://homelab.test:5001"))
+        let router = ConversionRouter(doclingServeURL: URL(string: "http://homelab.test:5001"), useLocalEngine: false)
         for ext in ["docx", "pptx", "xlsx", "csv"] {
             #expect(router.route(fileExtension: ext, serverReachable: true)?.reason == "docling-serve")
         }
     }
 
     @Test func officeWithoutServerRoutesNowhere() {
-        let noServer = ConversionRouter(doclingServeURL: nil)
+        let noServer = ConversionRouter(doclingServeURL: nil, useLocalEngine: false)
         #expect(noServer.route(fileExtension: "docx", serverReachable: false) == nil)
-        let unreachable = ConversionRouter(doclingServeURL: URL(string: "http://homelab.test:5001"))
+        let unreachable = ConversionRouter(
+            doclingServeURL: URL(string: "http://homelab.test:5001"),
+            useLocalEngine: false
+        )
         #expect(unreachable.route(fileExtension: "docx", serverReachable: false) == nil)
     }
 
     @Test func unknownTypesRouteNowhere() {
-        let router = ConversionRouter(doclingServeURL: URL(string: "http://homelab.test:5001"))
+        let router = ConversionRouter(doclingServeURL: URL(string: "http://homelab.test:5001"), useLocalEngine: false)
         #expect(router.route(fileExtension: "zip", serverReachable: true) == nil)
     }
 }
+
+struct ServerURLTests {
+    @Test func normalizesBareHostPort() {
+        #expect(ServerURL.normalize("localhost:11434")?.absoluteString == "http://localhost:11434")
+        #expect(ServerURL.normalize("10.0.5.100:5001")?.absoluteString == "http://10.0.5.100:5001")
+        #expect(ServerURL.normalize("https://secure.host:9443")?.absoluteString == "https://secure.host:9443")
+        #expect(ServerURL.normalize("  http://x:1 ") != nil)
+        #expect(ServerURL.normalize("") == nil)
+        #expect(ServerURL.normalize("   ") == nil)
+    }
+}
+
+#if os(macOS)
+    struct LocalEngineRoutingTests {
+        @Test(.enabled(if: PythonEngineConverter.resolveEngineDirectory() != nil))
+        func officeFormatsPreferTheOnboardEngine() {
+            let router = ConversionRouter(doclingServeURL: nil)
+            #expect(router.route(fileExtension: "docx", serverReachable: false)?.reason == "file-parser-engine")
+        }
+    }
+
+    /// Live test against the REAL File-Parser engine when installed.
+    struct PythonEngineLiveTests {
+        static var engineInstalled: Bool {
+            PythonEngineConverter.resolveEngineDirectory() != nil
+        }
+
+        @Test(.enabled(if: engineInstalled), .timeLimit(.minutes(5)))
+        func convertsCSVThroughRealEngine() async throws {
+            let csv = FileManager.default.temporaryDirectory
+                .appendingPathComponent("engine-live-\(UUID().uuidString).csv")
+            try "course,enrollment\nPHAR 7315,94\nPHAR 7420,88\n"
+                .write(to: csv, atomically: true, encoding: .utf8)
+            defer { try? FileManager.default.removeItem(at: csv) }
+
+            let engine = try PythonEngineConverter(
+                engineDirectory: #require(PythonEngineConverter.resolveEngineDirectory())
+            )
+            let result = try await engine.convert(csv)
+            #expect(result.markdown.contains("PHAR 7315"))
+            #expect(result.provenance.contains("File-Parser"))
+        }
+    }
+#endif

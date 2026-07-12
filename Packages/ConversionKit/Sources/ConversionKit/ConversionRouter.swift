@@ -11,10 +11,21 @@ public struct ConversionRouter: Sendable {
 
     let native: NativeConverter
     let doclingServe: DoclingServeConverter?
+    #if os(macOS)
+        let localEngine: PythonEngineConverter?
+    #endif
 
-    public init(doclingServeURL: URL?) {
+    /// - Parameter useLocalEngine: tests pass false for determinism (the
+    ///   File-Parser engine's presence depends on the machine).
+    public init(doclingServeURL: URL?, useLocalEngine: Bool = true) {
         native = NativeConverter()
         doclingServe = doclingServeURL.map { DoclingServeConverter(baseURL: $0) }
+        #if os(macOS)
+            localEngine = useLocalEngine
+                ? PythonEngineConverter.resolveEngineDirectory()
+                .map { PythonEngineConverter(engineDirectory: $0) }
+                : nil
+        #endif
     }
 
     /// nil when nothing can take this file (message explains what would).
@@ -26,6 +37,12 @@ public struct ConversionRouter: Sendable {
         if nativeCan {
             return Routing(service: native, reason: "on-device")
         }
+        #if os(macOS)
+            // The onboard File-Parser engine beats the network for the rest.
+            if let localEngine, localEngine.canConvert(fileExtension: ext) {
+                return Routing(service: localEngine, reason: "file-parser-engine")
+            }
+        #endif
         if doclingCan, serverReachable, let doclingServe {
             return Routing(service: doclingServe, reason: "docling-serve")
         }
@@ -41,11 +58,10 @@ public struct ConversionRouter: Sendable {
             false
         }
         guard let routing = route(fileExtension: ext, serverReachable: reachable) else {
-            if doclingServe == nil, DoclingServeConverter.extensions.contains(ext) {
-                throw ConversionError.failed("\(ext) needs a Docling server — set one in Settings")
-            }
             if DoclingServeConverter.extensions.contains(ext) {
-                throw ConversionError.failed("\(ext) needs the Docling server, which is unreachable")
+                throw ConversionError.failed(
+                    "\(ext) needs Docling — install File-Parser's engine or set a docling-serve URL in Settings"
+                )
             }
             throw ConversionError.unsupportedType(ext)
         }

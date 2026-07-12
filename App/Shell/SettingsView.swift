@@ -26,8 +26,8 @@ struct SettingsView: View {
                             Button("Test Connection") {
                                 probeResult = "testing…"
                                 Task {
-                                    guard let url = URL(string: doclingServeURL), !doclingServeURL.isEmpty else {
-                                        probeResult = "enter a URL first"
+                                    guard let url = ServerURL.normalize(doclingServeURL) else {
+                                        probeResult = "enter a URL like http://homelab:5001"
                                         return
                                     }
                                     let reachable = await DoclingServeConverter(baseURL: url).isReachable()
@@ -55,8 +55,8 @@ struct SettingsView: View {
                             Button("Test Connection") {
                                 ollamaProbe = "testing…"
                                 Task {
-                                    guard let url = URL(string: ollamaURL), !ollamaURL.isEmpty else {
-                                        ollamaProbe = "enter a URL first"
+                                    guard let url = ServerURL.normalize(ollamaURL) else {
+                                        ollamaProbe = "enter a URL like http://localhost:11434"
                                         return
                                     }
                                     do {

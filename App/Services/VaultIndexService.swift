@@ -207,16 +207,14 @@ final class VaultIndexService {
         let message: String
     }
 
-    /// Imports an external document: convert on-device → write to
+    /// Imports an external document: route to the best tier (on-device
+    /// native → local File-Parser engine → docling-serve) → write to
     /// Imports/<name>.md with provenance frontmatter → index.
     func importFile(_ url: URL) async -> Result<String, ImportError> {
         guard let root, let indexer else { return .failure(ImportError(message: "vault not ready")) }
-        let converter = NativeConverter()
-        guard converter.canConvert(fileExtension: url.pathExtension) else {
-            return .failure(
-                ImportError(message: "\(url.pathExtension) needs the Docling tier (coming in this milestone)")
-            )
-        }
+        let serverURL = UserDefaults.standard.string(forKey: "doclingServeURL")
+            .flatMap(ServerURL.normalize)
+        let router = ConversionRouter(doclingServeURL: serverURL)
         let accessing = url.startAccessingSecurityScopedResource()
         defer {
             if accessing {
@@ -225,7 +223,11 @@ final class VaultIndexService {
         }
         let result: ConversionResult
         do {
-            result = try await converter.convert(url)
+            result = try await router.convert(url)
+        } catch let ConversionError.failed(message) {
+            return .failure(ImportError(message: message))
+        } catch let ConversionError.unsupportedType(ext) {
+            return .failure(ImportError(message: "no converter for .\(ext)"))
         } catch {
             return .failure(ImportError(message: "conversion failed: \(error)"))
         }
