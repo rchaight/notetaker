@@ -10,6 +10,28 @@
 
         let engineDirectory: URL
 
+        /// Mirrors File-Parser's conversion options (CLI --no-ocr/--no-tables).
+        public struct Options: Sendable {
+            public var ocr: Bool
+            public var tableStructure: Bool
+
+            public init(ocr: Bool = true, tableStructure: Bool = true) {
+                self.ocr = ocr
+                self.tableStructure = tableStructure
+            }
+
+            /// Reads the app's settings keys (default: both enabled).
+            public static func fromDefaults() -> Options {
+                let defaults = UserDefaults.standard
+                return Options(
+                    ocr: defaults.object(forKey: "fileParserOCR") as? Bool ?? true,
+                    tableStructure: defaults.object(forKey: "fileParserTables") as? Bool ?? true
+                )
+            }
+        }
+
+        let options: Options
+
         /// Resolution order mirrors File-Parser's own EngineBridge:
         /// explicit setting → canonical install → dev repo.
         public static func resolveEngineDirectory() -> URL? {
@@ -37,8 +59,9 @@
             return nil
         }
 
-        public init(engineDirectory: URL) {
+        public init(engineDirectory: URL, options: Options = .fromDefaults()) {
             self.engineDirectory = engineDirectory
+            self.options = options
         }
 
         /// Everything the Docling capability matrix imports (minus audio —
@@ -59,13 +82,20 @@
             defer { try? FileManager.default.removeItem(at: outputDir) }
 
             let python = engineDirectory.appendingPathComponent(".venv/bin/python")
+            var arguments = [
+                "-m", "fileparser.cli", "convert", url.path,
+                "--to", "markdown", "--out", outputDir.path,
+                "--quiet", "--overwrite",
+            ]
+            if !options.ocr {
+                arguments.append("--no-ocr")
+            }
+            if !options.tableStructure {
+                arguments.append("--no-tables")
+            }
             let result = try await Self.run(
                 executable: python,
-                arguments: [
-                    "-m", "fileparser.cli", "convert", url.path,
-                    "--to", "markdown", "--out", outputDir.path,
-                    "--quiet", "--overwrite",
-                ],
+                arguments: arguments,
                 workingDirectory: engineDirectory
             )
 

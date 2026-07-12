@@ -220,3 +220,40 @@ struct SizeAwareRoutingTests {
         #expect(long.provider == "big")
     }
 }
+
+struct EmbeddingChunkerTests {
+    @Test func groupsParagraphsUnderLimit() {
+        let body = "First paragraph.\n\nSecond paragraph.\n\n" + String(repeating: "x", count: 900)
+        let chunks = EmbeddingChunker.chunks(from: body, maxLength: 100)
+        #expect(chunks.count >= 10, "oversized paragraph hard-splits")
+        #expect(chunks[0].contains("First paragraph"))
+        #expect(chunks.allSatisfy { $0.count <= 100 })
+    }
+
+    @Test func emptyBodyYieldsNoChunks() {
+        #expect(EmbeddingChunker.chunks(from: "\n\n  \n").isEmpty)
+    }
+}
+
+struct AppleEmbeddingLiveTests {
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["CI"] == nil), .timeLimit(.minutes(3)))
+    func embedsAndRanksByMeaning() async throws {
+        let provider = AppleEmbeddingProvider()
+        guard await provider.isAvailable() else { return } // assets absent: skip silently
+        let vectors = try await provider.embed([
+            "the committee approved the pharmacy curriculum",
+            "students take medication therapy courses",
+            "my car needs an oil change",
+        ])
+        #expect(vectors.count == 3)
+        #expect(vectors[0].count == vectors[1].count)
+        func cosine(_ a: [Float], _ b: [Float]) -> Float {
+            zip(a, b).map(*)
+                .reduce(0, +) /
+                (a.map { $0 * $0 }.reduce(0, +).squareRoot() * b.map { $0 * $0 }.reduce(0, +).squareRoot())
+        }
+        let related = cosine(vectors[0], vectors[1])
+        let unrelated = cosine(vectors[0], vectors[2])
+        #expect(related > unrelated, "curriculum topics must outrank car maintenance (\(related) vs \(unrelated))")
+    }
+}

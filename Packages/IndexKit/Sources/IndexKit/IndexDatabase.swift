@@ -7,7 +7,7 @@ import GRDB
 /// the caller trigger a full rescan.
 public final class IndexDatabase: Sendable {
     /// Bump when the schema changes; mismatch wipes and rebuilds.
-    public static let schemaVersion = 4
+    public static let schemaVersion = 5
 
     public let queue: DatabaseQueue
 
@@ -79,6 +79,14 @@ public final class IndexDatabase: Sendable {
                     .references(NoteRecord.databaseTableName, onDelete: .cascade)
                 t.column("targetTitle", .text).notNull().indexed()
                 t.primaryKey(["noteId", "targetTitle"])
+            }
+            try db.create(table: "noteChunk") { t in
+                t.column("noteId", .text).notNull().indexed()
+                    .references(NoteRecord.databaseTableName, onDelete: .cascade)
+                t.column("chunkIndex", .integer).notNull()
+                t.column("text", .text).notNull()
+                t.column("embedding", .blob).notNull()
+                t.primaryKey(["noteId", "chunkIndex"])
             }
             // Full text over note title + body; body lives only here (the
             // file is the source, this is just the search index).
@@ -167,6 +175,50 @@ public extension IndexDatabase {
         }
     }
 
+    /// Replaces a note's semantic chunks (embeddings as float32 blobs).
+    func replaceChunks(noteId: String, chunks: [(text: String, embedding: [Float])]) throws {
+        try queue.write { db in
+            try db.execute(sql: "DELETE FROM noteChunk WHERE noteId = ?", arguments: [noteId])
+            for (index, chunk) in chunks.enumerated() {
+                let blob = chunk.embedding.withUnsafeBufferPointer { Data(buffer: $0) }
+                try db.execute(
+                    sql: "INSERT INTO noteChunk (noteId, chunkIndex, text, embedding) VALUES (?, ?, ?, ?)",
+                    arguments: [noteId, index, chunk.text, blob]
+                )
+            }
+        }
+    }
+
+    /// Brute-force cosine over all chunks — plenty for a personal vault.
+    /// Returns noteIds ranked by their best-matching chunk.
+    func semanticSearch(query: [Float], limit: Int = 10) throws -> [(noteId: String, score: Float)] {
+        let rows = try queue.read { db in
+            try Row.fetchAll(db, sql: "SELECT noteId, embedding FROM noteChunk")
+        }
+        var best: [String: Float] = [:]
+        for row in rows {
+            guard let noteId: String = row["noteId"], let blob: Data = row["embedding"] else { continue }
+            let vector: [Float] = blob.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
+            guard vector.count == query.count else { continue }
+            let score = Self.cosine(vector, query)
+            if score > (best[noteId] ?? -1) {
+                best[noteId] = score
+            }
+        }
+        return best.sorted { $0.value > $1.value }.prefix(limit).map { ($0.key, $0.value) }
+    }
+
+    static func cosine(_ a: [Float], _ b: [Float]) -> Float {
+        var dot: Float = 0, na: Float = 0, nb: Float = 0
+        for index in 0 ..< min(a.count, b.count) {
+            dot += a[index] * b[index]
+            na += a[index] * a[index]
+            nb += b[index] * b[index]
+        }
+        let denominator = (na.squareRoot() * nb.squareRoot())
+        return denominator > 0 ? dot / denominator : 0
+    }
+
     /// Wipes every row (schema intact) — the "delete index, re-scan" path.
     func wipeAllRows() throws {
         try queue.write { db in
@@ -174,6 +226,7 @@ public extension IndexDatabase {
             try db.execute(sql: "DELETE FROM \(OutLinkRecord.databaseTableName)")
             try db.execute(sql: "DELETE FROM \(TaskRecord.databaseTableName)")
             try db.execute(sql: "DELETE FROM \(NoteRecord.databaseTableName)")
+            try db.execute(sql: "DELETE FROM noteChunk")
             try db.execute(sql: "DELETE FROM noteFTS")
         }
     }

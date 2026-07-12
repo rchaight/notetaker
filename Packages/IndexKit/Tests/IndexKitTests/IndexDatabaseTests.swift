@@ -155,3 +155,43 @@ struct AuditHardeningDatabaseTests {
         #expect(try db.searchNoteIds(matching: "alpha") == ["a.md"], "FTS restored too")
     }
 }
+
+struct SemanticChunkTests {
+    @Test func chunksRoundTripAndRank() throws {
+        let (db, _) = try IndexDatabase.open(path: nil)
+        try db.queue.write { database in
+            try NoteRecord(id: "a.md", title: "a", folder: "", modifiedAt: nil, contentHash: "h").insert(database)
+            try NoteRecord(id: "b.md", title: "b", folder: "", modifiedAt: nil, contentHash: "h").insert(database)
+        }
+        try db.replaceChunks(noteId: "a.md", chunks: [("about dogs", [1, 0, 0]), ("about cats", [0.7, 0.7, 0])])
+        try db.replaceChunks(noteId: "b.md", chunks: [("about cars", [0, 0, 1])])
+
+        let results = try db.semanticSearch(query: [1, 0, 0], limit: 5)
+        #expect(results.first?.noteId == "a.md")
+        #expect(results.count == 2)
+        #expect(results[0].score > results[1].score)
+
+        // Replacement really replaces.
+        try db.replaceChunks(noteId: "a.md", chunks: [("now about planes", [0, 1, 0])])
+        let after = try db.semanticSearch(query: [1, 0, 0], limit: 5)
+        #expect(after.first?.noteId == "b.md" || after.first?.score ?? 1 < 0.01)
+    }
+
+    @Test func cosineBasics() {
+        #expect(IndexDatabase.cosine([1, 0], [1, 0]) == 1)
+        #expect(abs(IndexDatabase.cosine([1, 0], [0, 1])) < 0.0001)
+        #expect(IndexDatabase.cosine([], []) == 0)
+    }
+
+    @Test func deletingNoteDropsItsChunks() throws {
+        let (db, _) = try IndexDatabase.open(path: nil)
+        try db.queue.write { database in
+            try NoteRecord(id: "gone.md", title: "g", folder: "", modifiedAt: nil, contentHash: "h").insert(database)
+        }
+        try db.replaceChunks(noteId: "gone.md", chunks: [("text", [1, 2, 3])])
+        try db.queue.write { database in
+            _ = try NoteRecord.deleteOne(database, key: "gone.md")
+        }
+        #expect(try db.semanticSearch(query: [1, 2, 3]).isEmpty)
+    }
+}

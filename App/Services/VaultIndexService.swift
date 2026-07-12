@@ -1,3 +1,4 @@
+import AIKit
 import ConversionKit
 import Foundation
 import IndexKit
@@ -40,6 +41,8 @@ final class VaultIndexService {
     private var observationTasks: [Task<Void, Never>] = []
     private var knownMTimes: [String: Date] = [:]
     private var started = false
+    private let embeddings = AppleEmbeddingProvider()
+    private var embeddingTasks: [String: Task<Void, Never>] = [:]
 
     func start() async {
         // Multiple views call start(); only the first proceeds (the state
@@ -156,6 +159,9 @@ final class VaultIndexService {
                 )) ?? false
                 if let modified = item.modificationDate {
                     knownMTimes[path] = modified
+                }
+                if didChange {
+                    scheduleEmbedding(noteId: path, contents: contents)
                 }
                 changed = changed || didChange
             } else if let placeholder = Self.placeholderNoteId(path) {
@@ -280,6 +286,32 @@ final class VaultIndexService {
         } catch {
             return false
         }
+    }
+
+    /// Off the hot path: chunk + embed a changed note and store vectors.
+    private func scheduleEmbedding(noteId: String, contents: String) {
+        embeddingTasks[noteId]?.cancel()
+        embeddingTasks[noteId] = Task { [weak self] in
+            guard let self, await embeddings.isAvailable(), let database else { return }
+            let body = MarkdownDocument(source: contents).body
+            let chunks = EmbeddingChunker.chunks(from: body)
+            guard !chunks.isEmpty, !Task.isCancelled else { return }
+            guard let vectors = try? await embeddings.embed(chunks), !Task.isCancelled else { return }
+            try? database.replaceChunks(
+                noteId: noteId,
+                chunks: Array(zip(chunks, vectors).map { ($0, $1) })
+            )
+        }
+    }
+
+    /// Meaning-based note lookup; empty when embeddings are unavailable.
+    func semanticSearchNoteIds(_ query: String) async -> [String] {
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        guard let database, trimmed.count > 2, await embeddings.isAvailable(),
+              let vector = try? await embeddings.embed([trimmed]).first
+        else { return [] }
+        let results = (try? database.semanticSearch(query: vector, limit: 8)) ?? []
+        return results.filter { $0.score > 0.45 }.map(\.noteId)
     }
 
     /// BM25-ranked note ids for a user-typed query. Terms are quoted and

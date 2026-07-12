@@ -13,6 +13,7 @@ struct NotesView: View {
     @State private var model = NotesModel()
     @State private var livePreview = true
     @State private var searchText = ""
+    @State private var semanticIds: [String] = []
     @State private var showingImporter = false
     @State private var importStatus: String?
     @State private var aiStatus: String?
@@ -71,6 +72,12 @@ struct NotesView: View {
         .searchable(text: $searchText, prompt: "Search all notes")
         #endif
         .task { await model.start() }
+        .task(id: searchText) {
+            // Semantic results trail the instant FTS list slightly.
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            semanticIds = await indexService.semanticSearchNoteIds(searchText)
+        }
         .onDisappear { Task { await model.flushSave() } }
     }
 
@@ -136,11 +143,27 @@ struct NotesView: View {
             }
         }
         .safeAreaInset(edge: .bottom) {
-            if model.state == .readyLocalFallback {
-                Label("Local vault — iCloud unavailable", systemImage: "icloud.slash")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(6)
+            VStack(spacing: 2) {
+                Button {
+                    showingImporter = true
+                } label: {
+                    Label("Import Document…", systemImage: "square.and.arrow.down")
+                        .font(.callout)
+                }
+                .buttonStyle(.borderless)
+                .padding(.vertical, 4)
+                if let importStatus {
+                    Text(importStatus)
+                        .font(.caption)
+                        .foregroundStyle(importStatus.contains("failed") ? .red : .secondary)
+                        .padding(.bottom, 4)
+                }
+                if model.state == .readyLocalFallback {
+                    Label("Local vault — iCloud unavailable", systemImage: "icloud.slash")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.bottom, 4)
+                }
             }
         }
     }
@@ -250,12 +273,13 @@ struct NotesView: View {
         }
     }
 
-    /// FTS-ranked results while searching; the full list otherwise.
+    /// FTS-ranked results first, semantic (meaning-based) extras after.
     private var visibleNotes: [VaultItem] {
         guard !searchText.trimmingCharacters(in: .whitespaces).isEmpty else { return model.notes }
         let ranked = indexService.searchNoteIds(searchText)
+        let merged = ranked + semanticIds.filter { !ranked.contains($0) }
         let byId = Dictionary(uniqueKeysWithValues: model.notes.map { ($0.id, $0) })
-        return ranked.compactMap { byId[$0] }
+        return merged.compactMap { byId[$0] }
     }
 
     private var selectedTitle: String {

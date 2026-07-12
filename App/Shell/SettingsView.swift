@@ -7,6 +7,9 @@ import SwiftUI
 struct SettingsView: View {
     @AppStorage("doclingServeURL") private var doclingServeURL = ""
     @State private var probeResult: String?
+    @AppStorage("fileParserEngineDir") private var engineDirOverride = ""
+    @AppStorage("fileParserOCR") private var engineOCR = true
+    @AppStorage("fileParserTables") private var engineTables = true
     @AppStorage("ollamaURL") private var ollamaURL = ""
     @AppStorage("ollamaModel") private var ollamaModel = ""
     @State private var ollamaModels: [String] = []
@@ -20,6 +23,29 @@ struct SettingsView: View {
                         LabeledContent("Version", value: "0.1.0 (pre-alpha)")
                     }
                     Section("Document conversion") {
+                        #if os(macOS)
+                            LabeledContent("Local engine") {
+                                if let engine = PythonEngineConverter.resolveEngineDirectory() {
+                                    Text(engine.path.replacingOccurrences(
+                                        of: NSHomeDirectory(), with: "~"
+                                    ))
+                                    .font(.caption.monospaced())
+                                    .foregroundStyle(.secondary)
+                                } else {
+                                    Text("not found — install File-Parser or set a folder below")
+                                        .font(.caption)
+                                        .foregroundStyle(.orange)
+                                }
+                            }
+                            TextField(
+                                "Engine folder override",
+                                text: $engineDirOverride,
+                                prompt: Text("~/Library/Application Support/File-Parser/engine")
+                            )
+                            .autocorrectionDisabled()
+                            Toggle("OCR scanned pages (Docling)", isOn: $engineOCR)
+                            Toggle("Table-structure detection (Docling)", isOn: $engineTables)
+                        #endif
                         TextField("Docling server URL", text: $doclingServeURL, prompt: Text("http://homelab:5001"))
                             .autocorrectionDisabled()
                         HStack {
