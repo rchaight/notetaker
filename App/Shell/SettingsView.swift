@@ -1,3 +1,4 @@
+import AIKit
 import ConversionKit
 import SwiftUI
 
@@ -6,6 +7,10 @@ import SwiftUI
 struct SettingsView: View {
     @AppStorage("doclingServeURL") private var doclingServeURL = ""
     @State private var probeResult: String?
+    @AppStorage("ollamaURL") private var ollamaURL = ""
+    @AppStorage("ollamaModel") private var ollamaModel = ""
+    @State private var ollamaModels: [String] = []
+    @State private var ollamaProbe: String?
 
     var body: some View {
         TabView {

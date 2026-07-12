@@ -215,6 +215,11 @@ struct NotesView: View {
             #if canImport(FoundationModels)
                 providers.append(FoundationModelsProvider())
             #endif
+            if let urlString = UserDefaults.standard.string(forKey: "ollamaURL"),
+               let url = URL(string: urlString), !urlString.isEmpty {
+                let model = UserDefaults.standard.string(forKey: "ollamaModel") ?? "qwen3"
+                providers.append(OllamaProvider(baseURL: url, model: model.isEmpty ? "qwen3" : model))
+            }
             let router = AIRouter(providers: providers)
             do {
                 if summarize {

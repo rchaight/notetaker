@@ -114,3 +114,109 @@ struct AIRouterTests {
         }
     }
 #endif
+
+/// URLProtocol stub for the Ollama tier.
+final class OllamaStubProtocol: URLProtocol {
+    nonisolated(unsafe) static var handler: (@Sendable (URLRequest) -> (Int, Data))?
+    override class func canInit(with _: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        guard let handler = Self.handler, let url = request.url else { return }
+        let (status, data) = handler(request)
+        let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: data)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
+@Suite(.serialized) struct OllamaProviderTests {
+    private func makeProvider() -> OllamaProvider {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [OllamaStubProtocol.self]
+        return OllamaProvider(
+            baseURL: URL(string: "http://homelab.test:11434")!,
+            model: "qwen3",
+            session: URLSession(configuration: configuration)
+        )
+    }
+
+    @Test func listsModelsAndAvailability() async throws {
+        OllamaStubProtocol.handler = { _ in
+            (200, Data(##"{"models":[{"name":"qwen3"},{"name":"gemma3:12b"}]}"##.utf8))
+        }
+        let models = try await makeProvider().listModels()
+        #expect(models == ["qwen3", "gemma3:12b"])
+        #expect(await makeProvider().isAvailable())
+    }
+
+    @Test func unreachableMeansUnavailable() async {
+        OllamaStubProtocol.handler = { _ in (503, Data()) }
+        #expect(await !(makeProvider().isAvailable()))
+    }
+
+    @Test func summarizeParsesChatResponse() async throws {
+        OllamaStubProtocol.handler = { request in
+            if request.url?.path.hasSuffix("api/tags") == true {
+                return (200, Data(##"{"models":[{"name":"qwen3"}]}"##.utf8))
+            }
+            return (200, Data(##"{"message":{"role":"assistant","content":"A tight summary."}}"##.utf8))
+        }
+        let summary = try await makeProvider().summarize("long note text")
+        #expect(summary == "A tight summary.")
+    }
+
+    @Test func extractDecodesStructuredJSON() async throws {
+        OllamaStubProtocol.handler = { _ in
+            let content = ##"{\"tasks\":[{\"text\":\"send agenda\",\"dueDate\":\"2026-07-15\",\"priority\":2,\"labels\":[\"admin\"]}]}"##
+            return (200, Data(##"{"message":{"content":""##.utf8) + Data(content.utf8) + Data(##""}}"##.utf8))
+        }
+        let tasks = try await makeProvider().extractActionItems(from: "note")
+        #expect(tasks == [AITask(text: "send agenda", dueDate: "2026-07-15", priority: 2, labels: ["admin"])])
+    }
+}
+
+struct SizeAwareRoutingTests {
+    struct Windowed: AIProvider {
+        let name: String
+        let limit: Int?
+        var contextLimit: Int? {
+            limit
+        }
+
+        func isAvailable() async -> Bool {
+            true
+        }
+
+        func summarize(_: String) async throws -> String {
+            name
+        }
+
+        func extractActionItems(from _: String) async throws -> [AITask] {
+            []
+        }
+
+        func parseTask(_: String) async throws -> AITask {
+            AITask(text: "x", dueDate: nil, priority: nil, labels: [])
+        }
+    }
+
+    @Test func longInputSkipsSmallWindow() async throws {
+        let router = AIRouter(providers: [
+            Windowed(name: "small", limit: 100),
+            Windowed(name: "big", limit: nil),
+        ])
+        let short = try await router.summarize("short note")
+        #expect(short.provider == "small")
+        let long = try await router.summarize(String(repeating: "word ", count: 500))
+        #expect(long.provider == "big")
+    }
+}

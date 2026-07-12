@@ -9,6 +9,12 @@ import TaskEngine
     public struct FoundationModelsProvider: AIProvider {
         public let name = "Apple Intelligence"
 
+        /// The on-device model's practical window; longer inputs route to
+        /// Ollama.
+        public var contextLimit: Int? {
+            3000
+        }
+
         public init() {}
 
         public func isAvailable() async -> Bool {

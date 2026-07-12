@@ -28,6 +28,17 @@ public struct AITask: Equatable, Sendable {
     }
 }
 
+public extension AIProvider {
+    var contextLimit: Int? {
+        nil
+    }
+
+    /// Cheap token estimate (~4 chars/token) for routing decisions.
+    static func estimatedTokens(_ text: String) -> Int {
+        text.utf8.count / 4
+    }
+}
+
 public enum AIProviderError: Error, Equatable, Sendable {
     case unavailable(String)
     case failed(String)
@@ -38,6 +49,9 @@ public enum AIProviderError: Error, Equatable, Sendable {
 /// every model is missing.
 public protocol AIProvider: Sendable {
     var name: String { get }
+    /// Rough input-token ceiling; nil = unbounded. The router skips
+    /// providers whose window the input exceeds.
+    var contextLimit: Int? { get }
     func isAvailable() async -> Bool
     func summarize(_ text: String) async throws -> String
     func extractActionItems(from text: String) async throws -> [AITask]
