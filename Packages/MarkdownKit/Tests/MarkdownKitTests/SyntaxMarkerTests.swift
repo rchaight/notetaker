@@ -107,3 +107,34 @@ struct ExtendedSyntaxTests {
         #expect(!kinds("==half\n").contains(.highlightMark))
     }
 }
+
+struct FrontmatterUpdateTests {
+    @Test func addsKeyToExistingBlockPreservingOtherLines() {
+        let doc = MarkdownDocument(source: "---\ntitle: My Note\n---\n# Body\n")
+        let updated = doc.frontmatter!.updating(key: "pinned", value: "true")
+        #expect(updated.rawBlock == "---\ntitle: My Note\npinned: true\n---\n")
+        #expect(updated.values["pinned"] == "true")
+        #expect(updated.values["title"] == "My Note")
+    }
+
+    @Test func replacesAndRemovesKey() {
+        let doc = MarkdownDocument(source: "---\npinned: true\ntitle: T\n---\nbody\n")
+        let off = doc.frontmatter!.updating(key: "pinned", value: nil)
+        #expect(off.rawBlock == "---\ntitle: T\n---\n")
+        #expect(off.values["pinned"] == nil)
+        let flipped = doc.frontmatter!.updating(key: "pinned", value: "false")
+        #expect(flipped.rawBlock.contains("pinned: false"))
+        #expect(!flipped.rawBlock.contains("pinned: true"))
+    }
+
+    @Test func roundTripsThroughDocumentRender() {
+        let doc = MarkdownDocument(source: "---\ntitle: T\n---\n# Body\ntext\n")
+        let updated = MarkdownDocument(
+            frontmatter: doc.frontmatter!.updating(key: "bookmarked", value: "true"),
+            body: doc.body
+        )
+        let reparsed = MarkdownDocument(source: updated.render())
+        #expect(reparsed.frontmatter?.values["bookmarked"] == "true")
+        #expect(reparsed.body == doc.body)
+    }
+}

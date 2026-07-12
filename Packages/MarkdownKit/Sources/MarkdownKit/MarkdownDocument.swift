@@ -56,6 +56,24 @@ public struct Frontmatter: Equatable, Sendable {
         self.init(rawBlock: "---\n\(lines)\n---\n", values: values)
     }
 
+    /// A copy with `key` set to `value` (nil removes it), editing the raw
+    /// block minimally: unrelated lines keep their exact bytes.
+    public func updating(key: String, value: String?) -> Frontmatter {
+        var lines = splitLines(rawBlock)
+        if lines.last == "" { lines.removeLast() } // block ends with newline
+        lines.removeAll {
+            strippingCarriageReturn($0).hasPrefix(key + ":")
+        }
+        if let value {
+            // Insert just before the closing fence.
+            let insertAt = lines.lastIndex { strippingCarriageReturn($0) == "---" } ?? lines.endIndex
+            lines.insert("\(key): \(value)", at: insertAt)
+        }
+        var merged = values
+        merged[key] = value
+        return Frontmatter(rawBlock: lines.joined(separator: "\n") + "\n", values: merged)
+    }
+
     static func split(_ source: String) -> (frontmatter: Frontmatter, body: String, bodyUTF16Offset: Int)? {
         guard source.hasPrefix("---\n") || source.hasPrefix("---\r\n") else { return nil }
         let lines = splitLines(source)

@@ -35,9 +35,12 @@ public struct NoteIndexer: Sendable {
         let document = MarkdownDocument(source: contents)
         let title = URL(fileURLWithPath: noteId).deletingPathExtension().lastPathComponent
         let folder = noteId.split(separator: "/").dropLast().joined(separator: "/")
+        let flags = document.frontmatter?.values ?? [:]
         let note = NoteRecord(
             id: noteId, title: title, folder: folder,
-            modifiedAt: modifiedAt, contentHash: hash
+            modifiedAt: modifiedAt, contentHash: hash,
+            pinned: flags["pinned"] == "true",
+            bookmarked: flags["bookmarked"] == "true"
         )
 
         // Line numbers must be in FILE coordinates (outbound writes edit the

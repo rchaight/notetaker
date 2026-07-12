@@ -11,13 +11,21 @@ public struct NoteRecord: Codable, Equatable, Sendable, FetchableRecord, Persist
     public var folder: String
     public var modifiedAt: Date?
     public var contentHash: String
+    /// Derived from frontmatter `pinned:`/`bookmarked:` — files stay truth.
+    public var pinned: Bool
+    public var bookmarked: Bool
 
-    public init(id: String, title: String, folder: String, modifiedAt: Date?, contentHash: String) {
+    public init(
+        id: String, title: String, folder: String, modifiedAt: Date?,
+        contentHash: String, pinned: Bool = false, bookmarked: Bool = false
+    ) {
         self.id = id
         self.title = title
         self.folder = folder
         self.modifiedAt = modifiedAt
         self.contentHash = contentHash
+        self.pinned = pinned
+        self.bookmarked = bookmarked
     }
 }
 

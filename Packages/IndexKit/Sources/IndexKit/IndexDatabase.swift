@@ -7,7 +7,7 @@ import GRDB
 /// the caller trigger a full rescan.
 public final class IndexDatabase: Sendable {
     /// Bump when the schema changes; mismatch wipes and rebuilds.
-    public static let schemaVersion = 6
+    public static let schemaVersion = 7
 
     public let queue: DatabaseQueue
 
@@ -53,6 +53,8 @@ public final class IndexDatabase: Sendable {
                 t.column("folder", .text).notNull().indexed()
                 t.column("modifiedAt", .datetime)
                 t.column("contentHash", .text).notNull()
+                t.column("pinned", .boolean).notNull().defaults(to: false)
+                t.column("bookmarked", .boolean).notNull().defaults(to: false)
             }
             try db.create(table: TaskRecord.databaseTableName) { t in
                 t.primaryKey("id", .text)
@@ -246,6 +248,18 @@ public extension IndexDatabase {
     }
 
     /// Wipes every row (schema intact) — the "delete index, re-scan" path.
+    public func pinnedNoteIds() throws -> [String] {
+        try queue.read { db in
+            try String.fetchAll(db, sql: "SELECT id FROM note WHERE pinned ORDER BY title")
+        }
+    }
+
+    public func bookmarkedNoteIds() throws -> [String] {
+        try queue.read { db in
+            try String.fetchAll(db, sql: "SELECT id FROM note WHERE bookmarked ORDER BY title")
+        }
+    }
+
     /// Every distinct note tag with how many notes carry it. Nested tags
     /// ("project/alpha") count toward themselves only; the UI aggregates
     /// ancestors from the components.

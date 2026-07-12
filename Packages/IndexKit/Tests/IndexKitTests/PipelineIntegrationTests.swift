@@ -155,3 +155,17 @@ struct PipelineIntegrationTests {
         #expect(try db.noteIds(withTag: "new") == ["a.md"])
     }
 }
+
+@Suite struct NoteFlagTests {
+    @Test func frontmatterFlagsIndexAndClear() throws {
+        let (db, _) = try IndexDatabase.open(path: nil)
+        let indexer = NoteIndexer(database: db)
+        try indexer.index(noteId: "p.md", contents: "---\npinned: true\n---\n# P\n", modifiedAt: nil)
+        try indexer.index(noteId: "b.md", contents: "---\nbookmarked: true\n---\n# B\n", modifiedAt: nil)
+        try indexer.index(noteId: "n.md", contents: "# Plain\n", modifiedAt: nil)
+        #expect(try db.pinnedNoteIds() == ["p.md"])
+        #expect(try db.bookmarkedNoteIds() == ["b.md"])
+        try indexer.index(noteId: "p.md", contents: "---\npinned: false\n---\n# P\n", modifiedAt: nil)
+        #expect(try db.pinnedNoteIds().isEmpty)
+    }
+}

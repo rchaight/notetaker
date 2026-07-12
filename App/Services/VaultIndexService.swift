@@ -305,6 +305,31 @@ final class VaultIndexService {
         }
     }
 
+    func pinnedNoteIds() -> [String] {
+        (try? database?.pinnedNoteIds()) ?? []
+    }
+
+    func bookmarkedNoteIds() -> [String] {
+        (try? database?.bookmarkedNoteIds()) ?? []
+    }
+
+    /// Flags live in the note's frontmatter (files are truth; they sync).
+    func setNoteFlag(_ noteId: String, key: String, value: Bool) async {
+        guard let root, let indexer else { return }
+        let url = root.appendingPathComponent(noteId)
+        guard let contents = try? await store.readString(at: url) else { return }
+        let document = MarkdownDocument(source: contents)
+        let frontmatter = (document.frontmatter ?? Frontmatter(values: [:]))
+            .updating(key: key, value: value ? "true" : nil)
+        let updated = MarkdownDocument(frontmatter: frontmatter, body: document.body).render()
+        guard updated != contents else { return }
+        try? await store.writeString(updated, to: url)
+        try? indexer.index(noteId: noteId, contents: updated, modifiedAt: nil)
+        knownMTimes[noteId] = nil
+        tasksVersion += 1
+        onNoteMutated?(noteId)
+    }
+
     func noteTags() -> [(tag: String, count: Int)] {
         (try? database?.tagsWithCounts()) ?? []
     }

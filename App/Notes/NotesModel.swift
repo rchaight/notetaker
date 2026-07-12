@@ -26,6 +26,9 @@ final class NotesModel {
     var noteText = ""
 
     private(set) var root: URL?
+    /// Recently opened notes, newest first (device-local UI state).
+    private(set) var recents: [String] =
+        UserDefaults.standard.stringArray(forKey: "recentNotes") ?? []
     private let store = VaultFileStore()
     private var observer: MetadataQueryObserver?
     private var observation: Task<Void, Never>?
@@ -122,6 +125,12 @@ final class NotesModel {
     private func performSelect(_ id: VaultItem.ID?) async {
         await flushSave()
         selectedID = id
+        if let id {
+            recents.removeAll { $0 == id }
+            recents.insert(id, at: 0)
+            if recents.count > 8 { recents.removeLast(recents.count - 8) }
+            UserDefaults.standard.set(recents, forKey: "recentNotes")
+        }
         if let id, !openTabs.contains(id) {
             openTabs.append(id)
         }

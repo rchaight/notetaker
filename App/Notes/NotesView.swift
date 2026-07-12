@@ -21,6 +21,8 @@ struct NotesView: View {
     @State private var showingImagePicker = false
     @State private var selectedTag: String?
     @State private var allTags: [(tag: String, count: Int)] = []
+    @State private var pinnedIds: [String] = []
+    @State private var bookmarkedIds: [String] = []
     @State private var importStatus: String?
     @State private var aiStatus: String?
     @State private var showingNewFolder = false
@@ -159,6 +161,27 @@ struct NotesView: View {
                     }
                 }
             } else {
+                if !pinnedIds.isEmpty {
+                    Section("Pinned") {
+                        ForEach(notes(withIds: pinnedIds)) { note in
+                            noteRow(note, showFolder: true)
+                        }
+                    }
+                }
+                if !model.recents.isEmpty {
+                    Section("Recents") {
+                        ForEach(notes(withIds: Array(model.recents.prefix(5)))) { note in
+                            noteRow(note, showFolder: true)
+                        }
+                    }
+                }
+                if !bookmarkedIds.isEmpty {
+                    Section("Bookmarks") {
+                        ForEach(notes(withIds: bookmarkedIds)) { note in
+                            noteRow(note, showFolder: true)
+                        }
+                    }
+                }
                 ForEach(visibleNotes.filter { !$0.relativePath.contains("/") }) { note in
                     noteRow(note, showFolder: false)
                 }
@@ -182,7 +205,11 @@ struct NotesView: View {
                 }
             }
         }
-        .task(id: indexService.tasksVersion) { allTags = indexService.noteTags() }
+        .task(id: indexService.tasksVersion) {
+            allTags = indexService.noteTags()
+            pinnedIds = indexService.pinnedNoteIds()
+            bookmarkedIds = indexService.bookmarkedNoteIds()
+        }
         .overlay {
             if visibleNotes.isEmpty {
                 ContentUnavailableView(
@@ -567,6 +594,11 @@ struct NotesView: View {
         }
     }
 
+    private func notes(withIds ids: [String]) -> [VaultItem] {
+        let byId = Dictionary(uniqueKeysWithValues: model.notes.map { ($0.id, $0) })
+        return ids.compactMap { byId[$0] }
+    }
+
     private func notes(in folder: String) -> [VaultItem] {
         visibleNotes.filter {
             let dir = $0.relativePath.split(separator: "/").dropLast().joined(separator: "/")
@@ -615,6 +647,28 @@ struct NotesView: View {
             syncBadge(note)
         }
         .contentShape(Rectangle())
+        .contextMenu {
+            Button(
+                pinnedIds.contains(note.id) ? "Unpin" : "Pin",
+                systemImage: pinnedIds.contains(note.id) ? "pin.slash" : "pin"
+            ) {
+                Task {
+                    await indexService.setNoteFlag(
+                        note.id, key: "pinned", value: !pinnedIds.contains(note.id)
+                    )
+                }
+            }
+            Button(
+                bookmarkedIds.contains(note.id) ? "Remove Bookmark" : "Bookmark",
+                systemImage: bookmarkedIds.contains(note.id) ? "bookmark.slash" : "bookmark"
+            ) {
+                Task {
+                    await indexService.setNoteFlag(
+                        note.id, key: "bookmarked", value: !bookmarkedIds.contains(note.id)
+                    )
+                }
+            }
+        }
         .tag(note.id)
         .contextMenu {
             Menu("Move To") {
