@@ -185,14 +185,19 @@ final class VaultIndexService {
         return (try? database.subtaskProgress()) ?? [:]
     }
 
+    struct ImportError: Error {
+        let message: String
+    }
+
     /// Imports an external document: convert on-device → write to
-    /// Imports/<name>.md with provenance frontmatter → index. Returns the
-    /// created note id, or nil with a reason string.
-    func importFile(_ url: URL) async -> Result<String, String> {
-        guard let root, let indexer else { return .failure("vault not ready") }
+    /// Imports/<name>.md with provenance frontmatter → index.
+    func importFile(_ url: URL) async -> Result<String, ImportError> {
+        guard let root, let indexer else { return .failure(ImportError(message: "vault not ready")) }
         let converter = NativeConverter()
         guard converter.canConvert(fileExtension: url.pathExtension) else {
-            return .failure("\(url.pathExtension) needs the Docling tier (coming in this milestone)")
+            return .failure(
+                ImportError(message: "\(url.pathExtension) needs the Docling tier (coming in this milestone)")
+            )
         }
         let accessing = url.startAccessingSecurityScopedResource()
         defer {
@@ -204,7 +209,7 @@ final class VaultIndexService {
         do {
             result = try await converter.convert(url)
         } catch {
-            return .failure("conversion failed: \(error)")
+            return .failure(ImportError(message: "conversion failed: \(error)"))
         }
 
         let importsDir = root.appendingPathComponent("Imports", isDirectory: true)
@@ -233,7 +238,7 @@ final class VaultIndexService {
             tasksVersion += 1
             return .success(candidate)
         } catch {
-            return .failure("write failed: \(error.localizedDescription)")
+            return .failure(ImportError(message: "write failed: \(error.localizedDescription)"))
         }
     }
 

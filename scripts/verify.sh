@@ -9,6 +9,9 @@ cd "$(dirname "$0")/.."
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode-beta.app}"
 ROUNDS="${1:-3}"
 
+# Fresh project first — new source files are invisible until regeneration.
+xcodegen generate > /dev/null
+
 for round in $(seq 1 "$ROUNDS"); do
   echo "=== test round $round/$ROUNDS ==="
   for PKG in Packages/*/; do
@@ -23,12 +26,27 @@ for round in $(seq 1 "$ROUNDS"); do
 done
 
 echo "=== builds ==="
-xcodebuild -project Notetaker.xcodeproj -scheme Notetaker -destination 'platform=macOS' \
-  -derivedDataPath "$HOME/.cache/notetaker-build/DerivedData" -allowProvisioningUpdates build 2>&1 \
-  | grep -q 'BUILD SUCCEEDED' && echo "  macOS: BUILD SUCCEEDED"
-xcodebuild -project Notetaker.xcodeproj -scheme Notetaker -destination 'generic/platform=iOS Simulator' \
-  -derivedDataPath "$HOME/.cache/notetaker-build/DerivedData" build CODE_SIGNING_ALLOWED=NO 2>&1 \
-  | grep -q 'BUILD SUCCEEDED' && echo "  iOS: BUILD SUCCEEDED"
+# Exit codes, not piped greps: xcodebuild | grep -q dies of SIGPIPE under
+# pipefail and silently skips the check (this once hid a broken build AND
+# installed a stale app on top of it).
+BUILD_LOG=$(mktemp)
+if ! xcodebuild -project Notetaker.xcodeproj -scheme Notetaker -destination 'platform=macOS' \
+  -derivedDataPath "$HOME/.cache/notetaker-build/DerivedData" -allowProvisioningUpdates build \
+  > "$BUILD_LOG" 2>&1; then
+  echo "  macOS: BUILD FAILED"
+  grep -E 'error:' "$BUILD_LOG" | head -5
+  exit 1
+fi
+echo "  macOS: BUILD SUCCEEDED"
+if ! xcodebuild -project Notetaker.xcodeproj -scheme Notetaker -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath "$HOME/.cache/notetaker-build/DerivedData" build CODE_SIGNING_ALLOWED=NO \
+  > "$BUILD_LOG" 2>&1; then
+  echo "  iOS: BUILD FAILED"
+  grep -E 'error:' "$BUILD_LOG" | head -5
+  exit 1
+fi
+echo "  iOS: BUILD SUCCEEDED"
+rm -f "$BUILD_LOG"
 
 if [[ "${2:-}" == "--install" ]]; then
   echo "=== install + launch check ==="

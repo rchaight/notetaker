@@ -18,17 +18,16 @@ struct NotesView: View {
             sidebar
                 .navigationTitle("Notes")
                 .toolbar {
-                    ToolbarItem {
+                    ToolbarItemGroup(placement: .primaryAction) {
                         Button("New Note", systemImage: "square.and.pencil") {
                             model.createNote()
                         }
                         .keyboardShortcut("n", modifiers: [.command])
-                    }
-                    ToolbarItem {
                         Button("Import Document", systemImage: "square.and.arrow.down") {
                             showingImporter = true
                         }
-                        .help("Convert a PDF, image, RTF, HTML, or text file to a markdown note")
+                        .keyboardShortcut("i", modifiers: [.command, .shift])
+                        .help("Convert a PDF, image, RTF, HTML, or text file to a markdown note (⇧⌘I)")
                     }
                 }
                 .fileImporter(
@@ -51,7 +50,7 @@ struct NotesView: View {
                             case let .success(noteId):
                                 importStatus = "Imported \(noteId)"
                             case let .failure(reason):
-                                importStatus = "Import failed: \(reason)"
+                                importStatus = "Import failed: \(reason.message)"
                             }
                         }
                         try? await Task.sleep(for: .seconds(4))
