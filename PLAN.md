@@ -211,7 +211,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 - [x] Start/scheduled vs due date distinction (optional third Planned date). *(~start + >due shipped; third Planned date deferred until a real need appears.)*
 - [x] Free-form Labels as a cross-cutting axis; saved custom Filters (query syntax `priority:P1 AND due:today`) + a visual builder. *(Query grammar + saved filters shipped; visual builder deferred to polish.)*
 - [x] In-task nested sub-checkboxes with progress ring; computed relevance/Task Score for auto-sorting undated todos; in-note Completed section. *(Nesting + n/m progress shipped; Task Score needs creation dates (deferred), Completed section deferred to editor polish.)*
-- [ ] Additional views over the one dataset: Kanban, Calendar, Eisenhower Matrix. EventKit two-way (attach a native Reminder/alert).
+- [x] Additional views over the one dataset: Kanban, Calendar, Eisenhower Matrix. EventKit two-way (attach a native Reminder/alert). *(Board/Agenda/Matrix shipped as view switcher; EventKit deferred to M9 system surfaces — permission flows belong together.)*
 **Done:** a recurring task regenerates on completion on every surface; a saved filter returns correct rows; sub-checkbox completion drives the parent's progress ring; Kanban/Calendar/Matrix all reflect the same todos live.
 **Effort:** ~3 weeks.
 

@@ -12,6 +12,15 @@ struct TodoView: View {
     @State private var showingQuickAdd = false
     @State private var quickAddText = ""
     @State private var filterText = ""
+    @State private var viewMode: ViewMode = .list
+
+    enum ViewMode: String, CaseIterable {
+        case list = "List"
+        case board = "Board"
+        case agenda = "Agenda"
+        case matrix = "Matrix"
+    }
+
     @AppStorage("savedTaskFilters") private var savedFiltersJSON = "[]"
 
     private var savedFilters: [String] {
@@ -32,8 +41,17 @@ struct TodoView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                Picker("View", selection: $viewMode) {
+                    ForEach(ViewMode.allCases, id: \.self) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .padding(.horizontal, 12)
+                .padding(.top, 6)
                 filterBar
-                taskList
+                currentView
             }
             .navigationTitle("To-Do")
             .toolbar {
@@ -96,6 +114,29 @@ struct TodoView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
+    }
+
+    private var allFilteredTasks: [TaskRecord] {
+        grouped.values.flatMap(\.self)
+    }
+
+    @ViewBuilder private var currentView: some View {
+        switch viewMode {
+        case .list:
+            taskList
+        case .board:
+            TaskBoardView(grouped: grouped, subtaskProgress: subtaskProgress) { task in
+                Task { await service.toggle(task) }
+            }
+        case .agenda:
+            TaskAgendaView(tasks: allFilteredTasks) { task in
+                Task { await service.toggle(task) }
+            }
+        case .matrix:
+            TaskMatrixView(tasks: allFilteredTasks) { task in
+                Task { await service.toggle(task) }
+            }
+        }
     }
 
     private var taskList: some View {
