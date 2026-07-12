@@ -53,6 +53,18 @@ struct NotesView: View {
                             newFolderParent = ""
                             showingNewFolder = true
                         }
+                        if !model.templates.isEmpty {
+                            Menu {
+                                ForEach(model.templates) { template in
+                                    Button(noteTitle(template)) {
+                                        model.createNote(fromTemplate: template)
+                                    }
+                                }
+                            } label: {
+                                Label("New from Template", systemImage: "doc.badge.plus")
+                            }
+                            .help("New note from a Templates/ file ({{title}}, {{date}}, {{time}})")
+                        }
                         Button("Today", systemImage: "calendar") {
                             model.openDailyNote()
                         }

@@ -261,7 +261,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 - [x] Sidebar sections: Pinned notes, Recents, Bookmarks.
 - [x] Saved smart searches (persisted search queries as sidebar entries).
 - [x] Daily note spine (Today note command + calendar navigation).
-- [ ] Note templates (template files with placeholders).
+- [x] Note templates (template files with placeholders).
 - [ ] Multi-vault switcher.
 
 ### M7 — Project management / Gantt (ProjectKit)

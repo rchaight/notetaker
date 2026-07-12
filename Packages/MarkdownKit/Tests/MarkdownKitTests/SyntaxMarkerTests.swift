@@ -138,3 +138,15 @@ struct FrontmatterUpdateTests {
         #expect(reparsed.body == doc.body)
     }
 }
+
+struct TemplateExpansionTests {
+    @Test func expandsKnownPlaceholders() {
+        let now = Calendar(identifier: .gregorian)
+            .date(from: DateComponents(year: 2026, month: 7, day: 12, hour: 9, minute: 5))!
+        let out = TemplateExpansion.expand(
+            "# {{title}}\nCreated {{date}} at {{time}} ({{datetime}})\n{{unknown}}\n",
+            title: "Weekly Review", now: now
+        )
+        #expect(out == "# Weekly Review\nCreated 2026-07-12 at 09:05 (2026-07-12 09:05)\n{{unknown}}\n")
+    }
+}

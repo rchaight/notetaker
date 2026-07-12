@@ -1,4 +1,5 @@
 import Foundation
+import MarkdownKit
 import Observation
 import VaultKit
 
@@ -246,6 +247,37 @@ final class NotesModel {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         let day = String(selectedID.dropFirst("Daily/".count).dropLast(3))
         return formatter.date(from: day)
+    }
+
+    /// Notes under Templates/ act as templates for new notes.
+    var templates: [VaultItem] {
+        notes.filter { $0.relativePath.hasPrefix("Templates/") }
+    }
+
+    /// New note from a template: placeholders expanded, name uniquified.
+    func createNote(fromTemplate template: VaultItem) {
+        guard let root else { return }
+        Task {
+            guard let raw = try? await store.readString(at: template.url) else { return }
+            let base = URL(fileURLWithPath: template.relativePath)
+                .deletingPathExtension().lastPathComponent
+            let existing = Set(notes.map(\.relativePath))
+            var title = base
+            var counter = 2
+            while existing.contains(title + ".md") {
+                title = "\(base) \(counter)"
+                counter += 1
+            }
+            let contents = TemplateExpansion.expand(raw, title: title)
+            let url = root.appendingPathComponent(title + ".md")
+            do {
+                try await store.writeString(contents, to: url)
+                apply(VaultEnumerator.snapshot(of: root))
+                await performSelect(title + ".md")
+            } catch {
+                // Surfaced implicitly: note won't appear.
+            }
+        }
     }
 
     func createNote(in folder: String = "") {
