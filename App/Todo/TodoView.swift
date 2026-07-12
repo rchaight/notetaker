@@ -10,6 +10,16 @@ struct TodoView: View {
     @State private var grouped: [SmartBucket: [TaskRecord]] = [:]
     @State private var showingQuickAdd = false
     @State private var quickAddText = ""
+    @State private var filterText = ""
+    @AppStorage("savedTaskFilters") private var savedFiltersJSON = "[]"
+
+    private var savedFilters: [String] {
+        (try? JSONDecoder().decode([String].self, from: Data(savedFiltersJSON.utf8))) ?? []
+    }
+
+    private func setSavedFilters(_ filters: [String]) {
+        savedFiltersJSON = (try? String(data: JSONEncoder().encode(filters), encoding: .utf8)) ?? "[]"
+    }
 
     private static let sections: [(SmartBucket, String, String)] = [
         (.overdue, "Overdue", "exclamationmark.circle"),
@@ -20,28 +30,9 @@ struct TodoView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                ForEach(Self.sections, id: \.0) { bucket, title, icon in
-                    if let tasks = grouped[bucket], !tasks.isEmpty {
-                        Section {
-                            ForEach(tasks) { task in
-                                row(task)
-                            }
-                        } header: {
-                            Label(title, systemImage: icon)
-                                .foregroundStyle(bucket == .overdue ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
-                        }
-                    }
-                }
-            }
-            .overlay {
-                if grouped.values.allSatisfy(\.isEmpty) || grouped.isEmpty {
-                    ContentUnavailableView(
-                        "No Open Tasks",
-                        systemImage: "checklist",
-                        description: Text("Write - [ ] anywhere in a note and it appears here.")
-                    )
-                }
+            VStack(spacing: 0) {
+                filterBar
+                taskList
             }
             .navigationTitle("To-Do")
             .toolbar {
@@ -63,6 +54,72 @@ struct TodoView: View {
         }
         .onChange(of: service.tasksVersion) {
             refresh()
+        }
+        .onChange(of: filterText) {
+            refresh()
+        }
+    }
+
+    private var filterBar: some View {
+        HStack(spacing: 8) {
+            TextField("Filter — p1  due:today|overdue|week|none  #label  words", text: $filterText)
+                .textFieldStyle(.roundedBorder)
+            Menu {
+                ForEach(savedFilters, id: \.self) { saved in
+                    Button(saved) { filterText = saved }
+                }
+                if !savedFilters.isEmpty {
+                    Divider()
+                }
+                if !filterText.trimmingCharacters(in: .whitespaces).isEmpty,
+                   !savedFilters.contains(filterText) {
+                    Button("Save Current Filter", systemImage: "plus.circle") {
+                        setSavedFilters(savedFilters + [filterText])
+                    }
+                }
+                if savedFilters.contains(filterText) {
+                    Button("Delete Saved Filter", systemImage: "trash", role: .destructive) {
+                        setSavedFilters(savedFilters.filter { $0 != filterText })
+                    }
+                }
+                if !filterText.isEmpty {
+                    Button("Clear Filter", systemImage: "xmark.circle") { filterText = "" }
+                }
+            } label: {
+                Image(systemName: filterText.isEmpty
+                    ? "line.3.horizontal.decrease.circle"
+                    : "line.3.horizontal.decrease.circle.fill")
+            }
+            .menuIndicator(.hidden)
+            .help("Saved filters")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+    }
+
+    private var taskList: some View {
+        List {
+            ForEach(Self.sections, id: \.0) { bucket, title, icon in
+                if let tasks = grouped[bucket], !tasks.isEmpty {
+                    Section {
+                        ForEach(tasks) { task in
+                            row(task)
+                        }
+                    } header: {
+                        Label(title, systemImage: icon)
+                            .foregroundStyle(bucket == .overdue ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
+                    }
+                }
+            }
+        }
+        .overlay {
+            if grouped.values.allSatisfy(\.isEmpty) || grouped.isEmpty {
+                ContentUnavailableView(
+                    "No Open Tasks",
+                    systemImage: "checklist",
+                    description: Text("Write - [ ] anywhere in a note and it appears here.")
+                )
+            }
         }
     }
 
@@ -100,7 +157,15 @@ struct TodoView: View {
     }
 
     private func refresh() {
-        grouped = Dictionary(grouping: service.openTasks()) {
+        let filter = TaskFilter.parse(filterText)
+        let labels = filter.isEmpty ? [:] : service.taskLabels()
+        let tasks = service.openTasks().filter { task in
+            filter.isEmpty || filter.matches(
+                text: task.text, noteId: task.noteId, dueDate: task.dueDate,
+                priority: task.priority, labels: labels[task.id] ?? []
+            )
+        }
+        grouped = Dictionary(grouping: tasks) {
             SmartBuckets.bucket(dueDate: $0.dueDate, startDate: $0.startDate)
         }
     }

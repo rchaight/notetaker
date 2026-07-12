@@ -209,7 +209,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 - [x] **One recurrence engine**, invoked identically from every surface — fixed-schedule AND completion-based ("every 7 days when done"); structurally impossible to mark done without regenerating the next instance (avoid the Dataview footgun).
 - [x] NL Quick Add parser as the standard entry path everywhere (one line → date/recurrence/priority/project/labels); `NSDataDetector` baseline, FMF-enhanced in M6.
 - [x] Start/scheduled vs due date distinction (optional third Planned date). *(~start + >due shipped; third Planned date deferred until a real need appears.)*
-- [ ] Free-form Labels as a cross-cutting axis; saved custom Filters (query syntax `priority:P1 AND due:today`) + a visual builder.
+- [x] Free-form Labels as a cross-cutting axis; saved custom Filters (query syntax `priority:P1 AND due:today`) + a visual builder. *(Query grammar + saved filters shipped; visual builder deferred to polish.)*
 - [ ] In-task nested sub-checkboxes with progress ring; computed relevance/Task Score for auto-sorting undated todos; in-note Completed section.
 - [ ] Additional views over the one dataset: Kanban, Calendar, Eisenhower Matrix. EventKit two-way (attach a native Reminder/alert).
 **Done:** a recurring task regenerates on completion on every surface; a saved filter returns correct rows; sub-checkbox completion drives the parent's progress ring; Kanban/Calendar/Matrix all reflect the same todos live.

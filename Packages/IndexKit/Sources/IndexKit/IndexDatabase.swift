@@ -133,6 +133,14 @@ public extension IndexDatabase {
         }
     }
 
+    /// taskId → its labels, for filter evaluation.
+    func labelsByTaskId() throws -> [String: [String]] {
+        try queue.read { db in
+            let rows = try TaskLabelRecord.fetchAll(db)
+            return Dictionary(grouping: rows, by: \.taskId).mapValues { $0.map(\.label) }
+        }
+    }
+
     func indexedNoteIds() throws -> [String] {
         try queue.read { db in
             try String.fetchAll(db, sql: "SELECT id FROM note")

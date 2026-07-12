@@ -174,6 +174,11 @@ final class VaultIndexService {
         return (try? database.openTasks()) ?? []
     }
 
+    func taskLabels() -> [String: [String]] {
+        guard let database else { return [:] }
+        return (try? database.labelsByTaskId()) ?? [:]
+    }
+
     /// Quick Add: one parsed line appended to Inbox.md at the vault root.
     @discardableResult
     func quickAdd(_ input: String) async -> Bool {
