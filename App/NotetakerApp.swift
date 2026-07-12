@@ -27,6 +27,7 @@ struct NotetakerApp: App {
         WindowGroup {
             AppShell()
         }
+        .defaultSize(width: 1150, height: 720)
 
         #if os(macOS)
             Settings {

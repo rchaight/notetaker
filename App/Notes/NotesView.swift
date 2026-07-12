@@ -186,6 +186,7 @@ struct NotesView: View {
                 // the macOS 27 beta (same family as the .searchable crash).
                 HStack(spacing: 0) {
                     editorPane
+                        .frame(minWidth: 380, idealWidth: 720, maxWidth: .infinity)
                     if showInspector {
                         Divider()
                         NoteInspector(
@@ -243,6 +244,7 @@ struct NotesView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder private var editorPane: some View {

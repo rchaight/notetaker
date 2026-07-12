@@ -43,6 +43,12 @@ import TaskEngine
             // TextKit 2; .complete allows full inline rewrites.
             textView.writingToolsBehavior = .complete
             textView.textContainerInset = NSSize(width: 16, height: 16)
+            // Hard-wrap to the view: long lines must never widen the
+            // window (SwiftUI windows grow to content ideal width).
+            textView.isHorizontallyResizable = false
+            textView.textContainer?.widthTracksTextView = true
+            textView.autoresizingMask = [.width]
+            scrollView.hasHorizontalScroller = false
             textView.string = text
             context.coordinator.livePreview = livePreview
             context.coordinator.restyle(textView)
