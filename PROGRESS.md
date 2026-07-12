@@ -8,6 +8,7 @@ Loop-engineering state file. Read this + PLAN.md at the start of every pass.
 - **Termination** — all PLAN.md steps checked AND verify green (build + tests + functional exercise of every component) AND user accepts the final composed version. Breaker: 3 consecutive failed passes → notify + halt.
 - **State** — PLAN.md checkboxes = cursor · this file = log/streak · git commits = accumulator. One commit per pass containing the code change AND its checked box (atomic progress).
 - **Work per pass** — exactly one PLAN.md step: implement → verify → commit.
+- **Verify gate (user directive 2026-07-12)** — `scripts/verify.sh 3 --install` before every commit: ALL package tests ×3 rounds (flakiness), cross-module integration tests (PipelineIntegrationTests), both platform builds, /Applications refresh with an 8s process launch check. QA sweeps are delegated at model tiers: sonnet for coverage audits, opus for adversarial untested-failure review.
 - **On failure** — append a log row, streak +1, back off (60s → 270s → 1200s). Only success checks a box and resets the streak. At streak 3: push notification, halt, await user input.
 
 ## Current state
@@ -84,3 +85,4 @@ Loop-engineering state file. Read this + PLAN.md at the start of every pass.
 | 40 | 2026-07-11 | M4.2 NL Quick Add (⇧⌘N) | ✅ | QuickAddParser: explicit tokens win, NSDataDetector natural dates (tomorrow/friday/jul 20), bare p1–p4; appends to Inbox.md via coordinated write + immediate index. Sheet on To-Do tab with grammar hint. 27 TaskEngine tests; launch-verified. |
 | 41 | 2026-07-12 | M4.3 start (~) vs due (>) dates | ✅ | ~start token (same date vocabulary), Things-style bucketing: unstarted tasks stay out of Today (overdue still wins), 'from <date>' chip. Schema v3. 32 TaskEngine tests; launch-verified. |
 | 42 | 2026-07-12 | M4.4 saved filters + label axis | ✅ | TaskFilter grammar (p1–4, due:today/overdue/week/none, #label, note:, free text; AND semantics), evaluated storage-free in TaskEngine; filter bar + saved filters menu (@AppStorage) on To-Do tab; labelsByTaskId lookup. 37 TaskEngine tests; launch-verified. |
+| 43 | 2026-07-12 | QUALITY pass (user directive): verify gate + integration tests | ✅ | scripts/verify.sh (tests ×3, builds, install+launch check); PipelineIntegrationTests exercising MarkdownKit+TaskEngine+IndexKit lifecycles (toggle/recur/rescan-converge, editor≡list completion, 5-round idempotence, QuickAdd round-trip). 147 tests ×3 rounds green. Sonnet coverage auditor dispatched; opus adversarial review next. |

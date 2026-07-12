@@ -34,6 +34,7 @@ Two hard environment rules:
 - iOS: same with `-destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO` (iOS 27.0 simulator runtime is installed)
 - Package tests: `cd Packages/<Kit> && DEVELOPER_DIR=/Applications/Xcode-beta.app swift test --scratch-path ~/.cache/notetaker-build/<Kit>`
 - Formatting: `swiftformat --lint .`
+- **Full verify gate (run before every commit): `scripts/verify.sh 3 --install`** — all package tests ×3, both builds, launch check. Cross-module flows belong in IndexKit's PipelineIntegrationTests.
 - Deployment floor is 26.0 (runs on 26 and 27, built with the 27 SDK). Raise to 27.0 only when a 27-only API is required — check CI runner Xcode availability first.
 
 ## Current signing state
