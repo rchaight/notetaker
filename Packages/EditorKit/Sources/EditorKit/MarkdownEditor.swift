@@ -53,6 +53,8 @@ import TaskEngine
             textView.autoresizingMask = [.width]
             scrollView.hasHorizontalScroller = false
             textView.string = text
+            // Display-only glyph rendering (• bullets, ☐/☑ checkboxes).
+            textView.textContentStorage?.delegate = context.coordinator
             context.coordinator.livePreview = livePreview
             context.coordinator.restyle(textView)
             return scrollView
@@ -90,7 +92,7 @@ import TaskEngine
         }
 
         @MainActor
-        public final class Coordinator: NSObject, NSTextViewDelegate {
+        public final class Coordinator: NSObject, NSTextViewDelegate, @preconcurrency NSTextContentStorageDelegate {
             let text: Binding<String>
             let theme: MarkdownTheme
             var livePreview = true
@@ -146,6 +148,45 @@ import TaskEngine
                 if cursorParagraph(textView) != lastCursorLine {
                     restyle(textView)
                 }
+            }
+
+            public func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+                let selection = textView.selectedRange()
+                func apply(_ edit: EditResult) -> Bool {
+                    textView.insertText(edit.replacement, replacementRange: edit.range)
+                    textView.setSelectedRange(edit.selection)
+                    return true
+                }
+                switch commandSelector {
+                case #selector(NSResponder.insertNewline(_:)):
+                    if let edit = MarkdownEditing.newlineContinuation(in: textView.string, selection: selection) {
+                        return apply(edit)
+                    }
+                case #selector(NSResponder.insertTab(_:)):
+                    if let edit = MarkdownEditing.indentListItems(in: textView.string, selection: selection, outdent: false) {
+                        return apply(edit)
+                    }
+                case #selector(NSResponder.insertBacktab(_:)):
+                    if let edit = MarkdownEditing.indentListItems(in: textView.string, selection: selection, outdent: true) {
+                        return apply(edit)
+                    }
+                default:
+                    break
+                }
+                return false
+            }
+
+            public func textContentStorage(
+                _ textContentStorage: NSTextContentStorage, textParagraphWith range: NSRange
+            ) -> NSTextParagraph? {
+                guard livePreview,
+                      let storage = textContentStorage.textStorage,
+                      NSMaxRange(range) <= storage.length,
+                      let swapped = ListGlyphSubstitution.substituted(
+                          paragraph: storage.attributedSubstring(from: range)
+                      )
+                else { return nil }
+                return NSTextParagraph(attributedString: swapped)
             }
 
             public func textView(_ textView: NSTextView, clickedOnLink link: Any, at _: Int) -> Bool {
@@ -208,6 +249,8 @@ import TaskEngine
             textView.alwaysBounceVertical = true
             textView.textContainerInset = UIEdgeInsets(top: 16, left: 12, bottom: 16, right: 12)
             textView.text = text
+            (textView.textLayoutManager?.textContentManager as? NSTextContentStorage)?
+                .delegate = context.coordinator
             // Editable UITextViews don't tap links, so checkbox toggles get a
             // gesture that only fires when the touch lands on a token.
             let tap = UITapGestureRecognizer(
@@ -254,7 +297,7 @@ import TaskEngine
         }
 
         @MainActor
-        public final class Coordinator: NSObject, UITextViewDelegate, UIGestureRecognizerDelegate {
+        public final class Coordinator: NSObject, UITextViewDelegate, UIGestureRecognizerDelegate, @preconcurrency NSTextContentStorageDelegate {
             let text: Binding<String>
             let theme: MarkdownTheme
             var livePreview = true
@@ -303,6 +346,39 @@ import TaskEngine
             public func textViewDidChange(_ textView: UITextView) {
                 text.wrappedValue = textView.text
                 scheduleRestyle(textView)
+            }
+
+            public func textView(
+                _ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText replacement: String
+            ) -> Bool {
+                let full = textView.text ?? ""
+                let edit: EditResult? = switch replacement {
+                case "\n" where range.length == 0:
+                    MarkdownEditing.newlineContinuation(in: full, selection: range)
+                case "\t":
+                    MarkdownEditing.indentListItems(in: full, selection: range, outdent: false)
+                default:
+                    nil
+                }
+                guard let edit else { return true }
+                textView.textStorage.replaceCharacters(in: edit.range, with: edit.replacement)
+                textView.selectedRange = edit.selection
+                restyle(textView)
+                Task { @MainActor in text.wrappedValue = textView.text }
+                return false
+            }
+
+            public func textContentStorage(
+                _ textContentStorage: NSTextContentStorage, textParagraphWith range: NSRange
+            ) -> NSTextParagraph? {
+                guard livePreview,
+                      let storage = textContentStorage.textStorage,
+                      NSMaxRange(range) <= storage.length,
+                      let swapped = ListGlyphSubstitution.substituted(
+                          paragraph: storage.attributedSubstring(from: range)
+                      )
+                else { return nil }
+                return NSTextParagraph(attributedString: swapped)
             }
 
             public func textViewDidChangeSelection(_ textView: UITextView) {

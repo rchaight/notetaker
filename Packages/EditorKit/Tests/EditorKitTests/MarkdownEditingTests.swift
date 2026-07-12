@@ -78,3 +78,99 @@ struct MarkdownEditingTests {
         #expect(text == "  - [ ] nested item")
     }
 }
+
+struct ListTypingTests {
+    private func applyNewline(_ text: String, cursor: Int) -> (String, NSRange)? {
+        guard let edit = MarkdownEditing.newlineContinuation(in: text, selection: NSRange(location: cursor, length: 0))
+        else { return nil }
+        return ((text as NSString).replacingCharacters(in: edit.range, with: edit.replacement), edit.selection)
+    }
+
+    @Test func returnContinuesBullet() throws {
+        let (text, selection) = try #require(applyNewline("- first", cursor: 7))
+        #expect(text == "- first\n- ")
+        #expect(selection.location == 10)
+    }
+
+    @Test func returnContinuesNumberIncremented() throws {
+        let (text, _) = try #require(applyNewline("3. third", cursor: 8))
+        #expect(text == "3. third\n4. ")
+    }
+
+    @Test func returnContinuesTodoUnchecked() throws {
+        let (text, _) = try #require(applyNewline("- [x] done thing", cursor: 16))
+        #expect(text == "- [x] done thing\n- [ ] ")
+    }
+
+    @Test func returnOnEmptyItemEndsList() throws {
+        let full = "- item\n- "
+        let (text, selection) = try #require(applyNewline(full, cursor: 9))
+        #expect(text == "- item\n")
+        #expect(selection.location == 7)
+    }
+
+    @Test func returnOnPlainLineIsDefault() {
+        #expect(MarkdownEditing.newlineContinuation(in: "plain text", selection: NSRange(location: 5, length: 0)) == nil)
+    }
+
+    @Test func nestedItemKeepsIndentOnContinue() throws {
+        let (text, _) = try #require(applyNewline("  - nested", cursor: 10))
+        #expect(text == "  - nested\n  - ")
+    }
+
+    @Test func tabIndentsAndShiftTabOutdents() throws {
+        let edit = try #require(MarkdownEditing.indentListItems(
+            in: "- one\n- two", selection: NSRange(location: 0, length: 11), outdent: false
+        ))
+        let indented = ("- one\n- two" as NSString).replacingCharacters(in: edit.range, with: edit.replacement)
+        #expect(indented == "  - one\n  - two")
+
+        let back = try #require(MarkdownEditing.indentListItems(
+            in: indented, selection: NSRange(location: 0, length: (indented as NSString).length), outdent: true
+        ))
+        let outdented = (indented as NSString).replacingCharacters(in: back.range, with: back.replacement)
+        #expect(outdented == "- one\n- two")
+    }
+
+    @Test func tabOnPlainTextIsDefault() {
+        #expect(MarkdownEditing.indentListItems(
+            in: "no list here", selection: NSRange(location: 3, length: 0), outdent: false
+        ) == nil)
+    }
+}
+
+struct GlyphSubstitutionTests {
+    private func display(_ line: String) -> String? {
+        ListGlyphSubstitution.substituted(paragraph: NSAttributedString(string: line))?.string
+    }
+
+    @Test func swapsAreEqualLength() throws {
+        for (line, expectedGlyph) in [
+            ("- [ ] task", "☐"), ("- [x] done", "☑"), ("- bullet", "•"), ("* star", "•"),
+        ] {
+            let swapped = try #require(display(line))
+            #expect((swapped as NSString).length == (line as NSString).length,
+                    "display offsets must match backing store for: \(line)")
+            #expect(swapped.contains(expectedGlyph))
+        }
+    }
+
+    @Test func indentIsPreserved() throws {
+        let swapped = try #require(display("    - nested"))
+        #expect(swapped.hasPrefix("    "))
+        #expect(swapped.contains("•"))
+    }
+
+    @Test func numbersAndPlainLinesUntouched() {
+        #expect(display("1. numbered") == nil)
+        #expect(display("plain text") == nil)
+    }
+
+    @Test func attributesSurviveSwap() throws {
+        let source = NSMutableAttributedString(string: "- [ ] task")
+        source.addAttribute(.link, value: URL(string: "notetaker-task://toggle/2")!, range: NSRange(location: 2, length: 3))
+        let swapped = try #require(ListGlyphSubstitution.substituted(paragraph: source))
+        let link = swapped.attribute(.link, at: 2, effectiveRange: nil)
+        #expect(link != nil, "checkbox click-through must survive substitution")
+    }
+}

@@ -60,21 +60,11 @@ struct SyntaxMarkerTests {
         #expect(found.contains("```"))
     }
 
-    @Test func listBulletsHidden() {
-        let found = markers("- first\n- second\n")
-        #expect(found == ["- ", "- "])
-    }
-
-    @Test func orderedListNumbersHidden() {
-        let found = markers("1. first\n2. second\n")
-        #expect(found == ["1. ", "2. "])
-    }
-
-    @Test func taskItemHidesBulletKeepsCheckbox() {
-        let text = "- [ ] call the dean\n"
-        let found = markers(text)
-        // The "- " bullet hides; "[ ]" stays visible (styled as UI).
-        #expect(found.contains("- "))
-        #expect(!found.contains { $0.contains("[") })
+    @Test func listMarkersAreNotHidden() {
+        // Bullets/checkboxes render as glyphs via display substitution;
+        // ordered numbers stay visible. The hider leaves all of them alone.
+        #expect(markers("- first\n- second\n").isEmpty)
+        #expect(markers("1. first\n2. second\n").isEmpty)
+        #expect(markers("- [ ] call the dean\n").isEmpty)
     }
 }

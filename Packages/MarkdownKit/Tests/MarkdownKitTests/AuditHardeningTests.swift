@@ -23,11 +23,7 @@ struct AuditHardeningTests {
         // used 12 vs 24 chars and diverged — the audit caught it).
         let text = "- [ ] l1\n  - [ ] l2\n    - [ ] l3\n      - [ ] l4\n        - [ ] l5\n"
         let styled = MarkdownStyler.styleRanges(in: text)
-        let bullets = SyntaxMarkers.markerRanges(in: text, styled: styled)
-            .map { (text as NSString).substring(with: $0) }
-            .filter { $0.hasSuffix("- ") }
         let tokens = TaskCheckboxes.tokens(in: text, styled: styled)
-        #expect(bullets.count == 5, "every nesting depth hides its bullet")
         #expect(tokens.count == 5, "every nesting depth finds its checkbox token")
     }
 

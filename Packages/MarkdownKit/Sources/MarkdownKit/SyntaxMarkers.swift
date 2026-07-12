@@ -89,15 +89,10 @@ public enum SyntaxMarkers {
                     }
                 }
             case .listItem:
-                // Hide the "- " / "* " / "1. " bullet; a task item then leads
-                // with its visible [ ]/[x] checkbox token.
-                // Same 24-char head window as TaskCheckboxes.tokens — the two
-                // must agree or deep-nested bullets hide while tokens miss.
-                appendLinePrefixMarkers(
-                    pattern: "^ *(?:[-*+]|[0-9]+[.)]) ",
-                    range: NSRange(location: item.range.location, length: min(item.range.length, 24)),
-                    in: ns, to: &markers, firstLineOnly: true
-                )
+                // Bullets and checkboxes render as glyphs via equal-length
+                // display substitution (EditorKit); ordered numbers stay
+                // visible by design. Nothing to hide here anymore.
+                continue
             case .link:
                 // [label](destination) — hide "[" and "](...)".
                 let content = ns.substring(with: item.range)

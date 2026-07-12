@@ -167,3 +167,98 @@ public enum MarkdownEditing {
         )
     }
 }
+
+// MARK: - List typing behaviors
+
+public extension MarkdownEditing {
+    /// Pressing Return inside a list item: continue the list with the next
+    /// prefix (same bullet, incremented number, fresh "[ ]"), or — when the
+    /// item is empty — end the list by stripping the prefix. nil = plain
+    /// newline.
+    static func newlineContinuation(in text: String, selection: NSRange) -> EditResult? {
+        let ns = text as NSString
+        guard selection.location != NSNotFound, NSMaxRange(selection) <= ns.length else { return nil }
+        let lineRange = ns.paragraphRange(for: NSRange(location: selection.location, length: 0))
+        var line = ns.substring(with: lineRange)
+        if line.hasSuffix("\n") { line.removeLast() }
+
+        guard let item = parseListPrefix(line) else { return nil }
+
+        let contentAfterPrefix = line.dropFirst(item.indent.count + item.prefix.count)
+        if contentAfterPrefix.trimmingCharacters(in: .whitespaces).isEmpty {
+            // Empty item: Return ends the list (strip the prefix, keep line).
+            let prefixRange = NSRange(
+                location: lineRange.location + (item.indent as NSString).length,
+                length: (item.prefix as NSString).length
+            )
+            return EditResult(
+                range: prefixRange, replacement: "",
+                selection: NSRange(location: prefixRange.location, length: 0)
+            )
+        }
+
+        let insertion = "\n" + item.indent + item.continuationPrefix
+        return EditResult(
+            range: selection, replacement: insertion,
+            selection: NSRange(location: selection.location + (insertion as NSString).length, length: 0)
+        )
+    }
+
+    /// Tab / Shift-Tab on list lines: nest or un-nest by two spaces.
+    /// nil when the selection isn't on list items (caller inserts a tab).
+    static func indentListItems(in text: String, selection: NSRange, outdent: Bool) -> EditResult? {
+        let ns = text as NSString
+        guard selection.location != NSNotFound, NSMaxRange(selection) <= ns.length else { return nil }
+        let lineRange = ns.paragraphRange(for: selection)
+        let block = ns.substring(with: lineRange)
+        let hadNewline = block.hasSuffix("\n")
+        let lines = (hadNewline ? String(block.dropLast()) : block).components(separatedBy: "\n")
+        guard lines.contains(where: { parseListPrefix($0) != nil }) else { return nil }
+
+        let updated = lines.map { line -> String in
+            guard parseListPrefix(line) != nil else { return line }
+            if outdent {
+                if line.hasPrefix("  ") { return String(line.dropFirst(2)) }
+                if line.hasPrefix("\t") { return String(line.dropFirst(1)) }
+                return line
+            }
+            return "  " + line
+        }
+        let replacement = updated.joined(separator: "\n") + (hadNewline ? "\n" : "")
+        let delta = (replacement as NSString).length - (block as NSString).length
+        return EditResult(
+            range: lineRange, replacement: replacement,
+            selection: NSRange(
+                location: max(lineRange.location, selection.location + (outdent ? max(delta, -2) : 2)),
+                length: selection.length
+            )
+        )
+    }
+
+    struct ListPrefixInfo {
+        public let indent: String
+        public let prefix: String
+        public let continuationPrefix: String
+    }
+
+    /// Recognizes task, bullet, and ordered prefixes (in that order).
+    static func parseListPrefix(_ line: String) -> ListPrefixInfo? {
+        let indent = String(line.prefix(while: { $0 == " " || $0 == "\t" }))
+        let rest = line.dropFirst(indent.count)
+        for task in ["- [ ] ", "- [x] ", "- [X] "] where rest.hasPrefix(task) {
+            return ListPrefixInfo(indent: indent, prefix: task, continuationPrefix: "- [ ] ")
+        }
+        for bullet in ["- ", "* ", "+ "] where rest.hasPrefix(bullet) {
+            return ListPrefixInfo(indent: indent, prefix: bullet, continuationPrefix: bullet)
+        }
+        if let match = rest.prefixMatch(of: #/(?<num>[0-9]+)(?<sep>[.)]) /#) {
+            let next = (Int(match.num) ?? 0) + 1
+            return ListPrefixInfo(
+                indent: indent,
+                prefix: String(match.0),
+                continuationPrefix: "\(next)\(match.sep) "
+            )
+        }
+        return nil
+    }
+}
