@@ -245,7 +245,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 
 - [x] Wikilink + `==highlight==` styling: `[[wikilinks]]` accent+underline, highlight runs get marker-pen tint (attributes-only).
 - [x] Word count / reading time chip on the editor; reflects selection when non-empty.
-- [ ] Token-based theme palette: named tokens (bg/surface/accent/text tiers/code-bg/quote-accent), OLED-safe dark values.
+- [x] Token-based theme palette: named tokens (bg/surface/accent/text tiers/code-bg/quote-accent), OLED-safe dark values.
 - [ ] Focus dimming: non-cursor paragraphs dim to secondary color, toggleable from the format bar.
 - [ ] Blockquote accent bar: indent + tint via paragraph style, true left bar via fragment drawing.
 - [ ] Horizontal rules render as real divider lines off-cursor (equal-length substitution/attachment).

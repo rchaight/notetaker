@@ -119,6 +119,49 @@ public struct MarkdownTheme: @unchecked Sendable {
         PlatformColor.systemYellow.withAlphaComponent(0.30)
     }
 
+    // MARK: - Surface tokens
+
+    /// The writing surface. Dark stays off pure black (halation guidance:
+    /// ~#1C1C1E, matching system grouped backgrounds) and light stays paper
+    /// white; both resolve dynamically with the appearance.
+    public var editorBackground: PlatformColor {
+        Self.dynamicColor(
+            light: PlatformColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0),
+            dark: PlatformColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1.0)
+        )
+    }
+
+    /// Raised elements over the writing surface (cards, badges).
+    public var surfaceBackground: PlatformColor {
+        Self.dynamicColor(
+            light: PlatformColor(red: 0.96, green: 0.96, blue: 0.97, alpha: 1.0),
+            dark: PlatformColor(red: 0.17, green: 0.17, blue: 0.18, alpha: 1.0)
+        )
+    }
+
+    /// Blockquote bar/tint token (consumed by the quote rendering pass).
+    public var quoteAccent: PlatformColor {
+        accentColor.withAlphaComponent(0.75)
+    }
+
+    /// Selection tint derived from the accent so selected runs, the caret,
+    /// and links all share one hue.
+    public var selectionBackground: PlatformColor {
+        accentColor.withAlphaComponent(0.25)
+    }
+
+    static func dynamicColor(light: PlatformColor, dark: PlatformColor) -> PlatformColor {
+        #if canImport(AppKit)
+            NSColor(name: nil) { appearance in
+                appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+            }
+        #else
+            UIColor { traits in
+                traits.userInterfaceStyle == .dark ? dark : light
+            }
+        #endif
+    }
+
     private var italicFont: PlatformFont {
         #if canImport(AppKit)
             NSFontManager.shared.convert(baseFont, toHaveTrait: .italicFontMask)

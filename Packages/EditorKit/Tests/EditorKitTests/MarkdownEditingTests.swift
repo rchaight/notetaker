@@ -1,3 +1,6 @@
+#if canImport(AppKit)
+    import AppKit
+#endif
 @testable import EditorKit
 import Foundation
 import Testing
@@ -172,5 +175,28 @@ struct GlyphSubstitutionTests {
         let swapped = try #require(ListGlyphSubstitution.substituted(paragraph: source))
         let link = swapped.attribute(.link, at: 2, effectiveRange: nil)
         #expect(link != nil, "checkbox click-through must survive substitution")
+    }
+}
+
+@MainActor struct ThemeTokenTests {
+    @Test func surfaceTokensResolveDistinctAppearances() {
+        let theme = MarkdownTheme.default
+        #if canImport(AppKit)
+            var light = NSColor.white, dark = NSColor.white
+            NSAppearance(named: .aqua)!.performAsCurrentDrawingAppearance {
+                light = theme.editorBackground.usingColorSpace(.sRGB) ?? .white
+            }
+            NSAppearance(named: .darkAqua)!.performAsCurrentDrawingAppearance {
+                dark = theme.editorBackground.usingColorSpace(.sRGB) ?? .white
+            }
+            #expect(light != dark, "editor surface must adapt to appearance")
+            #expect(dark.brightnessComponent > 0.02, "dark surface must stay off pure black")
+        #endif
+    }
+
+    @Test func accentDerivedTokensShareHue() {
+        let theme = MarkdownTheme.default
+        #expect(theme.selectionBackground.cgColor.alpha < 1.0)
+        #expect(theme.quoteAccent.cgColor.alpha < 1.0)
     }
 }

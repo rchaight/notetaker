@@ -46,6 +46,11 @@ import TaskEngine
             // TextKit 2; .complete allows full inline rewrites.
             textView.writingToolsBehavior = .complete
             textView.textContainerInset = NSSize(width: 16, height: 16)
+            textView.drawsBackground = true
+            textView.backgroundColor = theme.editorBackground
+            scrollView.drawsBackground = false
+            textView.insertionPointColor = theme.accentColor
+            textView.selectedTextAttributes = [.backgroundColor: theme.selectionBackground]
             // Hard-wrap to the view: long lines must never widen the
             // window (SwiftUI windows grow to content ideal width).
             textView.isHorizontallyResizable = false
@@ -248,6 +253,8 @@ import TaskEngine
             textView.writingToolsBehavior = .complete
             textView.alwaysBounceVertical = true
             textView.textContainerInset = UIEdgeInsets(top: 16, left: 12, bottom: 16, right: 12)
+            textView.backgroundColor = theme.editorBackground
+            textView.tintColor = theme.accentColor
             textView.text = text
             (textView.textLayoutManager?.textContentManager as? NSTextContentStorage)?
                 .delegate = context.coordinator
