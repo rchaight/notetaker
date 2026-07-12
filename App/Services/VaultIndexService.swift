@@ -116,10 +116,14 @@ final class VaultIndexService {
         }
     }
 
+    /// Files the user (or the share sheet, or another device) dropped into
+    /// Imports/Inbox — anything non-markdown there gets converted on scan.
+    private var inboxFailures: Set<String> = []
+
     /// Authoritative incremental sync from the real filesystem: mtime-moved
     /// files get re-read (the indexer's hash check catches touch-without-
     /// change), iCloud placeholders count as present and start downloading,
-    /// vanished notes are pruned.
+    /// vanished notes are pruned. Inbox drops get converted.
     private func reindexFromDisk() async {
         guard let indexer, let database, let root else { return }
         var changed = false
@@ -127,6 +131,20 @@ final class VaultIndexService {
 
         for item in VaultEnumerator.snapshot(of: root) where !item.isDirectory {
             let path = item.relativePath
+            if path.hasPrefix("Imports/Inbox/"), !path.lowercased().hasSuffix(".md"),
+               !path.hasSuffix(".icloud"), !inboxFailures.contains(path) {
+                // The import-inbox: convert the drop, then consume it. On
+                // failure leave it (a Mac with the Docling server picks it
+                // up on a later scan — this IS the iOS→Mac relay).
+                switch await importFile(item.url) {
+                case .success:
+                    try? await store.delete(at: item.url)
+                    changed = true
+                case .failure:
+                    inboxFailures.insert(path) // retry next launch
+                }
+                continue
+            }
             if path.lowercased().hasSuffix(".md") {
                 present.insert(path)
                 if let modified = item.modificationDate, knownMTimes[path] == modified {
