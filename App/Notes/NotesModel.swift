@@ -166,19 +166,21 @@ final class NotesModel {
         }
     }
 
-    func createNote() {
+    func createNote(in folder: String = "") {
         guard let root else { return }
         Task {
             let existing = Set(notes.map(\.relativePath))
-            var name = "Untitled.md"
+            let prefix = folder.isEmpty ? "" : folder + "/"
+            var name = prefix + "Untitled.md"
             var counter = 2
             while existing.contains(name) {
-                name = "Untitled \(counter).md"
+                name = prefix + "Untitled \(counter).md"
                 counter += 1
             }
             let url = root.appendingPathComponent(name)
             do {
-                try await store.writeString("# \(name.replacingOccurrences(of: ".md", with: ""))\n\n", to: url)
+                let title = url.deletingPathExtension().lastPathComponent
+                try await store.writeString("# \(title)\n\n", to: url)
                 if let root = self.root {
                     apply(VaultEnumerator.snapshot(of: root))
                 }
@@ -196,13 +198,14 @@ final class NotesModel {
         }
     }
 
-    func createFolder(named name: String) {
+    func createFolder(named name: String, in parent: String = "") {
         guard let root else { return }
         let cleaned = name.trimmingCharacters(in: .whitespaces)
             .replacingOccurrences(of: "/", with: "-")
         guard !cleaned.isEmpty else { return }
+        let path = parent.isEmpty ? cleaned : parent + "/" + cleaned
         Task {
-            try? await store.createFolder(at: root.appendingPathComponent(cleaned, isDirectory: true))
+            try? await store.createFolder(at: root.appendingPathComponent(path, isDirectory: true))
             if let root = self.root {
                 apply(VaultEnumerator.snapshot(of: root))
             }

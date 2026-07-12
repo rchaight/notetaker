@@ -21,6 +21,7 @@ struct NotesView: View {
     @State private var aiStatus: String?
     @State private var showingNewFolder = false
     @State private var newFolderName = ""
+    @State private var newFolderParent = ""
     @State private var showInspector = false
     @State private var scrollTarget: NSRange?
 
@@ -41,6 +42,7 @@ struct NotesView: View {
                         .keyboardShortcut("i", modifiers: [.command, .shift])
                         .help("Convert a PDF, image, RTF, HTML, or text file to a markdown note (⇧⌘I)")
                         Button("New Folder", systemImage: "folder.badge.plus") {
+                            newFolderParent = ""
                             showingNewFolder = true
                         }
                     }
@@ -84,8 +86,9 @@ struct NotesView: View {
         .alert("New Folder", isPresented: $showingNewFolder) {
             TextField("Folder name", text: $newFolderName)
             Button("Create") {
-                model.createFolder(named: newFolderName)
+                model.createFolder(named: newFolderName, in: newFolderParent)
                 newFolderName = ""
+                newFolderParent = ""
             }
             Button("Cancel", role: .cancel) { newFolderName = "" }
         }
@@ -388,6 +391,15 @@ struct NotesView: View {
                 }
             } label: {
                 Label(name, systemImage: "folder")
+                    .contextMenu {
+                        Button("New Note Here", systemImage: "square.and.pencil") {
+                            model.createNote(in: folder)
+                        }
+                        Button("New Subfolder…", systemImage: "folder.badge.plus") {
+                            newFolderParent = folder
+                            showingNewFolder = true
+                        }
+                    }
             }
         )
     }
