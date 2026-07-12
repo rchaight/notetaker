@@ -224,3 +224,14 @@ struct GlyphSubstitutionTests {
         #expect(markerColor == .clear, "marker hiding must win over focus dim")
     }
 }
+
+struct BlockquoteDetectionTests {
+    @Test func detectsQuoteParagraphs() {
+        #expect(BlockquoteDetection.isQuoteParagraph("> quoted"))
+        #expect(BlockquoteDetection.isQuoteParagraph("   > indented quote"))
+        #expect(BlockquoteDetection.isQuoteParagraph("> > nested"))
+        #expect(!BlockquoteDetection.isQuoteParagraph("    > four spaces is code"))
+        #expect(!BlockquoteDetection.isQuoteParagraph("plain"))
+        #expect(!BlockquoteDetection.isQuoteParagraph(""))
+    }
+}

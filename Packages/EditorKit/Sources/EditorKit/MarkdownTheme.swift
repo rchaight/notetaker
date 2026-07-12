@@ -99,7 +99,7 @@ public struct MarkdownTheme: @unchecked Sendable {
             [.foregroundColor: accentColor,
              .underlineStyle: NSUnderlineStyle.single.rawValue]
         case .blockQuote:
-            [.foregroundColor: secondaryColor]
+            [.foregroundColor: secondaryColor, .paragraphStyle: quoteParagraphStyle]
         case .taskCheckbox(checked: true):
             [.strikethroughStyle: NSUnderlineStyle.single.rawValue,
              .foregroundColor: secondaryColor]
@@ -142,6 +142,14 @@ public struct MarkdownTheme: @unchecked Sendable {
     /// Blockquote bar/tint token (consumed by the quote rendering pass).
     public var quoteAccent: PlatformColor {
         accentColor.withAlphaComponent(0.75)
+    }
+
+    /// Indents quote text clear of the drawn accent bar.
+    var quoteParagraphStyle: NSParagraphStyle {
+        let style = NSMutableParagraphStyle()
+        style.firstLineHeadIndent = 14
+        style.headIndent = 14
+        return style
     }
 
     /// Focus mode: paragraphs away from the cursor recede to this color.

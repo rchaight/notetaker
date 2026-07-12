@@ -63,6 +63,8 @@ import TaskEngine
             textView.string = text
             // Display-only glyph rendering (• bullets, ☐/☑ checkboxes).
             textView.textContentStorage?.delegate = context.coordinator
+            // Custom fragment drawing (blockquote accent bar).
+            textView.textLayoutManager?.delegate = context.coordinator
             context.coordinator.livePreview = livePreview
             context.coordinator.focusMode = focusMode
             context.coordinator.restyle(textView)
@@ -103,7 +105,8 @@ import TaskEngine
         }
 
         @MainActor
-        public final class Coordinator: NSObject, NSTextViewDelegate, @preconcurrency NSTextContentStorageDelegate {
+        public final class Coordinator: NSObject, NSTextViewDelegate, @preconcurrency NSTextContentStorageDelegate,
+            @preconcurrency NSTextLayoutManagerDelegate {
             let text: Binding<String>
             let theme: MarkdownTheme
             var livePreview = true
@@ -206,6 +209,22 @@ import TaskEngine
                 return NSTextParagraph(attributedString: swapped)
             }
 
+            public func textLayoutManager(
+                _ textLayoutManager: NSTextLayoutManager,
+                textLayoutFragmentFor location: NSTextLocation,
+                in textElement: NSTextElement
+            ) -> NSTextLayoutFragment {
+                if let paragraph = textElement as? NSTextParagraph,
+                   BlockquoteDetection.isQuoteParagraph(paragraph.attributedString.string) {
+                    let fragment = QuoteBarLayoutFragment(
+                        textElement: textElement, range: textElement.elementRange
+                    )
+                    fragment.barColor = theme.quoteAccent
+                    return fragment
+                }
+                return NSTextLayoutFragment(textElement: textElement, range: textElement.elementRange)
+            }
+
             public func textView(_ textView: NSTextView, clickedOnLink link: Any, at _: Int) -> Bool {
                 guard let url = link as? URL,
                       let offset = MarkdownHighlighter.toggleOffset(from: url)
@@ -273,6 +292,7 @@ import TaskEngine
             textView.text = text
             (textView.textLayoutManager?.textContentManager as? NSTextContentStorage)?
                 .delegate = context.coordinator
+            textView.textLayoutManager?.delegate = context.coordinator
             // Editable UITextViews don't tap links, so checkbox toggles get a
             // gesture that only fires when the touch lands on a token.
             let tap = UITapGestureRecognizer(
@@ -322,7 +342,8 @@ import TaskEngine
         }
 
         @MainActor
-        public final class Coordinator: NSObject, UITextViewDelegate, UIGestureRecognizerDelegate, @preconcurrency NSTextContentStorageDelegate {
+        public final class Coordinator: NSObject, UITextViewDelegate, UIGestureRecognizerDelegate,
+            @preconcurrency NSTextContentStorageDelegate, @preconcurrency NSTextLayoutManagerDelegate {
             let text: Binding<String>
             let theme: MarkdownTheme
             var livePreview = true
@@ -406,6 +427,22 @@ import TaskEngine
                       )
                 else { return nil }
                 return NSTextParagraph(attributedString: swapped)
+            }
+
+            public func textLayoutManager(
+                _ textLayoutManager: NSTextLayoutManager,
+                textLayoutFragmentFor location: NSTextLocation,
+                in textElement: NSTextElement
+            ) -> NSTextLayoutFragment {
+                if let paragraph = textElement as? NSTextParagraph,
+                   BlockquoteDetection.isQuoteParagraph(paragraph.attributedString.string) {
+                    let fragment = QuoteBarLayoutFragment(
+                        textElement: textElement, range: textElement.elementRange
+                    )
+                    fragment.barColor = theme.quoteAccent
+                    return fragment
+                }
+                return NSTextLayoutFragment(textElement: textElement, range: textElement.elementRange)
             }
 
             public func textViewDidChangeSelection(_ textView: UITextView) {
