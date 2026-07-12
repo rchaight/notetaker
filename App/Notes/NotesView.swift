@@ -53,6 +53,11 @@ struct NotesView: View {
                             newFolderParent = ""
                             showingNewFolder = true
                         }
+                        Button("Today", systemImage: "calendar") {
+                            model.openDailyNote()
+                        }
+                        .keyboardShortcut("d", modifiers: [.command, .shift])
+                        .help("Open today's daily note (⇧⌘D)")
                     }
                 }
                 .fileImporter(
@@ -471,6 +476,18 @@ struct NotesView: View {
                             editorCommand = EditorCommandRequest(.insertBlock(
                                 "![\(alt)](\(path))", cursorOffset: nil
                             ))
+                        }
+                    }
+                    if let day = model.openDailyNoteDate {
+                        Button("Previous Day", systemImage: "chevron.backward") {
+                            model.openDailyNote(
+                                for: Calendar.current.date(byAdding: .day, value: -1, to: day) ?? day
+                            )
+                        }
+                        Button("Next Day", systemImage: "chevron.forward") {
+                            model.openDailyNote(
+                                for: Calendar.current.date(byAdding: .day, value: 1, to: day) ?? day
+                            )
                         }
                     }
                     Button("Focus", systemImage: focusMode ? "circle.circle.fill" : "circle.circle") {

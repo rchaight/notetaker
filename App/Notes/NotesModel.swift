@@ -215,6 +215,39 @@ final class NotesModel {
         return relative.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? relative
     }
 
+    /// Opens (creating if needed) the daily note for `date` under Daily/.
+    func openDailyNote(for date: Date = Date()) {
+        guard let root else { return }
+        Task {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd"
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            let day = formatter.string(from: date)
+            let relative = "Daily/\(day).md"
+            let url = root.appendingPathComponent(relative)
+            if !notes.contains(where: { $0.relativePath == relative }) {
+                try? await store.createFolder(
+                    at: root.appendingPathComponent("Daily", isDirectory: true)
+                )
+                let weekday = date.formatted(.dateTime.weekday(.wide).month(.wide).day().year())
+                try? await store.writeString("# \(day)\n\(weekday)\n\n", to: url)
+                apply(VaultEnumerator.snapshot(of: root))
+            }
+            await performSelect(relative)
+        }
+    }
+
+    /// The date of the currently open daily note, if it is one.
+    var openDailyNoteDate: Date? {
+        guard let selectedID, selectedID.hasPrefix("Daily/"), selectedID.hasSuffix(".md")
+        else { return nil }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        let day = String(selectedID.dropFirst("Daily/".count).dropLast(3))
+        return formatter.date(from: day)
+    }
+
     func createNote(in folder: String = "") {
         guard let root else { return }
         Task {

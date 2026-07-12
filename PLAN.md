@@ -260,7 +260,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 - [x] Tag + [[wikilink]] autocomplete while typing in the editor.
 - [x] Sidebar sections: Pinned notes, Recents, Bookmarks.
 - [x] Saved smart searches (persisted search queries as sidebar entries).
-- [ ] Daily note spine (Today note command + calendar navigation).
+- [x] Daily note spine (Today note command + calendar navigation).
 - [ ] Note templates (template files with placeholders).
 - [ ] Multi-vault switcher.
 
