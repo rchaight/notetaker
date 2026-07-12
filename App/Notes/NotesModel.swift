@@ -33,11 +33,27 @@ final class NotesModel {
     private var loadedURL: URL?
     private var dirty = false
 
+    private var started = false
+
     func start() async {
-        guard state == .loading else { return }
+        guard !started else { return }
+        started = true
+
+        // Show the list IMMEDIATELY from the last known vault root — cold
+        // ubiquity resolution can take seconds and must never blank the UI.
+        if let cached = UserDefaults.standard.string(forKey: "lastVaultRoot") {
+            let url = URL(fileURLWithPath: cached, isDirectory: true)
+            if FileManager.default.fileExists(atPath: url.path) {
+                root = url
+                apply(VaultEnumerator.snapshot(of: url))
+                state = .ready
+            }
+        }
+
         do {
             let documents = try await UbiquityContainer.documentsURL()
             root = documents
+            UserDefaults.standard.set(documents.path, forKey: "lastVaultRoot")
             apply(VaultEnumerator.snapshot(of: documents))
             state = .ready
 
@@ -49,6 +65,10 @@ final class NotesModel {
                 }
             }
         } catch {
+            // Cached root already serving? Keep it — don't downgrade the UI.
+            if state == .ready, root != nil {
+                return
+            }
             // No iCloud (signed out, disabled, or simulator): fall back to a
             // local vault so the app still works; notes migrate to iCloud
             // when it becomes available (vault root is re-resolved on launch).

@@ -10,7 +10,9 @@ import VaultKit
 /// right. Every edit autosaves (debounced, coordinated) to the .md file.
 struct NotesView: View {
     let indexService: VaultIndexService
-    @State private var model = NotesModel()
+    /// Owned by AppShell: tab switches must not reset vault/tab/selection
+    /// state (a fresh model also re-blocks on cold container resolution).
+    let model: NotesModel
     @State private var livePreview = true
     @State private var searchText = ""
     @State private var semanticIds: [String] = []

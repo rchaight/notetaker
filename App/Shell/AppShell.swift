@@ -4,11 +4,12 @@ import SwiftUI
 /// tab bar on iPhone). Placeholder content until M1–M3 land.
 struct AppShell: View {
     @State private var indexService = VaultIndexService()
+    @State private var notesModel = NotesModel()
 
     var body: some View {
         TabView {
             Tab("Notes", systemImage: "note.text") {
-                NotesView(indexService: indexService)
+                NotesView(indexService: indexService, model: notesModel)
             }
             Tab("To-Do", systemImage: "checklist") {
                 TodoView(service: indexService)
