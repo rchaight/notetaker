@@ -108,7 +108,7 @@ public struct MarkdownTheme: @unchecked Sendable {
              .underlineStyle: NSUnderlineStyle.single.rawValue]
         case .highlightMark:
             [.backgroundColor: highlightBackground]
-        case .listItem, .taskCheckbox, .thematicBreak, .table:
+        case .listItem, .taskCheckbox, .thematicBreak, .table, .image:
             [:]
         }
     }
@@ -142,6 +142,15 @@ public struct MarkdownTheme: @unchecked Sendable {
     /// Blockquote bar/tint token (consumed by the quote rendering pass).
     public var quoteAccent: PlatformColor {
         accentColor.withAlphaComponent(0.75)
+    }
+
+    /// Vertical room reserved under a standalone image line for its
+    /// drawn thumbnail (thumbnail max height + gap).
+    public static let imageThumbnailHeight: CGFloat = 140
+    public var imageParagraphStyle: NSParagraphStyle {
+        let style = NSMutableParagraphStyle()
+        style.paragraphSpacing = Self.imageThumbnailHeight + 10
+        return style
     }
 
     /// Indents quote text clear of the drawn accent bar.

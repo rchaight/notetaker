@@ -15,6 +15,7 @@ import TaskEngine
         var theme: MarkdownTheme
         var livePreview: Bool
         var focusMode: Bool
+        var imageBase: URL?
 
         public init(
             text: Binding<String>,
@@ -22,7 +23,8 @@ import TaskEngine
             command: Binding<EditorCommandRequest?> = .constant(nil),
             theme: MarkdownTheme = .default,
             livePreview: Bool = true,
-            focusMode: Bool = false
+            focusMode: Bool = false,
+            imageBase: URL? = nil
         ) {
             _text = text
             _scrollTarget = scrollTarget
@@ -30,6 +32,7 @@ import TaskEngine
             self.theme = theme
             self.livePreview = livePreview
             self.focusMode = focusMode
+            self.imageBase = imageBase
         }
 
         public func makeCoordinator() -> Coordinator {
@@ -67,6 +70,7 @@ import TaskEngine
             textView.textLayoutManager?.delegate = context.coordinator
             context.coordinator.livePreview = livePreview
             context.coordinator.focusMode = focusMode
+            context.coordinator.imageBase = imageBase
             context.coordinator.restyle(textView)
             return scrollView
         }
@@ -77,6 +81,7 @@ import TaskEngine
                 || context.coordinator.focusMode != focusMode
             context.coordinator.livePreview = livePreview
             context.coordinator.focusMode = focusMode
+            context.coordinator.imageBase = imageBase
             if textView.string != text {
                 textView.string = text
                 context.coordinator.restyle(textView)
@@ -111,6 +116,7 @@ import TaskEngine
             let theme: MarkdownTheme
             var livePreview = true
             var focusMode = false
+            var imageBase: URL?
             var lastCommandID: UUID?
             private var lastCursorLine: NSRange?
             private var pendingRestyle: Task<Void, Never>?
@@ -230,6 +236,14 @@ import TaskEngine
                         fragment.lineColor = theme.focusDimColor
                         return fragment
                     }
+                    if let source = ImageThumbnails.standaloneImageSource(content) {
+                        let fragment = ImageLayoutFragment(
+                            textElement: textElement, range: textElement.elementRange
+                        )
+                        fragment.source = source
+                        fragment.baseURL = imageBase
+                        return fragment
+                    }
                 }
                 return NSTextLayoutFragment(textElement: textElement, range: textElement.elementRange)
             }
@@ -265,6 +279,7 @@ import TaskEngine
         var theme: MarkdownTheme
         var livePreview: Bool
         var focusMode: Bool
+        var imageBase: URL?
 
         public init(
             text: Binding<String>,
@@ -272,7 +287,8 @@ import TaskEngine
             command: Binding<EditorCommandRequest?> = .constant(nil),
             theme: MarkdownTheme = .default,
             livePreview: Bool = true,
-            focusMode: Bool = false
+            focusMode: Bool = false,
+            imageBase: URL? = nil
         ) {
             _text = text
             _scrollTarget = scrollTarget
@@ -280,6 +296,7 @@ import TaskEngine
             self.theme = theme
             self.livePreview = livePreview
             self.focusMode = focusMode
+            self.imageBase = imageBase
         }
 
         public func makeCoordinator() -> Coordinator {
@@ -312,6 +329,7 @@ import TaskEngine
             textView.addGestureRecognizer(tap)
             context.coordinator.livePreview = livePreview
             context.coordinator.focusMode = focusMode
+            context.coordinator.imageBase = imageBase
             context.coordinator.restyle(textView)
             return textView
         }
@@ -321,6 +339,7 @@ import TaskEngine
                 || context.coordinator.focusMode != focusMode
             context.coordinator.livePreview = livePreview
             context.coordinator.focusMode = focusMode
+            context.coordinator.imageBase = imageBase
             if textView.text != text {
                 textView.text = text
                 context.coordinator.restyle(textView)
@@ -357,6 +376,7 @@ import TaskEngine
             let theme: MarkdownTheme
             var livePreview = true
             var focusMode = false
+            var imageBase: URL?
             var lastCommandID: UUID?
             private var lastCursorLine: NSRange?
             private var pendingRestyle: Task<Void, Never>?
@@ -457,6 +477,14 @@ import TaskEngine
                             textElement: textElement, range: textElement.elementRange
                         )
                         fragment.lineColor = theme.focusDimColor
+                        return fragment
+                    }
+                    if let source = ImageThumbnails.standaloneImageSource(content) {
+                        let fragment = ImageLayoutFragment(
+                            textElement: textElement, range: textElement.elementRange
+                        )
+                        fragment.source = source
+                        fragment.baseURL = imageBase
                         return fragment
                     }
                 }

@@ -263,3 +263,35 @@ struct ThematicBreakDetectionTests {
         #expect((font?.pointSize ?? 0) > 1, "row height must not collapse")
     }
 }
+
+struct ImageThumbnailTests {
+    @Test func standaloneImageDetection() {
+        #expect(ImageThumbnails.standaloneImageSource("![alt](pic.png)") == "pic.png")
+        #expect(ImageThumbnails.standaloneImageSource("  ![](sub/photo.jpg)\n") == "sub/photo.jpg")
+        #expect(ImageThumbnails.standaloneImageSource("text ![alt](pic.png)") == nil)
+        #expect(ImageThumbnails.standaloneImageSource("![alt](pic.png) tail") == nil)
+        #expect(ImageThumbnails.standaloneImageSource("![alt]()") == nil)
+        #expect(ImageThumbnails.standaloneImageSource("[link](url)") == nil)
+    }
+
+    @Test func localResolutionOnly() {
+        let base = URL(fileURLWithPath: "/vault/Notes")
+        #expect(ImageThumbnails.resolveLocalURL("img.png", base: base)?.path == "/vault/Notes/img.png")
+        #expect(ImageThumbnails.resolveLocalURL("../Assets/i.png", base: base)?.path == "/vault/Assets/i.png")
+        #expect(ImageThumbnails.resolveLocalURL("/abs/i.png", base: nil)?.path == "/abs/i.png")
+        #expect(ImageThumbnails.resolveLocalURL("https://example.com/i.png", base: base) == nil)
+        #expect(ImageThumbnails.resolveLocalURL("rel.png", base: nil) == nil)
+    }
+}
+
+@MainActor struct ImageSpacingTests {
+    @Test func standaloneImageLineReservesThumbnailRoom() {
+        let storage = NSTextStorage(string: "before\n\n![shot](s.png)\n\nafter\n")
+        MarkdownHighlighter.highlight(storage)
+        let at = (storage.string as NSString).range(of: "![shot]").location
+        let style = storage.attribute(.paragraphStyle, at: at, effectiveRange: nil) as? NSParagraphStyle
+        #expect((style?.paragraphSpacing ?? 0) >= MarkdownTheme.imageThumbnailHeight)
+        let before = storage.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        #expect((before?.paragraphSpacing ?? 0) < MarkdownTheme.imageThumbnailHeight)
+    }
+}

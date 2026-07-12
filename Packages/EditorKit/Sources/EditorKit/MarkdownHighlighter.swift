@@ -35,6 +35,16 @@ public enum MarkdownHighlighter {
                 storage.addAttributes(attributes, range: item.range)
             }
         }
+        // Standalone image lines reserve room below for the thumbnail the
+        // layout fragment draws.
+        for item in styled {
+            guard case .image = item.kind, NSMaxRange(item.range) <= fullRange.length else { continue }
+            let paragraph = (text as NSString).paragraphRange(for: item.range)
+            guard ImageThumbnails.standaloneImageSource(
+                (text as NSString).substring(with: paragraph)
+            ) != nil else { continue }
+            storage.addAttribute(.paragraphStyle, value: theme.imageParagraphStyle, range: paragraph)
+        }
         for token in TaskCheckboxes.tokens(in: text, styled: styled)
             where NSMaxRange(token.range) <= fullRange.length {
             var attributes = theme.checkboxTokenAttributes(checked: token.checked)

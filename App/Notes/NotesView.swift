@@ -325,7 +325,8 @@ struct NotesView: View {
                 scrollTarget: $scrollTarget,
                 command: $editorCommand,
                 livePreview: livePreview,
-                focusMode: focusMode
+                focusMode: focusMode,
+                imageBase: selectedNoteFolder
             )
             .safeAreaInset(edge: .top, spacing: 0) { formatBar }
             .overlay(alignment: .bottomTrailing) {
@@ -510,6 +511,12 @@ struct NotesView: View {
         let merged = ranked + semanticIds.filter { !ranked.contains($0) }
         let byId = Dictionary(uniqueKeysWithValues: model.notes.map { ($0.id, $0) })
         return merged.compactMap { byId[$0] }
+    }
+
+    /// The selected note's folder — base for relative image paths.
+    private var selectedNoteFolder: URL? {
+        guard let root = model.root, let id = model.selectedID else { return nil }
+        return root.appendingPathComponent(id).deletingLastPathComponent()
     }
 
     private var selectedTitle: String {

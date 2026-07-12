@@ -21,6 +21,8 @@ public enum MarkdownElementKind: Equatable, Sendable {
     case wikilink(target: String)
     /// `==marked text==` — not CommonMark; detected by regex after the parse.
     case highlightMark
+    /// `![alt](source)` inline image.
+    case image(source: String?)
 }
 
 /// A styled span of the markdown body in UTF-16 (NSRange) coordinates —
@@ -197,6 +199,10 @@ private struct StyleWalker: MarkupWalker {
 
     mutating func visitThematicBreak(_ thematicBreak: ThematicBreak) {
         append(.thematicBreak, thematicBreak)
+    }
+
+    mutating func visitImage(_ image: Image) {
+        append(.image(source: image.source), image)
     }
 
     mutating func visitTable(_ table: Markdown.Table) {
