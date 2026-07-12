@@ -23,6 +23,7 @@ struct NotesView: View {
     @State private var allTags: [(tag: String, count: Int)] = []
     @State private var pinnedIds: [String] = []
     @State private var bookmarkedIds: [String] = []
+    @AppStorage("savedNoteSearches") private var savedSearchesData = "[]"
     @State private var importStatus: String?
     @State private var aiStatus: String?
     @State private var showingNewFolder = false
@@ -140,6 +141,16 @@ struct NotesView: View {
             set: { model.select($0) }
         )) {
             if searching {
+                if !savedSearches.contains(trimmedSearch) {
+                    Button {
+                        saveSearch(trimmedSearch)
+                    } label: {
+                        Label("Save this search", systemImage: "bookmark.square")
+                            .foregroundStyle(.secondary)
+                            .font(.callout)
+                    }
+                    .buttonStyle(.plain)
+                }
                 // Search results stay flat (ranked), with folder subtitles.
                 ForEach(visibleNotes) { note in
                     noteRow(note, showFolder: true)
@@ -200,6 +211,20 @@ struct NotesView: View {
                     Section("Tags") {
                         ForEach(topLevelTagNodes, id: \.path) { node in
                             tagRow(node)
+                        }
+                    }
+                }
+                if !savedSearches.isEmpty {
+                    Section("Saved Searches") {
+                        ForEach(savedSearches, id: \.self) { query in
+                            Label(query, systemImage: "magnifyingglass")
+                                .contentShape(Rectangle())
+                                .onTapGesture { searchText = query }
+                                .contextMenu {
+                                    Button("Delete", systemImage: "trash", role: .destructive) {
+                                        removeSearch(query)
+                                    }
+                                }
                         }
                     }
                 }
@@ -578,6 +603,27 @@ struct NotesView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { selectedTag = node.path }
+    }
+
+    private var trimmedSearch: String {
+        searchText.trimmingCharacters(in: .whitespaces)
+    }
+
+    private var savedSearches: [String] {
+        (try? JSONDecoder().decode([String].self, from: Data(savedSearchesData.utf8))) ?? []
+    }
+
+    private func saveSearch(_ query: String) {
+        guard !query.isEmpty else { return }
+        let updated = savedSearches.filter { $0 != query } + [query]
+        savedSearchesData = (try? JSONEncoder().encode(updated))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? savedSearchesData
+    }
+
+    private func removeSearch(_ query: String) {
+        let updated = savedSearches.filter { $0 != query }
+        savedSearchesData = (try? JSONEncoder().encode(updated))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? savedSearchesData
     }
 
     private var searching: Bool {
