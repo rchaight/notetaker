@@ -248,7 +248,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 - [x] Token-based theme palette: named tokens (bg/surface/accent/text tiers/code-bg/quote-accent), OLED-safe dark values.
 - [x] Focus dimming: non-cursor paragraphs dim to secondary color, toggleable from the format bar.
 - [x] Blockquote accent bar: indent + tint via paragraph style, true left bar via fragment drawing.
-- [ ] Horizontal rules render as real divider lines off-cursor (equal-length substitution/attachment).
+- [x] Horizontal rules render as real divider lines off-cursor (equal-length substitution/attachment).
 - [ ] Inline image thumbnails: `![alt](path)` shows async-loaded preview attachment; storage keeps literal markdown.
 - [ ] Code block cards: full-width rounded tinted card + language badge via NSTextLayoutFragment custom drawing.
 - [ ] Table grid rendering (full): bordered grid presentation for markdown tables; fall back to raw text on the cursor's table.

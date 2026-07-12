@@ -214,13 +214,22 @@ import TaskEngine
                 textLayoutFragmentFor location: NSTextLocation,
                 in textElement: NSTextElement
             ) -> NSTextLayoutFragment {
-                if let paragraph = textElement as? NSTextParagraph,
-                   BlockquoteDetection.isQuoteParagraph(paragraph.attributedString.string) {
-                    let fragment = QuoteBarLayoutFragment(
-                        textElement: textElement, range: textElement.elementRange
-                    )
-                    fragment.barColor = theme.quoteAccent
-                    return fragment
+                if let paragraph = textElement as? NSTextParagraph {
+                    let content = paragraph.attributedString.string
+                    if BlockquoteDetection.isQuoteParagraph(content) {
+                        let fragment = QuoteBarLayoutFragment(
+                            textElement: textElement, range: textElement.elementRange
+                        )
+                        fragment.barColor = theme.quoteAccent
+                        return fragment
+                    }
+                    if ThematicBreakDetection.isRuleParagraph(content) {
+                        let fragment = RuleLayoutFragment(
+                            textElement: textElement, range: textElement.elementRange
+                        )
+                        fragment.lineColor = theme.focusDimColor
+                        return fragment
+                    }
                 }
                 return NSTextLayoutFragment(textElement: textElement, range: textElement.elementRange)
             }
@@ -434,13 +443,22 @@ import TaskEngine
                 textLayoutFragmentFor location: NSTextLocation,
                 in textElement: NSTextElement
             ) -> NSTextLayoutFragment {
-                if let paragraph = textElement as? NSTextParagraph,
-                   BlockquoteDetection.isQuoteParagraph(paragraph.attributedString.string) {
-                    let fragment = QuoteBarLayoutFragment(
-                        textElement: textElement, range: textElement.elementRange
-                    )
-                    fragment.barColor = theme.quoteAccent
-                    return fragment
+                if let paragraph = textElement as? NSTextParagraph {
+                    let content = paragraph.attributedString.string
+                    if BlockquoteDetection.isQuoteParagraph(content) {
+                        let fragment = QuoteBarLayoutFragment(
+                            textElement: textElement, range: textElement.elementRange
+                        )
+                        fragment.barColor = theme.quoteAccent
+                        return fragment
+                    }
+                    if ThematicBreakDetection.isRuleParagraph(content) {
+                        let fragment = RuleLayoutFragment(
+                            textElement: textElement, range: textElement.elementRange
+                        )
+                        fragment.lineColor = theme.focusDimColor
+                        return fragment
+                    }
                 }
                 return NSTextLayoutFragment(textElement: textElement, range: textElement.elementRange)
             }

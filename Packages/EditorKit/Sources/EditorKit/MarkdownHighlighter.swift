@@ -54,6 +54,16 @@ public enum MarkdownHighlighter {
         }
         // Marker hiding comes last so its .clear color survives focus dim.
         if let visible = hideMarkersOutside {
+            // Thematic breaks: the drawn divider carries the meaning, so the
+            // dashes go clear at FULL size (0.01pt would collapse the row).
+            for item in styled
+                where item.kind == .thematicBreak
+                && NSIntersectionRange(item.range, visible).length == 0
+                && NSMaxRange(item.range) <= fullRange.length {
+                storage.addAttribute(
+                    .foregroundColor, value: PlatformColor.clear, range: item.range
+                )
+            }
             for marker in SyntaxMarkers.markerRanges(in: text, styled: styled)
                 where NSIntersectionRange(marker, visible).length == 0
                 && NSMaxRange(marker) <= fullRange.length {

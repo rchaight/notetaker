@@ -32,6 +32,46 @@ public final class QuoteBarLayoutFragment: NSTextLayoutFragment {
     }
 }
 
+/// Thematic break presentation: `---`/`***`/`___` draw as a centered
+/// hairline divider; the dash characters render clear off-cursor so only
+/// the line shows.
+public final class RuleLayoutFragment: NSTextLayoutFragment {
+    public var lineColor: PlatformColor = MarkdownTheme.default.focusDimColor
+
+    override public func draw(at point: CGPoint, in context: CGContext) {
+        let frame = layoutFragmentFrame
+        if frame.width > 12 {
+            context.saveGState()
+            context.setFillColor(lineColor.cgColor)
+            context.fill(CGRect(
+                x: point.x + 4, y: point.y + (frame.height / 2) - 0.5,
+                width: frame.width - 12, height: 1
+            ))
+            context.restoreGState()
+        }
+        super.draw(at: point, in: context)
+    }
+}
+
+public enum ThematicBreakDetection {
+    /// A thematic-break paragraph: ≤3 leading spaces, then 3+ of -/*/_
+    /// (optionally space-separated, per CommonMark), nothing else.
+    public static func isRuleParagraph(_ paragraph: String) -> Bool {
+        let trimmed = paragraph.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard paragraph.prefix(while: { $0 == " " }).count <= 3 else { return false }
+        guard let marker = trimmed.first, "-*_".contains(marker) else { return false }
+        var count = 0
+        for character in trimmed {
+            if character == marker {
+                count += 1
+            } else if character != " " {
+                return false
+            }
+        }
+        return count >= 3
+    }
+}
+
 public enum BlockquoteDetection {
     /// A markdown blockquote paragraph: up to 3 leading spaces, then ">".
     public static func isQuoteParagraph(_ paragraph: String) -> Bool {

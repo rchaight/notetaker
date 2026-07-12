@@ -235,3 +235,31 @@ struct BlockquoteDetectionTests {
         #expect(!BlockquoteDetection.isQuoteParagraph(""))
     }
 }
+
+struct ThematicBreakDetectionTests {
+    @Test func detectsRules() {
+        #expect(ThematicBreakDetection.isRuleParagraph("---"))
+        #expect(ThematicBreakDetection.isRuleParagraph("***\n"))
+        #expect(ThematicBreakDetection.isRuleParagraph("___"))
+        #expect(ThematicBreakDetection.isRuleParagraph("- - -"))
+        #expect(ThematicBreakDetection.isRuleParagraph("  ----------"))
+        #expect(!ThematicBreakDetection.isRuleParagraph("--"))
+        #expect(!ThematicBreakDetection.isRuleParagraph("--- text"))
+        #expect(!ThematicBreakDetection.isRuleParagraph("    ---"))
+        #expect(!ThematicBreakDetection.isRuleParagraph("-*-"))
+    }
+}
+
+@MainActor struct RuleHidingTests {
+    @Test func dashesGoClearOffCursorAtFullSize() {
+        let storage = NSTextStorage(string: "above\n\n---\n\nbelow\n")
+        let theme = MarkdownTheme.default
+        let cursor = NSRange(location: 0, length: 6)
+        MarkdownHighlighter.highlight(storage, theme: theme, hideMarkersOutside: cursor)
+        let dashAt = (storage.string as NSString).range(of: "---").location
+        let color = storage.attribute(.foregroundColor, at: dashAt, effectiveRange: nil) as? PlatformColor
+        let font = storage.attribute(.font, at: dashAt, effectiveRange: nil) as? PlatformFont
+        #expect(color == .clear)
+        #expect((font?.pointSize ?? 0) > 1, "row height must not collapse")
+    }
+}
