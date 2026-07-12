@@ -48,6 +48,50 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     }
+                    Section("AI — Ollama (homelab)") {
+                        TextField("Ollama server URL", text: $ollamaURL, prompt: Text("http://homelab:11434"))
+                            .autocorrectionDisabled()
+                        HStack {
+                            Button("Test Connection") {
+                                ollamaProbe = "testing…"
+                                Task {
+                                    guard let url = URL(string: ollamaURL), !ollamaURL.isEmpty else {
+                                        ollamaProbe = "enter a URL first"
+                                        return
+                                    }
+                                    do {
+                                        let models = try await OllamaProvider(baseURL: url, model: "probe").listModels()
+                                        ollamaModels = models
+                                        if ollamaModel.isEmpty, let first = models.first {
+                                            ollamaModel = first
+                                        }
+                                        ollamaProbe = "✓ \(models.count) model(s) available"
+                                    } catch {
+                                        ollamaProbe = "✗ not reachable"
+                                    }
+                                }
+                            }
+                            if let ollamaProbe {
+                                Text(ollamaProbe)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        if !ollamaModels.isEmpty {
+                            Picker("Model", selection: $ollamaModel) {
+                                ForEach(ollamaModels, id: \.self) { model in
+                                    Text(model).tag(model)
+                                }
+                            }
+                        } else if !ollamaModel.isEmpty {
+                            LabeledContent("Model", value: ollamaModel)
+                        }
+                        Text(
+                            "Long notes beyond the on-device model's window route here; content only ever goes to your own server."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
                 }
                 .formStyle(.grouped)
             }
