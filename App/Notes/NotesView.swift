@@ -229,41 +229,45 @@ struct NotesView: View {
                     }
                 }
             } else {
-                if !pinnedIds.isEmpty {
-                    Section("Pinned") {
-                        ForEach(notes(withIds: pinnedIds)) { note in
-                            noteRow(note, showFolder: true)
-                        }
-                    }
-                }
+                // Layout per user direction: Recents first, then the full
+                // vault (root notes + folders); curated sections follow.
                 if !model.recents.isEmpty {
                     Section("Recents") {
                         ForEach(notes(withIds: Array(model.recents.prefix(5)))) { note in
-                            noteRow(note, showFolder: true)
+                            noteRow(note, showFolder: true, selectable: false)
+                        }
+                    }
+                }
+                Section("Vault") {
+                    ForEach(visibleNotes.filter { !$0.relativePath.contains("/") }) { note in
+                        noteRow(note, showFolder: false)
+                    }
+                    ForEach(topLevelFolders, id: \.self) { folder in
+                        folderGroup(folder)
+                    }
+                    Button {
+                        newFolderParent = ""
+                        showingNewFolder = true
+                    } label: {
+                        Label("New Folder…", systemImage: "folder.badge.plus")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                if !pinnedIds.isEmpty {
+                    Section("Pinned") {
+                        ForEach(notes(withIds: pinnedIds)) { note in
+                            noteRow(note, showFolder: true, selectable: false)
                         }
                     }
                 }
                 if !bookmarkedIds.isEmpty {
                     Section("Bookmarks") {
                         ForEach(notes(withIds: bookmarkedIds)) { note in
-                            noteRow(note, showFolder: true)
+                            noteRow(note, showFolder: true, selectable: false)
                         }
                     }
                 }
-                ForEach(visibleNotes.filter { !$0.relativePath.contains("/") }) { note in
-                    noteRow(note, showFolder: false)
-                }
-                ForEach(topLevelFolders, id: \.self) { folder in
-                    folderGroup(folder)
-                }
-                Button {
-                    newFolderParent = ""
-                    showingNewFolder = true
-                } label: {
-                    Label("New Folder…", systemImage: "folder.badge.plus")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
                 if !allTags.isEmpty {
                     Section("Tags") {
                         ForEach(topLevelTagNodes, id: \.path) { node in
@@ -709,6 +713,20 @@ struct NotesView: View {
         }
     }
 
+    /// Applies a List selection tag only when `id` is non-nil (section
+    /// rows must not duplicate the main list's tags).
+    private struct SelectableTag: ViewModifier {
+        let id: String?
+
+        func body(content: Content) -> some View {
+            if let id {
+                content.tag(id)
+            } else {
+                content
+            }
+        }
+    }
+
     private func notes(withIds ids: [String]) -> [VaultItem] {
         let byId = Dictionary(uniqueKeysWithValues: model.notes.map { ($0.id, $0) })
         return ids.compactMap { byId[$0] }
@@ -746,7 +764,9 @@ struct NotesView: View {
         )
     }
 
-    private func noteRow(_ note: VaultItem, showFolder: Bool) -> some View {
+    private func noteRow(
+        _ note: VaultItem, showFolder: Bool, selectable: Bool = true
+    ) -> some View {
         // Plain tagged row: NavigationLink(value:) here makes SwiftUI infer
         // a 3-column split with an empty middle pane. Selection drives all.
         HStack {
@@ -762,6 +782,15 @@ struct NotesView: View {
             syncBadge(note)
         }
         .contentShape(Rectangle())
+        .onTapGesture {
+            // Auxiliary sections (Pinned/Recents/Bookmarks) can show the
+            // same note as the main list; giving every copy the same
+            // selection tag makes the List jump between duplicates. Only
+            // the main rows carry tags — section rows select directly.
+            if !selectable {
+                model.select(note.id)
+            }
+        }
         .contextMenu {
             Button(
                 pinnedIds.contains(note.id) ? "Unpin" : "Pin",
@@ -784,7 +813,7 @@ struct NotesView: View {
                 }
             }
         }
-        .tag(note.id)
+        .modifier(SelectableTag(id: selectable ? note.id : nil))
         .contextMenu {
             Menu("Move To") {
                 Button("Vault Root") { model.move(note, toFolder: "") }

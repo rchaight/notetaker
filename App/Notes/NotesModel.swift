@@ -150,8 +150,9 @@ final class NotesModel {
     private func performSelect(_ id: VaultItem.ID?) async {
         await flushSave()
         selectedID = id
-        if let id {
-            recents.removeAll { $0 == id }
+        if let id, !recents.contains(id) {
+            // Insert-only: reordering existing entries makes the Recents
+            // section shuffle under the cursor mid-click (user report).
             recents.insert(id, at: 0)
             if recents.count > 8 { recents.removeLast(recents.count - 8) }
             UserDefaults.standard.set(recents, forKey: "recentNotes")
