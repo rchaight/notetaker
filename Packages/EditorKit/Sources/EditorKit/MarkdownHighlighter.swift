@@ -16,12 +16,15 @@ public enum MarkdownHighlighter {
     ///   near-invisible. Pass nil for source mode (all markers visible).
     /// - Parameter dimOutside: Focus mode — text outside this range (the
     ///   cursor's paragraph) recedes to the theme's dim color.
+    /// Returns the styled ranges it computed so callers (the editor
+    /// coordinators) can derive layout data without a second parse.
+    @discardableResult
     public static func highlight(
         _ storage: NSTextStorage,
         theme: MarkdownTheme = .default,
         hideMarkersOutside: NSRange? = nil,
         dimOutside: NSRange? = nil
-    ) {
+    ) -> [StyledRange] {
         let text = storage.string
         let fullRange = NSRange(location: 0, length: (text as NSString).length)
         let styled = MarkdownStyler.styleRanges(in: text)
@@ -81,6 +84,7 @@ public enum MarkdownHighlighter {
             }
         }
         storage.endEditing()
+        return styled
     }
 
     /// Custom scheme the editor intercepts to flip a checkbox token.

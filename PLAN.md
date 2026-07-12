@@ -250,7 +250,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 - [x] Blockquote accent bar: indent + tint via paragraph style, true left bar via fragment drawing.
 - [x] Horizontal rules render as real divider lines off-cursor (equal-length substitution/attachment).
 - [x] Inline image thumbnails: `![alt](path)` shows async-loaded preview attachment; storage keeps literal markdown.
-- [ ] Code block cards: full-width rounded tinted card + language badge via NSTextLayoutFragment custom drawing.
+- [x] Code block cards: full-width rounded tinted card + language badge via NSTextLayoutFragment custom drawing.
 - [ ] Table grid rendering (full): bordered grid presentation for markdown tables; fall back to raw text on the cursor's table.
 
 ### M7 — Project management / Gantt (ProjectKit)

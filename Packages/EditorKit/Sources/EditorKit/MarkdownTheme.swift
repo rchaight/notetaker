@@ -93,8 +93,12 @@ public struct MarkdownTheme: @unchecked Sendable {
         case .strikethrough:
             [.strikethroughStyle: NSUnderlineStyle.single.rawValue,
              .foregroundColor: secondaryColor]
-        case .inlineCode, .codeBlock:
+        case .inlineCode:
             [.font: monoFont, .backgroundColor: codeBackground]
+        case .codeBlock:
+            // The drawn card supplies the background; a per-run color on
+            // top would double-tint.
+            [.font: monoFont]
         case .link:
             [.foregroundColor: accentColor,
              .underlineStyle: NSUnderlineStyle.single.rawValue]

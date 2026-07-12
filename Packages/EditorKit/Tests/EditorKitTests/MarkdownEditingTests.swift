@@ -1,6 +1,7 @@
 #if canImport(AppKit)
     import AppKit
 #endif
+import MarkdownKit
 @testable import EditorKit
 import Foundation
 import Testing
@@ -293,5 +294,48 @@ struct ImageThumbnailTests {
         #expect((style?.paragraphSpacing ?? 0) >= MarkdownTheme.imageThumbnailHeight)
         let before = storage.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
         #expect((before?.paragraphSpacing ?? 0) < MarkdownTheme.imageThumbnailHeight)
+    }
+}
+
+struct CodeCardRegionTests {
+    private func regions(_ text: String) -> [CodeCardRegions.Region] {
+        CodeCardRegions.regions(in: text, styled: MarkdownStyler.styleRanges(in: text))
+    }
+
+    @Test func fencedBlockYieldsContentBetweenFences() {
+        let text = "before\n```swift\nlet x = 1\nlet y = 2\n```\nafter\n"
+        let found = regions(text)
+        #expect(found.count == 1)
+        let content = (text as NSString).substring(with: found[0].range)
+        #expect(content == "let x = 1\nlet y = 2\n")
+        #expect(found[0].language == "swift")
+    }
+
+    @Test func tildeFenceAndNoLanguage() {
+        let text = "~~~\ncode\n~~~\n"
+        let found = regions(text)
+        #expect(found.count == 1)
+        #expect((text as NSString).substring(with: found[0].range) == "code\n")
+        #expect(found[0].language == nil)
+    }
+
+    @Test func unclosedFenceStillCards() {
+        let text = "```py\nx = 1\n"
+        let found = regions(text)
+        #expect(found.count == 1)
+        #expect((text as NSString).substring(with: found[0].range).hasPrefix("x = 1"))
+    }
+
+    @Test func indentedCodeBlockHasNoCard() {
+        #expect(regions("    indented code\n").isEmpty)
+    }
+
+    @Test func listSyntaxInsideCodeIsInsideARegion() {
+        let text = "```\n- not a bullet\n```\n"
+        let found = regions(text)
+        let bullet = (text as NSString).range(of: "- not")
+        #expect(found.count == 1)
+        #expect(NSIntersectionRange(found[0].range, bullet).length > 0,
+                "glyph substitution guard depends on this containment")
     }
 }

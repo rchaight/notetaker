@@ -117,6 +117,7 @@ import TaskEngine
             var livePreview = true
             var focusMode = false
             var imageBase: URL?
+            var codeRegions: [CodeCardRegions.Region] = []
             var lastCommandID: UUID?
             private var lastCursorLine: NSRange?
             private var pendingRestyle: Task<Void, Never>?
@@ -134,12 +135,13 @@ import TaskEngine
                 guard let storage = textView.textStorage else { return }
                 let cursor = cursorParagraph(textView)
                 lastCursorLine = cursor
-                MarkdownHighlighter.highlight(
+                let styled = MarkdownHighlighter.highlight(
                     storage,
                     theme: theme,
                     hideMarkersOutside: livePreview ? cursor : nil,
                     dimOutside: focusMode ? cursor : nil
                 )
+                codeRegions = CodeCardRegions.regions(in: textView.string, styled: styled)
             }
 
             private func scheduleRestyle(_ textView: NSTextView) {
@@ -206,6 +208,7 @@ import TaskEngine
                 _ textContentStorage: NSTextContentStorage, textParagraphWith range: NSRange
             ) -> NSTextParagraph? {
                 guard livePreview,
+                      !codeRegions.contains(where: { NSIntersectionRange($0.range, range).length > 0 }),
                       let storage = textContentStorage.textStorage,
                       NSMaxRange(range) <= storage.length,
                       let swapped = ListGlyphSubstitution.substituted(
@@ -220,6 +223,29 @@ import TaskEngine
                 textLayoutFragmentFor location: NSTextLocation,
                 in textElement: NSTextElement
             ) -> NSTextLayoutFragment {
+                if let contentManager = textLayoutManager.textContentManager,
+                   let elementRange = textElement.elementRange {
+                    let start = contentManager.offset(
+                        from: contentManager.documentRange.location, to: elementRange.location
+                    )
+                    let end = contentManager.offset(
+                        from: contentManager.documentRange.location, to: elementRange.endLocation
+                    )
+                    let paragraphRange = NSRange(location: start, length: max(end - start, 0))
+                    if let region = codeRegions.first(where: {
+                        NSIntersectionRange($0.range, paragraphRange).length > 0
+                    }) {
+                        let fragment = CodeCardLayoutFragment(
+                            textElement: textElement, range: textElement.elementRange
+                        )
+                        fragment.roundsTop = paragraphRange.location <= region.range.location
+                        fragment.roundsBottom = NSMaxRange(paragraphRange) >= NSMaxRange(region.range)
+                        fragment.badge = fragment.roundsTop ? region.language : nil
+                        fragment.fillColor = theme.surfaceBackground
+                        fragment.badgeColor = theme.secondaryColor
+                        return fragment
+                    }
+                }
                 if let paragraph = textElement as? NSTextParagraph {
                     let content = paragraph.attributedString.string
                     if BlockquoteDetection.isQuoteParagraph(content) {
@@ -377,6 +403,7 @@ import TaskEngine
             var livePreview = true
             var focusMode = false
             var imageBase: URL?
+            var codeRegions: [CodeCardRegions.Region] = []
             var lastCommandID: UUID?
             private var lastCursorLine: NSRange?
             private var pendingRestyle: Task<Void, Never>?
@@ -393,12 +420,13 @@ import TaskEngine
             func restyle(_ textView: UITextView) {
                 let cursor = cursorParagraph(textView)
                 lastCursorLine = cursor
-                MarkdownHighlighter.highlight(
+                let styled = MarkdownHighlighter.highlight(
                     textView.textStorage,
                     theme: theme,
                     hideMarkersOutside: livePreview ? cursor : nil,
                     dimOutside: focusMode ? cursor : nil
                 )
+                codeRegions = CodeCardRegions.regions(in: textView.text ?? "", styled: styled)
             }
 
             private func scheduleRestyle(_ textView: UITextView) {
@@ -449,6 +477,7 @@ import TaskEngine
                 _ textContentStorage: NSTextContentStorage, textParagraphWith range: NSRange
             ) -> NSTextParagraph? {
                 guard livePreview,
+                      !codeRegions.contains(where: { NSIntersectionRange($0.range, range).length > 0 }),
                       let storage = textContentStorage.textStorage,
                       NSMaxRange(range) <= storage.length,
                       let swapped = ListGlyphSubstitution.substituted(
@@ -463,6 +492,29 @@ import TaskEngine
                 textLayoutFragmentFor location: NSTextLocation,
                 in textElement: NSTextElement
             ) -> NSTextLayoutFragment {
+                if let contentManager = textLayoutManager.textContentManager,
+                   let elementRange = textElement.elementRange {
+                    let start = contentManager.offset(
+                        from: contentManager.documentRange.location, to: elementRange.location
+                    )
+                    let end = contentManager.offset(
+                        from: contentManager.documentRange.location, to: elementRange.endLocation
+                    )
+                    let paragraphRange = NSRange(location: start, length: max(end - start, 0))
+                    if let region = codeRegions.first(where: {
+                        NSIntersectionRange($0.range, paragraphRange).length > 0
+                    }) {
+                        let fragment = CodeCardLayoutFragment(
+                            textElement: textElement, range: textElement.elementRange
+                        )
+                        fragment.roundsTop = paragraphRange.location <= region.range.location
+                        fragment.roundsBottom = NSMaxRange(paragraphRange) >= NSMaxRange(region.range)
+                        fragment.badge = fragment.roundsTop ? region.language : nil
+                        fragment.fillColor = theme.surfaceBackground
+                        fragment.badgeColor = theme.secondaryColor
+                        return fragment
+                    }
+                }
                 if let paragraph = textElement as? NSTextParagraph {
                     let content = paragraph.attributedString.string
                     if BlockquoteDetection.isQuoteParagraph(content) {
