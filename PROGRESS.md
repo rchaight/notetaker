@@ -31,7 +31,7 @@ Loop-engineering state file. Read this + PLAN.md at the start of every pass.
 | M4 — Todo depth: recurrence, dates, labels, filters | ✅ 2026-07-12 | ✅ 2026-07-12 |
 | M5 — Import/conversion (File-Parser/Docling reuse) | ✅ 2026-07-12 | ✅ 2026-07-12 (native tier + docling-serve + import-inbox; deferred: local XPC engine, Share Extension, VisionKit scanner; audio dropped from scope) |
 | M5 — Import/conversion pipeline (File-Parser/Docling reuse) | | |
-| M6 — AI features (Apple Intelligence / Ollama) | | |
+| M6 — AI features (Apple Intelligence / Ollama) | ✅ 2026-07-12 | pending (deferred: PCC deep tier, auto-tag/title, Keychain URL storage, Bonjour, IndexedEntity→M9) |
 | M7 — Project management / Gantt (ProjectKit) | | |
 | M8 — Security hardening (SecurityKit) | | |
 | M9 — Platform surfaces (widgets, Shortcuts, share ext, Watch) | | |
