@@ -7,7 +7,7 @@ import GRDB
 /// the caller trigger a full rescan.
 public final class IndexDatabase: Sendable {
     /// Bump when the schema changes; mismatch wipes and rebuilds.
-    public static let schemaVersion = 2
+    public static let schemaVersion = 3
 
     public let queue: DatabaseQueue
 
@@ -63,6 +63,7 @@ public final class IndexDatabase: Sendable {
                 t.column("rawLine", .text).notNull()
                 t.column("checked", .boolean).notNull().indexed()
                 t.column("dueDate", .text).indexed()
+                t.column("startDate", .text)
                 t.column("priority", .integer)
                 t.column("recurrence", .text)
             }

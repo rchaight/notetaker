@@ -7,6 +7,8 @@ public struct ParsedTaskMetadata: Equatable, Sendable {
     public let cleanText: String
     /// ISO yyyy-MM-dd.
     public let dueDate: String?
+    /// ISO yyyy-MM-dd — "don't surface before" (Things-style start date).
+    public let startDate: String?
     /// 1 (highest) … 4, Todoist-style.
     public let priority: Int?
     /// #tag labels found in the text, without '#'.
@@ -17,12 +19,14 @@ public struct ParsedTaskMetadata: Equatable, Sendable {
     public init(
         cleanText: String,
         dueDate: String?,
+        startDate: String? = nil,
         priority: Int?,
         labels: [String],
         recurrence: Recurrence? = nil
     ) {
         self.cleanText = cleanText
         self.dueDate = dueDate
+        self.startDate = startDate
         self.priority = priority
         self.labels = labels
         self.recurrence = recurrence
@@ -42,7 +46,8 @@ public enum TaskTokenParser {
         calendar: Calendar = .current
     ) -> ParsedTaskMetadata {
         var working = text
-        let dueDate = extractDue(&working, today: today, calendar: calendar)
+        let dueDate = extractDate(&working, prefix: ">", today: today, calendar: calendar)
+        let startDate = extractDate(&working, prefix: "~", today: today, calendar: calendar)
         let priority = extractPriority(&working)
         let recurrence = RecurrenceParser.extract(from: &working)
         let labels = tagTokens(in: working)
@@ -50,20 +55,24 @@ public enum TaskTokenParser {
             .replacingOccurrences(of: #"\s{2,}"#, with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespaces)
         return ParsedTaskMetadata(
-            cleanText: clean, dueDate: dueDate, priority: priority,
-            labels: labels, recurrence: recurrence
+            cleanText: clean, dueDate: dueDate, startDate: startDate,
+            priority: priority, labels: labels, recurrence: recurrence
         )
     }
 
     // MARK: - Dates
 
-    private static let dueRegex = try? NSRegularExpression(
-        pattern: #"(?<=^|\s)>(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|[0-9]{4}-[0-9]{2}-[0-9]{2})\b"#,
-        options: [.caseInsensitive]
-    )
+    private static func dateRegex(prefix: String) -> NSRegularExpression? {
+        try? NSRegularExpression(
+            pattern: "(?<=^|\\s)\(NSRegularExpression.escapedPattern(for: prefix))(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|[0-9]{4}-[0-9]{2}-[0-9]{2})\\b",
+            options: [.caseInsensitive]
+        )
+    }
 
-    private static func extractDue(_ text: inout String, today: Date, calendar: Calendar) -> String? {
-        guard let regex = dueRegex else { return nil }
+    private static func extractDate(
+        _ text: inout String, prefix: String, today: Date, calendar: Calendar
+    ) -> String? {
+        guard let regex = dateRegex(prefix: prefix) else { return nil }
         let ns = text as NSString
         guard let match = regex.firstMatch(in: text, range: NSRange(location: 0, length: ns.length))
         else { return nil }

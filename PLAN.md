@@ -208,7 +208,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 **Steps:**
 - [x] **One recurrence engine**, invoked identically from every surface — fixed-schedule AND completion-based ("every 7 days when done"); structurally impossible to mark done without regenerating the next instance (avoid the Dataview footgun).
 - [x] NL Quick Add parser as the standard entry path everywhere (one line → date/recurrence/priority/project/labels); `NSDataDetector` baseline, FMF-enhanced in M6.
-- [ ] Start/scheduled vs due date distinction (optional third Planned date).
+- [x] Start/scheduled vs due date distinction (optional third Planned date). *(~start + >due shipped; third Planned date deferred until a real need appears.)*
 - [ ] Free-form Labels as a cross-cutting axis; saved custom Filters (query syntax `priority:P1 AND due:today`) + a visual builder.
 - [ ] In-task nested sub-checkboxes with progress ring; computed relevance/Task Score for auto-sorting undated todos; in-note Completed section.
 - [ ] Additional views over the one dataset: Kanban, Calendar, Eisenhower Matrix. EventKit two-way (attach a native Reminder/alert).

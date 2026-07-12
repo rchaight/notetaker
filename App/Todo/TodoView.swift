@@ -101,7 +101,7 @@ struct TodoView: View {
 
     private func refresh() {
         grouped = Dictionary(grouping: service.openTasks()) {
-            SmartBuckets.bucket(dueDate: $0.dueDate)
+            SmartBuckets.bucket(dueDate: $0.dueDate, startDate: $0.startDate)
         }
     }
 
@@ -122,6 +122,9 @@ struct TodoView: View {
                 HStack(spacing: 8) {
                     if let due = task.dueDate {
                         Label(due, systemImage: "calendar")
+                    }
+                    if let start = task.startDate {
+                        Label("from \(start)", systemImage: "hourglass")
                     }
                     if let priority = task.priority {
                         Text("P\(priority)")

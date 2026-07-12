@@ -12,20 +12,28 @@ public enum SmartBucket: String, CaseIterable, Sendable {
 }
 
 public enum SmartBuckets {
-    /// Buckets a task by its ISO yyyy-MM-dd due date. Unparseable or missing
-    /// dates land in the inbox rather than being dropped.
+    /// Buckets a task by its ISO yyyy-MM-dd dates. Unparseable or missing
+    /// dates land in the inbox rather than being dropped. An unstarted task
+    /// (future ~start) stays out of Today — Things-style — unless its due
+    /// date already passed (overdue always wins).
     public static func bucket(
         dueDate: String?,
+        startDate: String? = nil,
         today: Date = Date(),
         calendar: Calendar = .current
     ) -> SmartBucket {
-        guard let dueDate, let due = parseISO(dueDate, calendar: calendar) else { return .inbox }
         let startOfToday = calendar.startOfDay(for: today)
-        let startOfDue = calendar.startOfDay(for: due)
-        if startOfDue < startOfToday {
+
+        if let dueDate, let due = parseISO(dueDate, calendar: calendar),
+           calendar.startOfDay(for: due) < startOfToday {
             return .overdue
         }
-        if startOfDue == startOfToday {
+        if let startDate, let start = parseISO(startDate, calendar: calendar),
+           calendar.startOfDay(for: start) > startOfToday {
+            return .upcoming
+        }
+        guard let dueDate, let due = parseISO(dueDate, calendar: calendar) else { return .inbox }
+        if calendar.startOfDay(for: due) == startOfToday {
             return .today
         }
         return .upcoming

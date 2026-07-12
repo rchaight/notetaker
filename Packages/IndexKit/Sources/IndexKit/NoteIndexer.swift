@@ -59,6 +59,7 @@ public struct NoteIndexer: Sendable {
                     rawLine: task.rawLine,
                     checked: task.checked,
                     dueDate: parsed.dueDate,
+                    startDate: parsed.startDate,
                     priority: parsed.priority,
                     recurrence: parsed.recurrence?.rawToken
                 )
