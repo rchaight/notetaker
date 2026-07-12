@@ -13,6 +13,20 @@ public enum EditorCommand: Equatable, Sendable {
     case link
 }
 
+/// A one-shot command request: the UUID lets the editor execute exactly
+/// once even though text mutation re-triggers view updates before the
+/// binding clears (executing un-stamped commands in updateView loops
+/// forever — learned the hard way).
+public struct EditorCommandRequest: Equatable, Sendable {
+    public let id: UUID
+    public let command: EditorCommand
+
+    public init(_ command: EditorCommand) {
+        id = UUID()
+        self.command = command
+    }
+}
+
 /// The minimal edit to apply: replace `range` with `replacement`, then
 /// select `selection` — small edits keep undo granular and cursors sane.
 public struct EditResult: Equatable, Sendable {

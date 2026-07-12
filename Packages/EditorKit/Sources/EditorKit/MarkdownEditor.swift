@@ -11,14 +11,14 @@ import TaskEngine
     public struct MarkdownEditor: NSViewRepresentable {
         @Binding var text: String
         @Binding var scrollTarget: NSRange?
-        @Binding var command: EditorCommand?
+        @Binding var command: EditorCommandRequest?
         var theme: MarkdownTheme
         var livePreview: Bool
 
         public init(
             text: Binding<String>,
             scrollTarget: Binding<NSRange?> = .constant(nil),
-            command: Binding<EditorCommand?> = .constant(nil),
+            command: Binding<EditorCommandRequest?> = .constant(nil),
             theme: MarkdownTheme = .default,
             livePreview: Bool = true
         ) {
@@ -74,8 +74,14 @@ import TaskEngine
                 textView.setSelectedRange(NSRange(location: target.location, length: 0))
                 Task { @MainActor in scrollTarget = nil }
             }
-            if let pending = command {
-                if let edit = MarkdownEditing.apply(pending, to: textView.string, selection: textView.selectedRange()) {
+            // One-shot by token: text mutation re-enters this method before
+            // the async binding clear lands — un-stamped commands loop the
+            // main thread forever (44s hang, user-reported).
+            if let pending = command, context.coordinator.lastCommandID != pending.id {
+                context.coordinator.lastCommandID = pending.id
+                if let edit = MarkdownEditing.apply(
+                    pending.command, to: textView.string, selection: textView.selectedRange()
+                ) {
                     textView.insertText(edit.replacement, replacementRange: edit.range)
                     textView.setSelectedRange(edit.selection)
                 }
@@ -88,6 +94,7 @@ import TaskEngine
             let text: Binding<String>
             let theme: MarkdownTheme
             var livePreview = true
+            var lastCommandID: UUID?
             private var lastCursorLine: NSRange?
             private var pendingRestyle: Task<Void, Never>?
 
@@ -168,14 +175,14 @@ import TaskEngine
     public struct MarkdownEditor: UIViewRepresentable {
         @Binding var text: String
         @Binding var scrollTarget: NSRange?
-        @Binding var command: EditorCommand?
+        @Binding var command: EditorCommandRequest?
         var theme: MarkdownTheme
         var livePreview: Bool
 
         public init(
             text: Binding<String>,
             scrollTarget: Binding<NSRange?> = .constant(nil),
-            command: Binding<EditorCommand?> = .constant(nil),
+            command: Binding<EditorCommandRequest?> = .constant(nil),
             theme: MarkdownTheme = .default,
             livePreview: Bool = true
         ) {
@@ -229,15 +236,20 @@ import TaskEngine
                 textView.selectedRange = NSRange(location: target.location, length: 0)
                 Task { @MainActor in scrollTarget = nil }
             }
-            if let pending = command {
+            if let pending = command, context.coordinator.lastCommandID != pending.id {
+                context.coordinator.lastCommandID = pending.id
                 let current = textView.text ?? ""
-                if let edit = MarkdownEditing.apply(pending, to: current, selection: textView.selectedRange) {
+                if let edit = MarkdownEditing.apply(pending.command, to: current, selection: textView.selectedRange) {
                     textView.textStorage.replaceCharacters(in: edit.range, with: edit.replacement)
                     textView.selectedRange = edit.selection
-                    text = textView.text
                     context.coordinator.restyle(textView)
+                    Task { @MainActor in
+                        text = textView.text
+                        command = nil
+                    }
+                } else {
+                    Task { @MainActor in command = nil }
                 }
-                Task { @MainActor in command = nil }
             }
         }
 
@@ -246,6 +258,7 @@ import TaskEngine
             let text: Binding<String>
             let theme: MarkdownTheme
             var livePreview = true
+            var lastCommandID: UUID?
             private var lastCursorLine: NSRange?
             private var pendingRestyle: Task<Void, Never>?
 

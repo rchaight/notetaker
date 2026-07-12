@@ -24,7 +24,7 @@ struct NotesView: View {
     @State private var newFolderParent = ""
     @State private var showInspector = false
     @State private var scrollTarget: NSRange?
-    @State private var editorCommand: EditorCommand?
+    @State private var editorCommand: EditorCommandRequest?
 
     var body: some View {
         NavigationSplitView {
@@ -230,11 +230,11 @@ struct NotesView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 2) {
                 Menu {
-                    Button("Title") { editorCommand = .setHeading(1) }
-                    Button("Heading") { editorCommand = .setHeading(2) }
-                    Button("Subheading") { editorCommand = .setHeading(3) }
+                    Button("Title") { editorCommand = EditorCommandRequest(.setHeading(1)) }
+                    Button("Heading") { editorCommand = EditorCommandRequest(.setHeading(2)) }
+                    Button("Subheading") { editorCommand = EditorCommandRequest(.setHeading(3)) }
                     Divider()
-                    Button("Body") { editorCommand = .setHeading(0) }
+                    Button("Body") { editorCommand = EditorCommandRequest(.setHeading(0)) }
                 } label: {
                     Image(systemName: "textformat.size")
                 }
@@ -269,7 +269,7 @@ struct NotesView: View {
         _ icon: String, _ help: String, _ command: @escaping () -> EditorCommand
     ) -> some View {
         Button {
-            editorCommand = command()
+            editorCommand = EditorCommandRequest(command())
         } label: {
             Image(systemName: icon)
                 .frame(width: 26, height: 22)
