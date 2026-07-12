@@ -24,6 +24,7 @@ struct NotesView: View {
     @State private var newFolderParent = ""
     @State private var showInspector = false
     @State private var scrollTarget: NSRange?
+    @State private var editorCommand: EditorCommand?
 
     var body: some View {
         NavigationSplitView {
@@ -144,6 +145,14 @@ struct NotesView: View {
                 ForEach(topLevelFolders, id: \.self) { folder in
                     folderGroup(folder)
                 }
+                Button {
+                    newFolderParent = ""
+                    showingNewFolder = true
+                } label: {
+                    Label("New Folder…", systemImage: "folder.badge.plus")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
             }
         }
         .overlay {
@@ -216,6 +225,58 @@ struct NotesView: View {
         }
     }
 
+    /// WYSIWYG affordances over plain markdown: every button writes syntax.
+    private var formatBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 2) {
+                Menu {
+                    Button("Title") { editorCommand = .setHeading(1) }
+                    Button("Heading") { editorCommand = .setHeading(2) }
+                    Button("Subheading") { editorCommand = .setHeading(3) }
+                    Divider()
+                    Button("Body") { editorCommand = .setHeading(0) }
+                } label: {
+                    Image(systemName: "textformat.size")
+                }
+                .menuIndicator(.hidden)
+                .help("Text style")
+                Divider().frame(height: 16)
+                formatButton("bold", "Bold (⌘B)") { .wrap(prefix: "**", suffix: "**") }
+                    .keyboardShortcut("b", modifiers: [.command])
+                formatButton("italic", "Italic (⌘⇧I)") { .wrap(prefix: "*", suffix: "*") }
+                    .keyboardShortcut("i", modifiers: [.command, .shift])
+                formatButton("strikethrough", "Strikethrough") { .wrap(prefix: "~~", suffix: "~~") }
+                formatButton("chevron.left.forwardslash.chevron.right", "Code (⌘E)") { .wrap(prefix: "`", suffix: "`") }
+                    .keyboardShortcut("e", modifiers: [.command])
+                Divider().frame(height: 16)
+                formatButton("list.bullet", "Bullet list") { .toggleLinePrefix("- ") }
+                formatButton("list.number", "Numbered list") { .toggleLinePrefix("1. ") }
+                formatButton("checklist", "To-do (⌘⇧T)") { .toggleLinePrefix("- [ ] ") }
+                    .keyboardShortcut("t", modifiers: [.command, .shift])
+                formatButton("quote.opening", "Quote") { .toggleLinePrefix("> ") }
+                Divider().frame(height: 16)
+                formatButton("link", "Link (⌘K)") { .link }
+                    .keyboardShortcut("k", modifiers: [.command])
+            }
+            .buttonStyle(.borderless)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+        }
+        .background(.bar)
+    }
+
+    private func formatButton(
+        _ icon: String, _ help: String, _ command: @escaping () -> EditorCommand
+    ) -> some View {
+        Button {
+            editorCommand = command()
+        } label: {
+            Image(systemName: icon)
+                .frame(width: 26, height: 22)
+        }
+        .help(help)
+    }
+
     private var tabStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 4) {
@@ -261,8 +322,10 @@ struct NotesView: View {
                     set: { model.noteText = $0; model.textChanged() }
                 ),
                 scrollTarget: $scrollTarget,
+                command: $editorCommand,
                 livePreview: livePreview
             )
+            .safeAreaInset(edge: .top, spacing: 0) { formatBar }
             .overlay(alignment: .bottomTrailing) {
                 Text("\(wordCount) words")
                     .font(.caption)

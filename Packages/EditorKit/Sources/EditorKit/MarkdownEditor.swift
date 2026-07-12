@@ -11,17 +11,20 @@ import TaskEngine
     public struct MarkdownEditor: NSViewRepresentable {
         @Binding var text: String
         @Binding var scrollTarget: NSRange?
+        @Binding var command: EditorCommand?
         var theme: MarkdownTheme
         var livePreview: Bool
 
         public init(
             text: Binding<String>,
             scrollTarget: Binding<NSRange?> = .constant(nil),
+            command: Binding<EditorCommand?> = .constant(nil),
             theme: MarkdownTheme = .default,
             livePreview: Bool = true
         ) {
             _text = text
             _scrollTarget = scrollTarget
+            _command = command
             self.theme = theme
             self.livePreview = livePreview
         }
@@ -70,6 +73,13 @@ import TaskEngine
                 textView.scrollRangeToVisible(target)
                 textView.setSelectedRange(NSRange(location: target.location, length: 0))
                 Task { @MainActor in scrollTarget = nil }
+            }
+            if let pending = command {
+                if let edit = MarkdownEditing.apply(pending, to: textView.string, selection: textView.selectedRange()) {
+                    textView.insertText(edit.replacement, replacementRange: edit.range)
+                    textView.setSelectedRange(edit.selection)
+                }
+                Task { @MainActor in command = nil }
             }
         }
 
@@ -158,17 +168,20 @@ import TaskEngine
     public struct MarkdownEditor: UIViewRepresentable {
         @Binding var text: String
         @Binding var scrollTarget: NSRange?
+        @Binding var command: EditorCommand?
         var theme: MarkdownTheme
         var livePreview: Bool
 
         public init(
             text: Binding<String>,
             scrollTarget: Binding<NSRange?> = .constant(nil),
+            command: Binding<EditorCommand?> = .constant(nil),
             theme: MarkdownTheme = .default,
             livePreview: Bool = true
         ) {
             _text = text
             _scrollTarget = scrollTarget
+            _command = command
             self.theme = theme
             self.livePreview = livePreview
         }
@@ -215,6 +228,16 @@ import TaskEngine
                 textView.scrollRangeToVisible(target)
                 textView.selectedRange = NSRange(location: target.location, length: 0)
                 Task { @MainActor in scrollTarget = nil }
+            }
+            if let pending = command {
+                let current = textView.text ?? ""
+                if let edit = MarkdownEditing.apply(pending, to: current, selection: textView.selectedRange) {
+                    textView.textStorage.replaceCharacters(in: edit.range, with: edit.replacement)
+                    textView.selectedRange = edit.selection
+                    text = textView.text
+                    context.coordinator.restyle(textView)
+                }
+                Task { @MainActor in command = nil }
             }
         }
 
