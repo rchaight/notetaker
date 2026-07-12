@@ -282,6 +282,7 @@ final class VaultIndexService {
             try indexer.index(noteId: "Inbox.md", contents: updated, modifiedAt: nil)
             knownMTimes["Inbox.md"] = nil
             tasksVersion += 1
+            onNoteMutated?("Inbox.md")
             return true
         } catch {
             return false
@@ -339,6 +340,11 @@ final class VaultIndexService {
     /// drift protection) → coordinated write → re-index that note. When the
     /// line drifted, we re-index instead of writing — the row corrects
     /// itself and the user taps again.
+    /// Fired after this service rewrites a note file (to-do toggle, quick
+    /// add) so an open editor can refresh — files are truth, and the note
+    /// on screen must show them.
+    var onNoteMutated: ((String) -> Void)?
+
     func toggle(_ task: TaskRecord) async {
         guard let root, let indexer else { return }
         let url = root.appendingPathComponent(task.noteId)
@@ -362,6 +368,7 @@ final class VaultIndexService {
         if let updated {
             try? await store.writeString(updated, to: url)
             try? indexer.index(noteId: task.noteId, contents: updated, modifiedAt: nil)
+            onNoteMutated?(task.noteId)
         } else {
             try? indexer.index(noteId: task.noteId, contents: contents, modifiedAt: nil)
         }

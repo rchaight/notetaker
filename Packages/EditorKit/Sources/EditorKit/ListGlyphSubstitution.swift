@@ -34,9 +34,12 @@ public enum ListGlyphSubstitution {
         // Order matters: task items start with "- " too. The glyph replaces
         // "[" — the FIRST character of the clickable token range — so the
         // toggle link and its styling land on the glyph, not on padding.
-        if let swapped = swap("- [ ]", with: pad + pad + "☐" + pad + pad) { return swapped }
-        if let swapped = swap("- [x]", with: pad + pad + "☑" + pad + pad) { return swapped }
-        if let swapped = swap("- [X]", with: pad + pad + "☑" + pad + pad) { return swapped }
+        // Trailing padding is hair-thin: the glyph hugs its text (the To-Do
+        // tab's bubble look), while the lead keeps the "- " indent slot.
+        let tail = "\u{200A}\u{200A}"
+        if let swapped = swap("- [ ]", with: pad + pad + "○" + tail) { return swapped }
+        if let swapped = swap("- [x]", with: pad + pad + "●" + tail) { return swapped }
+        if let swapped = swap("- [X]", with: pad + pad + "●" + tail) { return swapped }
         if let swapped = swap("- ", with: "•" + pad) { return swapped }
         if let swapped = swap("* ", with: "•" + pad) { return swapped }
         if let swapped = swap("+ ", with: "•" + pad) { return swapped }

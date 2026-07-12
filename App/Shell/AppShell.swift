@@ -45,7 +45,12 @@ struct AppShell: View {
         #else
         .tabViewStyle(.sidebarAdaptable)
         #endif
-        .task { await indexService.start() }
+        .task {
+            indexService.onNoteMutated = { [weak notesModel = notesModel] noteId in
+                notesModel?.reloadIfDisplayed(noteId: noteId)
+            }
+            await indexService.start()
+        }
         #if os(macOS)
             .task {
                 // Scene storage restores window frames independently of the

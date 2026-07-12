@@ -150,7 +150,7 @@ struct GlyphSubstitutionTests {
 
     @Test func swapsAreEqualLength() throws {
         for (line, expectedGlyph) in [
-            ("- [ ] task", "☐"), ("- [x] done", "☑"), ("- bullet", "•"), ("* star", "•"),
+            ("- [ ] task", "○"), ("- [x] done", "●"), ("- bullet", "•"), ("* star", "•"),
         ] {
             let swapped = try #require(display(line))
             #expect((swapped as NSString).length == (line as NSString).length,
@@ -182,7 +182,7 @@ struct GlyphSubstitutionTests {
         // The toggle link covers "[ ]" (offsets 2–4 of "- [ ]"): the glyph
         // must be the FIRST character of that range or the link's styling
         // lands on padding beside an unclickable box.
-        for (line, glyph) in [("- [ ] t", "☐"), ("- [x] t", "☑")] {
+        for (line, glyph) in [("- [ ] t", "○"), ("- [x] t", "●")] {
             let swapped = try #require(display(line))
             let index = try #require(swapped.firstIndex(of: Character(glyph)))
             #expect(swapped.distance(from: swapped.startIndex, to: index) == 2)

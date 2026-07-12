@@ -78,10 +78,13 @@ public struct MarkdownTheme: @unchecked Sendable {
         [.font: PlatformFont.systemFont(ofSize: 0.01), .foregroundColor: PlatformColor.clear]
     }
 
-    /// The clickable "[ ]" / "[x]" checkbox token.
+    /// The clickable "[ ]" / "[x]" checkbox token — sized up so the ○/●
+    /// bubble glyph reads like the To-Do tab's check bubble.
     public func checkboxTokenAttributes(checked: Bool) -> [NSAttributedString.Key: Any] {
         [
-            .font: PlatformFont.monospacedSystemFont(ofSize: baseFontSize, weight: .semibold),
+            .font: PlatformFont.monospacedSystemFont(
+                ofSize: (baseFontSize * 1.25).rounded(), weight: .semibold
+            ),
             .foregroundColor: checked ? secondaryColor : accentColor,
         ]
     }

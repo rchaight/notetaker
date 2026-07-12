@@ -142,6 +142,18 @@ final class NotesModel {
         }
     }
 
+    /// An external mutation (to-do toggle, quick add) rewrote a note file.
+    /// If it's the note on screen and the editor has no unsaved typing,
+    /// re-read so the visible markdown matches the file.
+    func reloadIfDisplayed(noteId: String) {
+        guard selectedID == noteId, !dirty, let url = loadedURL else { return }
+        Task {
+            guard let contents = try? await store.readString(at: url),
+                  !dirty, loadedURL == url, contents != noteText else { return }
+            noteText = contents
+        }
+    }
+
     /// Called on every editor keystroke; schedules a debounced autosave.
     func textChanged() {
         guard loadedURL != nil else { return }

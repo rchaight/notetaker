@@ -67,7 +67,7 @@ import TaskEngine
             textView.autoresizingMask = [.width]
             scrollView.hasHorizontalScroller = false
             textView.string = text
-            // Display-only glyph rendering (• bullets, ☐/☑ checkboxes).
+            // Display-only glyph rendering (• bullets, ○/● check bubbles).
             textView.textContentStorage?.delegate = context.coordinator
             // Custom fragment drawing (blockquote accent bar).
             textView.textLayoutManager?.delegate = context.coordinator
