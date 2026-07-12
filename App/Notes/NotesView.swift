@@ -353,7 +353,9 @@ struct NotesView: View {
                 command: $editorCommand,
                 livePreview: livePreview,
                 focusMode: focusMode,
-                imageBase: selectedNoteFolder
+                imageBase: selectedNoteFolder,
+                tagCandidates: allTags.map(\.tag),
+                linkCandidates: model.notes.map(noteTitle)
             )
             .safeAreaInset(edge: .top, spacing: 0) { formatBar }
             .overlay(alignment: .bottomTrailing) {

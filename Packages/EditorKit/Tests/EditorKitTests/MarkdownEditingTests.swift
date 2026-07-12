@@ -448,3 +448,44 @@ struct InsertBlockTests {
         #expect(ns.substring(with: NSRange(location: selection.location, length: 8)) == "Column 1")
     }
 }
+
+struct AutocompleteTests {
+    private func match(_ text: String, cursorAfter marker: String) -> AutocompleteContext.Match? {
+        let location = (text as NSString).range(of: marker).location + (marker as NSString).length
+        return AutocompleteContext.match(in: text, cursor: location)
+    }
+
+    @Test func tagContexts() {
+        #expect(match("note #pro", cursorAfter: "#pro") ==
+            .init(kind: .tag, query: "pro"))
+        #expect(match("x #project/al", cursorAfter: "/al") ==
+            .init(kind: .tag, query: "project/al"))
+        #expect(match("bare # here", cursorAfter: "bare #") ==
+            .init(kind: .tag, query: ""))
+        #expect(match("not#atag", cursorAfter: "not#a") == nil)
+        #expect(match("after space #tag done", cursorAfter: "done") == nil)
+    }
+
+    @Test func wikilinkContexts() {
+        #expect(match("see [[Proj", cursorAfter: "[[Proj") ==
+            .init(kind: .wikilink, query: "Proj"))
+        #expect(match("see [[Big Plan", cursorAfter: "Plan") ==
+            .init(kind: .wikilink, query: "Big Plan"))
+        #expect(match("closed [[Done]] after", cursorAfter: "after") == nil)
+    }
+
+    @Test func completionAlignmentToPartialWord() {
+        // Query "project/al", system partial word "al": candidates trim to
+        // the partial's start and full-match candidates drop out.
+        let out = AutocompleteContext.completionStrings(
+            query: "project/al", partialLength: 2,
+            candidates: ["project/alpha", "project/beta", "home"]
+        )
+        #expect(out == ["alpha"])
+        let links = AutocompleteContext.completionStrings(
+            query: "Pro", partialLength: 3,
+            candidates: ["Project Plan", "Notes"], appending: "]]"
+        )
+        #expect(links == ["Project Plan]]"])
+    }
+}

@@ -16,6 +16,8 @@ import TaskEngine
         var livePreview: Bool
         var focusMode: Bool
         var imageBase: URL?
+        var tagCandidates: [String]
+        var linkCandidates: [String]
 
         public init(
             text: Binding<String>,
@@ -24,7 +26,9 @@ import TaskEngine
             theme: MarkdownTheme = .default,
             livePreview: Bool = true,
             focusMode: Bool = false,
-            imageBase: URL? = nil
+            imageBase: URL? = nil,
+            tagCandidates: [String] = [],
+            linkCandidates: [String] = []
         ) {
             _text = text
             _scrollTarget = scrollTarget
@@ -33,6 +37,8 @@ import TaskEngine
             self.livePreview = livePreview
             self.focusMode = focusMode
             self.imageBase = imageBase
+            self.tagCandidates = tagCandidates
+            self.linkCandidates = linkCandidates
         }
 
         public func makeCoordinator() -> Coordinator {
@@ -74,6 +80,8 @@ import TaskEngine
             context.coordinator.livePreview = livePreview
             context.coordinator.focusMode = focusMode
             context.coordinator.imageBase = imageBase
+            context.coordinator.tagCandidates = tagCandidates
+            context.coordinator.linkCandidates = linkCandidates
             context.coordinator.restyle(textView)
             return scrollView
         }
@@ -85,6 +93,8 @@ import TaskEngine
             context.coordinator.livePreview = livePreview
             context.coordinator.focusMode = focusMode
             context.coordinator.imageBase = imageBase
+            context.coordinator.tagCandidates = tagCandidates
+            context.coordinator.linkCandidates = linkCandidates
             if textView.string != text {
                 textView.string = text
                 context.coordinator.restyle(textView)
@@ -120,6 +130,8 @@ import TaskEngine
             var livePreview = true
             var focusMode = false
             var imageBase: URL?
+            var tagCandidates: [String] = []
+            var linkCandidates: [String] = []
             var codeRegions: [CodeCardRegions.Region] = []
             var tableRegions: [TableGrid.Region] = []
             var lastCommandID: UUID?
@@ -173,6 +185,35 @@ import TaskEngine
                 guard let textView = notification.object as? NSTextView else { return }
                 text.wrappedValue = textView.string
                 scheduleRestyle(textView)
+                // Auto-offer tag/[[link completions while a token is open.
+                let selection = textView.selectedRange()
+                if selection.length == 0,
+                   AutocompleteContext.match(in: textView.string, cursor: selection.location) != nil {
+                    textView.complete(nil)
+                }
+            }
+
+            public func textView(
+                _ textView: NSTextView,
+                completions _: [String],
+                forPartialWordRange charRange: NSRange,
+                indexOfSelectedItem _: UnsafeMutablePointer<Int>?
+            ) -> [String] {
+                let cursor = textView.selectedRange().location
+                guard let match = AutocompleteContext.match(in: textView.string, cursor: cursor)
+                else { return [] }
+                return switch match.kind {
+                case .tag:
+                    AutocompleteContext.completionStrings(
+                        query: match.query, partialLength: charRange.length,
+                        candidates: tagCandidates
+                    )
+                case .wikilink:
+                    AutocompleteContext.completionStrings(
+                        query: match.query, partialLength: charRange.length,
+                        candidates: linkCandidates, appending: "]]"
+                    )
+                }
             }
 
             public func textViewDidChangeSelection(_ notification: Notification) {
@@ -332,6 +373,8 @@ import TaskEngine
         var livePreview: Bool
         var focusMode: Bool
         var imageBase: URL?
+        var tagCandidates: [String]
+        var linkCandidates: [String]
 
         public init(
             text: Binding<String>,
@@ -340,7 +383,9 @@ import TaskEngine
             theme: MarkdownTheme = .default,
             livePreview: Bool = true,
             focusMode: Bool = false,
-            imageBase: URL? = nil
+            imageBase: URL? = nil,
+            tagCandidates: [String] = [],
+            linkCandidates: [String] = []
         ) {
             _text = text
             _scrollTarget = scrollTarget
@@ -349,6 +394,8 @@ import TaskEngine
             self.livePreview = livePreview
             self.focusMode = focusMode
             self.imageBase = imageBase
+            self.tagCandidates = tagCandidates
+            self.linkCandidates = linkCandidates
         }
 
         public func makeCoordinator() -> Coordinator {
@@ -383,6 +430,8 @@ import TaskEngine
             context.coordinator.livePreview = livePreview
             context.coordinator.focusMode = focusMode
             context.coordinator.imageBase = imageBase
+            context.coordinator.tagCandidates = tagCandidates
+            context.coordinator.linkCandidates = linkCandidates
             context.coordinator.restyle(textView)
             return textView
         }
@@ -393,6 +442,8 @@ import TaskEngine
             context.coordinator.livePreview = livePreview
             context.coordinator.focusMode = focusMode
             context.coordinator.imageBase = imageBase
+            context.coordinator.tagCandidates = tagCandidates
+            context.coordinator.linkCandidates = linkCandidates
             if textView.text != text {
                 textView.text = text
                 context.coordinator.restyle(textView)
@@ -430,6 +481,8 @@ import TaskEngine
             var livePreview = true
             var focusMode = false
             var imageBase: URL?
+            var tagCandidates: [String] = []
+            var linkCandidates: [String] = []
             var codeRegions: [CodeCardRegions.Region] = []
             var tableRegions: [TableGrid.Region] = []
             var lastCommandID: UUID?
