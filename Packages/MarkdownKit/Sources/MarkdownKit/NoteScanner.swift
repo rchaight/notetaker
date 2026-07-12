@@ -8,12 +8,15 @@ public struct ScannedTask: Equatable, Sendable {
     public let checked: Bool
     /// The task text after the checkbox token.
     public let text: String
+    /// Leading whitespace width (tab = 4) — nesting depth for subtasks.
+    public let indent: Int
 
-    public init(line: Int, rawLine: String, checked: Bool, text: String) {
+    public init(line: Int, rawLine: String, checked: Bool, text: String, indent: Int = 0) {
         self.line = line
         self.rawLine = rawLine
         self.checked = checked
         self.text = text
+        self.indent = indent
     }
 }
 
@@ -40,11 +43,22 @@ public enum NoteScanner {
             guard let match = regex.firstMatch(in: line, range: range) else { continue }
             let ns = line as NSString
             let stateChar = ns.substring(with: match.range(at: 1))
+            var indent = 0
+            for character in line {
+                if character == " " {
+                    indent += 1
+                } else if character == "\t" {
+                    indent += 4
+                } else {
+                    break
+                }
+            }
             tasks.append(ScannedTask(
                 line: index,
                 rawLine: line,
                 checked: stateChar.lowercased() == "x",
-                text: ns.substring(with: match.range(at: 2)).trimmingCharacters(in: .whitespaces)
+                text: ns.substring(with: match.range(at: 2)).trimmingCharacters(in: .whitespaces),
+                indent: indent
             ))
         }
         return tasks

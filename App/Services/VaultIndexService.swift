@@ -179,6 +179,11 @@ final class VaultIndexService {
         return (try? database.labelsByTaskId()) ?? [:]
     }
 
+    func subtaskProgress() -> [String: (done: Int, total: Int)] {
+        guard let database else { return [:] }
+        return (try? database.subtaskProgress()) ?? [:]
+    }
+
     /// Quick Add: one parsed line appended to Inbox.md at the vault root.
     @discardableResult
     func quickAdd(_ input: String) async -> Bool {

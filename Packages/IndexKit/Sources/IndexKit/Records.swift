@@ -38,11 +38,13 @@ public struct TaskRecord: Codable, Equatable, Sendable, Identifiable, FetchableR
     public var priority: Int? // 1 (highest) … 4, nil = none
     /// Raw recurrence token ("&every 3 days"); nil = one-shot task.
     public var recurrence: String?
+    /// Enclosing task's id for indented subtasks; nil = top level.
+    public var parentId: String?
 
     public init(
         id: String, noteId: String, line: Int, text: String, rawLine: String,
         checked: Bool, dueDate: String? = nil, startDate: String? = nil,
-        priority: Int? = nil, recurrence: String? = nil
+        priority: Int? = nil, recurrence: String? = nil, parentId: String? = nil
     ) {
         self.id = id
         self.noteId = noteId
@@ -54,6 +56,7 @@ public struct TaskRecord: Codable, Equatable, Sendable, Identifiable, FetchableR
         self.startDate = startDate
         self.priority = priority
         self.recurrence = recurrence
+        self.parentId = parentId
     }
 }
 

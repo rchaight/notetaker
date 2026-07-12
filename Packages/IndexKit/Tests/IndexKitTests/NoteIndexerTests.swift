@@ -99,3 +99,37 @@ struct NoteIndexerTests {
         #expect(try db.searchNoteIds(matching: "rubrics") == ["Meetings/accreditation.md"])
     }
 }
+
+struct SubtaskTests {
+    @Test func indentedTasksNestUnderParents() throws {
+        let (db, _) = try IndexDatabase.open(path: nil)
+        let indexer = NoteIndexer(database: db)
+        let note = """
+        - [ ] plan the course
+          - [x] outline modules
+          - [ ] write syllabus
+            - [ ] deep sub-sub task
+        - [ ] unrelated top task
+        """
+        try indexer.index(noteId: "n.md", contents: note, modifiedAt: nil)
+
+        let open = try db.openTasks()
+        #expect(open.map(\.text) == ["plan the course", "unrelated top task"],
+                "master list shows only top-level tasks")
+
+        let progress = try db.subtaskProgress()
+        #expect(progress["n.md#0"]?.done == 1)
+        #expect(progress["n.md#0"]?.total == 2, "direct children only")
+        #expect(progress["n.md#2"]?.total == 1, "sub-sub nests under the subtask")
+    }
+
+    @Test func dedentReturnsToTopLevel() throws {
+        let (db, _) = try IndexDatabase.open(path: nil)
+        let indexer = NoteIndexer(database: db)
+        let note = "- [ ] parent\n  - [ ] child\n- [ ] sibling\n  - [ ] sibling child\n"
+        try indexer.index(noteId: "n.md", contents: note, modifiedAt: nil)
+        let progress = try db.subtaskProgress()
+        #expect(progress.count == 2, "each parent tracks its own children")
+        #expect(try db.openTasks().count == 2)
+    }
+}

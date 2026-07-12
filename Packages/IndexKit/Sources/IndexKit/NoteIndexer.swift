@@ -49,8 +49,14 @@ public struct NoteIndexer: Sendable {
             try note.save(db)
             try TaskRecord.filter(Column("noteId") == noteId).deleteAll(db)
             try OutLinkRecord.filter(Column("noteId") == noteId).deleteAll(db)
+            // (indent, taskId) stack of enclosing tasks for subtask nesting.
+            var enclosing: [(indent: Int, id: String)] = []
             for task in scanned {
                 let parsed = TaskTokenParser.parse(task.text, today: today)
+                while let last = enclosing.last, last.indent >= task.indent {
+                    enclosing.removeLast()
+                }
+                let parentId = enclosing.last?.id
                 let record = TaskRecord(
                     id: "\(noteId)#\(task.line)",
                     noteId: noteId,
@@ -61,8 +67,10 @@ public struct NoteIndexer: Sendable {
                     dueDate: parsed.dueDate,
                     startDate: parsed.startDate,
                     priority: parsed.priority,
-                    recurrence: parsed.recurrence?.rawToken
+                    recurrence: parsed.recurrence?.rawToken,
+                    parentId: parentId
                 )
+                enclosing.append((task.indent, record.id))
                 try record.save(db)
                 for label in parsed.labels {
                     try TaskLabelRecord(taskId: record.id, label: label).save(db)

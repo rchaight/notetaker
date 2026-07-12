@@ -7,7 +7,7 @@ import GRDB
 /// the caller trigger a full rescan.
 public final class IndexDatabase: Sendable {
     /// Bump when the schema changes; mismatch wipes and rebuilds.
-    public static let schemaVersion = 3
+    public static let schemaVersion = 4
 
     public let queue: DatabaseQueue
 
@@ -66,6 +66,7 @@ public final class IndexDatabase: Sendable {
                 t.column("startDate", .text)
                 t.column("priority", .integer)
                 t.column("recurrence", .text)
+                t.column("parentId", .text).indexed()
             }
             try db.create(table: TaskLabelRecord.databaseTableName) { t in
                 t.column("taskId", .text).notNull().indexed()
@@ -117,12 +118,14 @@ public extension IndexDatabase {
         }
     }
 
-    /// All unchecked tasks, ordered for the master list: priority first
-    /// (nulls last), then due date (nulls last), then stable note/line order.
+    /// All unchecked TOP-LEVEL tasks, ordered for the master list: priority
+    /// first (nulls last), then due date (nulls last), then note/line order.
+    /// Subtasks surface as their parent's progress, not as separate rows.
     func openTasks() throws -> [TaskRecord] {
         try queue.read { db in
             try TaskRecord
                 .filter(Column("checked") == false)
+                .filter(Column("parentId") == nil)
                 .order(
                     Column("priority").ascNullsLast,
                     Column("dueDate").ascNullsLast,
@@ -130,6 +133,23 @@ public extension IndexDatabase {
                     Column("line")
                 )
                 .fetchAll(db)
+        }
+    }
+
+    /// parent taskId → (done, total) across its direct subtasks.
+    func subtaskProgress() throws -> [String: (done: Int, total: Int)] {
+        try queue.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+            SELECT parentId, SUM(checked) AS done, COUNT(*) AS total
+            FROM task WHERE parentId IS NOT NULL GROUP BY parentId
+            """)
+            var progress: [String: (done: Int, total: Int)] = [:]
+            for row in rows {
+                if let parent: String = row["parentId"] {
+                    progress[parent] = (row["done"] ?? 0, row["total"] ?? 0)
+                }
+            }
+            return progress
         }
     }
 

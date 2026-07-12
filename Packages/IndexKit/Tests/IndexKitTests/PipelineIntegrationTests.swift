@@ -1,9 +1,9 @@
 import Foundation
 import GRDB
+@testable import IndexKit
 import MarkdownKit
 import TaskEngine
 import Testing
-@testable import IndexKit
 
 /// Cross-module integration: MarkdownKit scanning, TaskEngine semantics,
 /// and IndexKit storage working as one pipeline — the flows the app
@@ -62,19 +62,19 @@ struct PipelineIntegrationTests {
             contents: note, anchorLine: target.line, expectedRawLine: target.rawLine
         )
         #expect(toggled?.nowChecked == true)
-        try indexer.index(noteId: "plan.md", contents: toggled!.contents, modifiedAt: nil, today: today)
+        try indexer.index(noteId: "plan.md", contents: #require(toggled?.contents), modifiedAt: nil, today: today)
         open = try db.openTasks()
         #expect(!open.contains { $0.id == target.id }, "completed task leaves the open list")
 
         // Complete the recurring task: date advances, stays open, still indexed open.
-        let recurring = open.first { $0.recurrence != nil }!
-        let completedLine = RecurrenceEngine.completeTaskLine(
+        let recurring = try #require(open.first { $0.recurrence != nil })
+        let completedLine = try #require(RecurrenceEngine.completeTaskLine(
             recurring.rawLine, today: today, calendar: calendar
-        )!
+        ))
         #expect(completedLine.contains("- [ ]"), "recurring completion keeps the box open")
         #expect(completedLine.contains(">2026-07-13"), "overdue series catches up past today")
-        let rewritten = TaskLineToggler.replacingLine(
-            toggled!.contents, at: recurring.line, with: completedLine
+        let rewritten = try TaskLineToggler.replacingLine(
+            #require(toggled?.contents), at: recurring.line, with: completedLine
         )
         try indexer.index(noteId: "plan.md", contents: rewritten, modifiedAt: nil, today: today)
         let after = try db.openTasks().first { $0.recurrence != nil }
@@ -86,7 +86,7 @@ struct PipelineIntegrationTests {
         #expect(try db.openTasks() == before)
     }
 
-    @Test func editorAndMasterListCompletionAgree() throws {
+    @Test func editorAndMasterListCompletionAgree() {
         let text = "- [ ] water plants >2026-07-10 &every 3 days\n"
         // Editor path: token-range based.
         let tokenRange = (text as NSString).range(of: "[ ]")
@@ -114,9 +114,9 @@ struct PipelineIntegrationTests {
     }
 
     @Test func quickAddOutputRoundTripsThroughIndex() throws {
-        let result = QuickAddParser.parse(
+        let result = try #require(QuickAddParser.parse(
             "review grant >2026-07-20 !p2 #research", today: today, calendar: calendar
-        )!
+        ))
         let contents = "# Inbox\n\n" + result.markdownLine + "\n"
         let (db, _) = try IndexDatabase.open(path: nil)
         let indexer = NoteIndexer(database: db)

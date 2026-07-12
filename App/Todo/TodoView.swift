@@ -8,6 +8,7 @@ import TaskEngine
 struct TodoView: View {
     let service: VaultIndexService
     @State private var grouped: [SmartBucket: [TaskRecord]] = [:]
+    @State private var subtaskProgress: [String: (done: Int, total: Int)] = [:]
     @State private var showingQuickAdd = false
     @State private var quickAddText = ""
     @State private var filterText = ""
@@ -168,6 +169,7 @@ struct TodoView: View {
         grouped = Dictionary(grouping: tasks) {
             SmartBuckets.bucket(dueDate: $0.dueDate, startDate: $0.startDate)
         }
+        subtaskProgress = service.subtaskProgress()
     }
 
     private func row(_ task: TaskRecord) -> some View {
@@ -195,6 +197,10 @@ struct TodoView: View {
                         Text("P\(priority)")
                             .fontWeight(.semibold)
                             .foregroundStyle(priorityColor(priority))
+                    }
+                    if let progress = subtaskProgress[task.id] {
+                        Label("\(progress.done)/\(progress.total)", systemImage: "checklist")
+                            .foregroundStyle(progress.done == progress.total ? .green : .secondary)
                     }
                     Text(noteName(task.noteId))
                         .lineLimit(1)
