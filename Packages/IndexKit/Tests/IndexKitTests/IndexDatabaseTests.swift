@@ -195,3 +195,23 @@ struct SemanticChunkTests {
         #expect(try db.semanticSearch(query: [1, 2, 3]).isEmpty)
     }
 }
+
+struct BacklinkTests {
+    @Test func linkedAndUnlinkedMentionsSplit() throws {
+        let (db, _) = try IndexDatabase.open(path: nil)
+        let indexer = NoteIndexer(database: db)
+        try indexer.index(noteId: "Budget.md", contents: "# Budget\nnumbers live here\n", modifiedAt: nil)
+        try indexer.index(noteId: "plan.md", contents: "See [[Budget]] for numbers\n", modifiedAt: nil)
+        try indexer.index(
+            noteId: "meeting.md",
+            contents: "We discussed the Budget at length without linking\n",
+            modifiedAt: nil
+        )
+
+        #expect(try db.backlinks(toTitle: "Budget") == ["plan.md"])
+        let unlinked = try db.unlinkedMentions(ofTitle: "Budget", excluding: "Budget.md")
+        #expect(unlinked.contains("meeting.md"))
+        #expect(!unlinked.contains("plan.md"), "linked notes are not 'unlinked mentions'")
+        #expect(!unlinked.contains("Budget.md"), "a note never mentions itself")
+    }
+}

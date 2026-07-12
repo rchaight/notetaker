@@ -304,6 +304,16 @@ final class VaultIndexService {
         }
     }
 
+    func backlinks(toTitle title: String) -> [String] {
+        guard let database else { return [] }
+        return (try? database.backlinks(toTitle: title)) ?? []
+    }
+
+    func unlinkedMentions(ofTitle title: String, excluding noteId: String) -> [String] {
+        guard let database else { return [] }
+        return (try? database.unlinkedMentions(ofTitle: title, excluding: noteId)) ?? []
+    }
+
     /// Meaning-based note lookup; empty when embeddings are unavailable.
     func semanticSearchNoteIds(_ query: String) async -> [String] {
         let trimmed = query.trimmingCharacters(in: .whitespaces)

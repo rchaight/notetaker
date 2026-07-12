@@ -161,6 +161,26 @@ public extension IndexDatabase {
         }
     }
 
+    /// Notes whose [[wikilinks]] point at this title (linked backlinks).
+    func backlinks(toTitle title: String) throws -> [String] {
+        try queue.read { db in
+            try String.fetchAll(
+                db,
+                sql: "SELECT DISTINCT noteId FROM outLink WHERE targetTitle = ? COLLATE NOCASE ORDER BY noteId",
+                arguments: [title]
+            )
+        }
+    }
+
+    /// Notes mentioning the title as text without linking it — FTS phrase
+    /// match minus linked backlinks minus the note itself.
+    func unlinkedMentions(ofTitle title: String, excluding noteId: String) throws -> [String] {
+        let phrase = "\"" + title.replacingOccurrences(of: "\"", with: "") + "\""
+        let mentions = try searchNoteIds(matching: phrase, limit: 25)
+        let linked = try Set(backlinks(toTitle: title))
+        return mentions.filter { $0 != noteId && !linked.contains($0) }
+    }
+
     /// taskId → its labels, for filter evaluation.
     func labelsByTaskId() throws -> [String: [String]] {
         try queue.read { db in

@@ -19,6 +19,8 @@ struct NotesView: View {
     @State private var aiStatus: String?
     @State private var showingNewFolder = false
     @State private var newFolderName = ""
+    @State private var showInspector = false
+    @State private var scrollTarget: NSRange?
 
     var body: some View {
         NavigationSplitView {
@@ -233,8 +235,20 @@ struct NotesView: View {
                     get: { model.noteText },
                     set: { model.noteText = $0; model.textChanged() }
                 ),
+                scrollTarget: $scrollTarget,
                 livePreview: livePreview
             )
+            .inspector(isPresented: $showInspector) {
+                NoteInspector(
+                    noteId: model.selectedID ?? "",
+                    noteTitle: selectedTitle,
+                    noteText: model.noteText,
+                    service: indexService,
+                    onJump: { scrollTarget = $0 },
+                    onOpen: { model.select($0) }
+                )
+                .inspectorColumnWidth(min: 200, ideal: 260, max: 360)
+            }
             .overlay(alignment: .bottomTrailing) {
                 Text("\(wordCount) words")
                     .font(.caption)
@@ -261,6 +275,11 @@ struct NotesView: View {
                         Label("AI", systemImage: "sparkles")
                     }
                     .disabled(aiStatus?.hasSuffix("…") == true)
+                    Button("Info", systemImage: "sidebar.right") {
+                        showInspector.toggle()
+                    }
+                    .keyboardShortcut("0", modifiers: [.command, .option])
+                    .help("Outline, backlinks & mentions (⌥⌘0)")
                     Button(
                         livePreview ? "Source Mode" : "Live Preview",
                         systemImage: livePreview ? "chevron.left.forwardslash.chevron.right" : "eye"
