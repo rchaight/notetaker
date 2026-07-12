@@ -390,20 +390,22 @@ struct NotesView: View {
     }
 
     private func noteRow(_ note: VaultItem, showFolder: Bool) -> some View {
-        NavigationLink(value: note.id) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(noteTitle(note))
-                    if showFolder, let folder = noteFolder(note) {
-                        Text(folder)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+        // Plain tagged row: NavigationLink(value:) here makes SwiftUI infer
+        // a 3-column split with an empty middle pane. Selection drives all.
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(noteTitle(note))
+                if showFolder, let folder = noteFolder(note) {
+                    Text(folder)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                Spacer()
-                syncBadge(note)
             }
+            Spacer()
+            syncBadge(note)
         }
+        .contentShape(Rectangle())
+        .tag(note.id)
         .contextMenu {
             Menu("Move To") {
                 Button("Vault Root") { model.move(note, toFolder: "") }
