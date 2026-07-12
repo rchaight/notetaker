@@ -222,8 +222,8 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 - [x] `ConversionService` protocol + shared `EngineEvent`/`ExportFormat`; reuse `formats.py catalog()` as the capability source of truth. *(Protocol + result/provenance shipped; EngineEvent/catalog arrive with the Docling tier.)*
 - [ ] `ConversionHelper` XPC service (macOS): bootstrap own venv into app-support (override honored); sandboxed, network-denied, resource/time-limited.
 - [x] `NativeConverter` (both platforms): PDFKit, Vision `RecognizeDocumentsRequest` + VisionKit scanner, `SpeechAnalyzer`/`SpeechTranscriber`, `NSAttributedString` HTML/RTF. *(PDFKit text + OCR-fallback for scanned pages, Vision OCR images, RTF/HTML, txt/md done; audio + VisionKit scanner in a later M5 pass.)*
-- [ ] `DoclingServeConverter` (HTTP to homelab, token+TLS) + reachability probe.
-- [ ] Router: pick tier by input type + platform + connectivity; **iCloud import-inbox** fallback (iOS drops source → Mac converts → syncs back).
+- [x] `DoclingServeConverter` (HTTP to homelab, token+TLS) + reachability probe. *(HTTP + /health probe + Settings URL/test shipped; auth token + TLS pinning when the server side needs it.)*
+- [x] Router: pick tier by input type + platform + connectivity; **iCloud import-inbox** fallback (iOS drops source → Mac converts → syncs back). *(Router shipped: native-first, docling-serve for office formats, descriptive errors. Import-inbox relay deferred until the Mac-local Docling tier exists.)*
 - [ ] Share Extension: send text/URL/file into new/existing note or the inbox. Provenance labeling ("on-device basic" vs "full Docling").
 **Done:** on Mac, convert a complex DOCX with tables to faithful Markdown; on iPhone, scan a document and OCR it to Markdown natively, and transcribe a voice memo; drop an office file on iPhone with no homelab → it converts on the Mac and the `.md` appears in the vault everywhere.
 **Effort:** ~3 weeks.
