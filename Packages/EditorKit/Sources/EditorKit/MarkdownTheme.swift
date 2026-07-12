@@ -103,9 +103,20 @@ public struct MarkdownTheme: @unchecked Sendable {
         case .taskCheckbox(checked: true):
             [.strikethroughStyle: NSUnderlineStyle.single.rawValue,
              .foregroundColor: secondaryColor]
+        case .wikilink:
+            [.foregroundColor: accentColor,
+             .underlineStyle: NSUnderlineStyle.single.rawValue]
+        case .highlightMark:
+            [.backgroundColor: highlightBackground]
         case .listItem, .taskCheckbox, .thematicBreak, .table:
             [:]
         }
+    }
+
+    /// Marker-pen tint for `==highlight==` runs; translucent so it adapts to
+    /// both appearances.
+    public var highlightBackground: PlatformColor {
+        PlatformColor.systemYellow.withAlphaComponent(0.30)
     }
 
     private var italicFont: PlatformFont {

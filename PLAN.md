@@ -240,6 +240,19 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 **Done:** type "call Bob fri 3pm !p1" → structured task created on-device; "extract action items" on a note inserts real inline todos; semantic search returns meaning-matched notes; with homelab reachable, a long note summarizes via Ollama and falls back cleanly to PCC/None when it isn't; on an ineligible device every AI button degrades gracefully.
 **Effort:** ~3 weeks (MVP slice: FMF + None + embeddings; defer Ollama/PCC polish if needed).
 
+### M6.5 — Editor visual polish (user-selected 2026-07-12, before M7)
+**Goal:** Bear/Craft-grade editor visuals over the same plain-markdown storage. Ordered by effort; one checkbox per pass.
+
+- [x] Wikilink + `==highlight==` styling: `[[wikilinks]]` accent+underline, highlight runs get marker-pen tint (attributes-only).
+- [ ] Word count / reading time chip on the editor; reflects selection when non-empty.
+- [ ] Token-based theme palette: named tokens (bg/surface/accent/text tiers/code-bg/quote-accent), OLED-safe dark values.
+- [ ] Focus dimming: non-cursor paragraphs dim to secondary color, toggleable from the format bar.
+- [ ] Blockquote accent bar: indent + tint via paragraph style, true left bar via fragment drawing.
+- [ ] Horizontal rules render as real divider lines off-cursor (equal-length substitution/attachment).
+- [ ] Inline image thumbnails: `![alt](path)` shows async-loaded preview attachment; storage keeps literal markdown.
+- [ ] Code block cards: full-width rounded tinted card + language badge via NSTextLayoutFragment custom drawing.
+- [ ] Table grid rendering (full): bordered grid presentation for markdown tables; fall back to raw text on the cursor's table.
+
 ### M7 — Project management / Gantt (ProjectKit)
 **Goal:** PM as another view over the same todos + frontmatter, not a second data model.
 **Steps (staged for de-risking):**

@@ -17,6 +17,10 @@ public enum MarkdownElementKind: Equatable, Sendable {
     case taskCheckbox(checked: Bool)
     case thematicBreak
     case table
+    /// `[[Note Title]]` — not CommonMark; detected by regex after the parse.
+    case wikilink(target: String)
+    /// `==marked text==` — not CommonMark; detected by regex after the parse.
+    case highlightMark
 }
 
 /// A styled span of the markdown body in UTF-16 (NSRange) coordinates —
@@ -38,8 +42,43 @@ public enum MarkdownStyler {
         let document = Document(parsing: body, options: [.parseBlockDirectives])
         var walker = StyleWalker(converter: SourceConverter(body))
         walker.visit(document)
-        return walker.ranges.sorted {
+        var ranges = walker.ranges
+        appendExtendedSyntax(in: body, to: &ranges)
+        return ranges.sorted {
             ($0.range.location, $0.range.length) < ($1.range.location, $1.range.length)
+        }
+    }
+
+    private static let wikilinkRegex = try? NSRegularExpression(
+        pattern: #"\[\[([^\[\]\n]+?)\]\]"#
+    )
+    private static let highlightRegex = try? NSRegularExpression(
+        pattern: #"==([^=\n]+?)=="#
+    )
+
+    /// Wikilinks and highlight marks aren't CommonMark, so swift-markdown
+    /// never emits them — a post-parse regex scan finds them, skipping any
+    /// match inside code (spans/blocks), where the syntax is literal text.
+    private static func appendExtendedSyntax(in body: String, to ranges: inout [StyledRange]) {
+        let ns = body as NSString
+        let full = NSRange(location: 0, length: ns.length)
+        let codeRanges = ranges.compactMap { item -> NSRange? in
+            switch item.kind {
+            case .inlineCode, .codeBlock: item.range
+            default: nil
+            }
+        }
+        func insideCode(_ range: NSRange) -> Bool {
+            codeRanges.contains { NSIntersectionRange($0, range).length > 0 }
+        }
+        for match in wikilinkRegex?.matches(in: body, range: full) ?? []
+            where !insideCode(match.range) {
+            let target = ns.substring(with: match.range(at: 1))
+            ranges.append(StyledRange(kind: .wikilink(target: target), range: match.range))
+        }
+        for match in highlightRegex?.matches(in: body, range: full) ?? []
+            where !insideCode(match.range) {
+            ranges.append(StyledRange(kind: .highlightMark, range: match.range))
         }
     }
 }

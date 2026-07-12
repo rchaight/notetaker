@@ -88,6 +88,12 @@ public enum SyntaxMarkers {
                         ))
                     }
                 }
+            case .wikilink:
+                // [[Note Title]] — hide the double brackets.
+                appendSymmetric(item.range, in: ns, delimiterLength: 2, allowed: ["[", "]"], to: &markers)
+            case .highlightMark:
+                // ==marked== — hide the equals runs; the tint carries meaning.
+                appendSymmetric(item.range, in: ns, delimiterLength: 2, allowed: ["="], to: &markers)
             case .listItem:
                 // Bullets and checkboxes render as glyphs via equal-length
                 // display substitution (EditorKit); ordered numbers stay

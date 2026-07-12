@@ -68,3 +68,42 @@ struct SyntaxMarkerTests {
         #expect(markers("- [ ] call the dean\n").isEmpty)
     }
 }
+
+struct ExtendedSyntaxTests {
+    private func kinds(_ text: String) -> [MarkdownElementKind] {
+        MarkdownStyler.styleRanges(in: text).map(\.kind)
+    }
+
+    @Test func wikilinkDetectedWithTarget() {
+        let styled = MarkdownStyler.styleRanges(in: "see [[Project Plan]] for details\n")
+        let link = styled.first { if case .wikilink = $0.kind { true } else { false } }
+        #expect(link?.kind == .wikilink(target: "Project Plan"))
+        #expect(link?.range == NSRange(location: 4, length: 16))
+    }
+
+    @Test func highlightMarkDetected() {
+        #expect(kinds("this is ==important== stuff\n").contains(.highlightMark))
+    }
+
+    @Test func extendedSyntaxIgnoredInsideCode() {
+        let inline = kinds("`[[not a link]]` and `==not marked==`\n")
+        #expect(!inline.contains { if case .wikilink = $0 { true } else { false } })
+        #expect(!inline.contains(.highlightMark))
+        let fenced = kinds("```\n[[nope]] ==nope==\n```\n")
+        #expect(!fenced.contains { if case .wikilink = $0 { true } else { false } })
+        #expect(!fenced.contains(.highlightMark))
+    }
+
+    @Test func wikilinkAndHighlightMarkersHide() {
+        let text = "[[Note]] and ==bright==\n"
+        let styled = MarkdownStyler.styleRanges(in: text)
+        let markers = SyntaxMarkers.markerRanges(in: text, styled: styled)
+            .map { (text as NSString).substring(with: $0) }
+        #expect(markers.sorted() == ["==", "==", "[[", "]]"])
+    }
+
+    @Test func unclosedSyntaxIgnored() {
+        #expect(!kinds("[[dangling and ==half\n").contains { if case .wikilink = $0 { true } else { false } })
+        #expect(!kinds("==half\n").contains(.highlightMark))
+    }
+}
