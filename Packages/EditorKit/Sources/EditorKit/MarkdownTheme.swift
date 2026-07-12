@@ -144,6 +144,15 @@ public struct MarkdownTheme: @unchecked Sendable {
         accentColor.withAlphaComponent(0.75)
     }
 
+    /// Focus mode: paragraphs away from the cursor recede to this color.
+    public var focusDimColor: PlatformColor {
+        #if canImport(AppKit)
+            .tertiaryLabelColor
+        #else
+            .tertiaryLabel
+        #endif
+    }
+
     /// Selection tint derived from the accent so selected runs, the caret,
     /// and links all share one hue.
     public var selectionBackground: PlatformColor {

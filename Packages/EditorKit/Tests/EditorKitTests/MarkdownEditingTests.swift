@@ -200,3 +200,27 @@ struct GlyphSubstitutionTests {
         #expect(theme.quoteAccent.cgColor.alpha < 1.0)
     }
 }
+
+@MainActor struct FocusDimTests {
+    @Test func dimsOutsideFocusOnly() {
+        let storage = NSTextStorage(string: "alpha\n\nbeta\n\ngamma\n")
+        let theme = MarkdownTheme.default
+        let focus = (storage.string as NSString).range(of: "beta\n")
+        MarkdownHighlighter.highlight(storage, theme: theme, dimOutside: focus)
+        let dim = theme.focusDimColor
+        #expect(storage.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? PlatformColor == dim)
+        #expect(storage.attribute(.foregroundColor, at: focus.location, effectiveRange: nil) as? PlatformColor == theme.textColor)
+        #expect(storage.attribute(.foregroundColor, at: focus.location + focus.length + 2, effectiveRange: nil) as? PlatformColor == dim)
+    }
+
+    @Test func hiddenMarkersStayClearUnderDim() {
+        let storage = NSTextStorage(string: "**bold**\n\ncursor here\n")
+        let theme = MarkdownTheme.default
+        let focus = (storage.string as NSString).range(of: "cursor here\n")
+        MarkdownHighlighter.highlight(
+            storage, theme: theme, hideMarkersOutside: focus, dimOutside: focus
+        )
+        let markerColor = storage.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? PlatformColor
+        #expect(markerColor == .clear, "marker hiding must win over focus dim")
+    }
+}

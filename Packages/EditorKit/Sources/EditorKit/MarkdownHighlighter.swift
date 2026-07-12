@@ -14,10 +14,13 @@ public enum MarkdownHighlighter {
     /// - Parameter hideMarkersOutside: Live Preview — syntax markers outside
     ///   this range (typically the cursor's paragraph) are rendered
     ///   near-invisible. Pass nil for source mode (all markers visible).
+    /// - Parameter dimOutside: Focus mode — text outside this range (the
+    ///   cursor's paragraph) recedes to the theme's dim color.
     public static func highlight(
         _ storage: NSTextStorage,
         theme: MarkdownTheme = .default,
-        hideMarkersOutside: NSRange? = nil
+        hideMarkersOutside: NSRange? = nil,
+        dimOutside: NSRange? = nil
     ) {
         let text = storage.string
         let fullRange = NSRange(location: 0, length: (text as NSString).length)
@@ -32,18 +35,30 @@ public enum MarkdownHighlighter {
                 storage.addAttributes(attributes, range: item.range)
             }
         }
+        for token in TaskCheckboxes.tokens(in: text, styled: styled)
+            where NSMaxRange(token.range) <= fullRange.length {
+            var attributes = theme.checkboxTokenAttributes(checked: token.checked)
+            attributes[.link] = Self.toggleURL(at: token.range.location)
+            storage.addAttributes(attributes, range: token.range)
+        }
+        if let focus = dimOutside {
+            let clamped = NSIntersectionRange(focus, fullRange)
+            let head = NSRange(location: 0, length: clamped.location)
+            let tail = NSRange(
+                location: NSMaxRange(clamped),
+                length: fullRange.length - NSMaxRange(clamped)
+            )
+            for region in [head, tail] where region.length > 0 {
+                storage.addAttribute(.foregroundColor, value: theme.focusDimColor, range: region)
+            }
+        }
+        // Marker hiding comes last so its .clear color survives focus dim.
         if let visible = hideMarkersOutside {
             for marker in SyntaxMarkers.markerRanges(in: text, styled: styled)
                 where NSIntersectionRange(marker, visible).length == 0
                 && NSMaxRange(marker) <= fullRange.length {
                 storage.addAttributes(theme.hiddenMarkerAttributes, range: marker)
             }
-        }
-        for token in TaskCheckboxes.tokens(in: text, styled: styled)
-            where NSMaxRange(token.range) <= fullRange.length {
-            var attributes = theme.checkboxTokenAttributes(checked: token.checked)
-            attributes[.link] = Self.toggleURL(at: token.range.location)
-            storage.addAttributes(attributes, range: token.range)
         }
         storage.endEditing()
     }

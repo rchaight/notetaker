@@ -14,6 +14,7 @@ struct NotesView: View {
     /// state (a fresh model also re-blocks on cold container resolution).
     let model: NotesModel
     @State private var livePreview = true
+    @AppStorage("editorFocusMode") private var focusMode = false
     @State private var searchText = ""
     @State private var semanticIds: [String] = []
     @State private var showingImporter = false
@@ -323,7 +324,8 @@ struct NotesView: View {
                 ),
                 scrollTarget: $scrollTarget,
                 command: $editorCommand,
-                livePreview: livePreview
+                livePreview: livePreview,
+                focusMode: focusMode
             )
             .safeAreaInset(edge: .top, spacing: 0) { formatBar }
             .overlay(alignment: .bottomTrailing) {
@@ -357,6 +359,10 @@ struct NotesView: View {
                     }
                     .keyboardShortcut("0", modifiers: [.command, .option])
                     .help("Outline, backlinks & mentions (⌥⌘0)")
+                    Button("Focus", systemImage: focusMode ? "circle.circle.fill" : "circle.circle") {
+                        focusMode.toggle()
+                    }
+                    .help(focusMode ? "Focus mode on — dims other paragraphs" : "Focus mode")
                     Button(
                         livePreview ? "Source Mode" : "Live Preview",
                         systemImage: livePreview ? "chevron.left.forwardslash.chevron.right" : "eye"

@@ -14,19 +14,22 @@ import TaskEngine
         @Binding var command: EditorCommandRequest?
         var theme: MarkdownTheme
         var livePreview: Bool
+        var focusMode: Bool
 
         public init(
             text: Binding<String>,
             scrollTarget: Binding<NSRange?> = .constant(nil),
             command: Binding<EditorCommandRequest?> = .constant(nil),
             theme: MarkdownTheme = .default,
-            livePreview: Bool = true
+            livePreview: Bool = true,
+            focusMode: Bool = false
         ) {
             _text = text
             _scrollTarget = scrollTarget
             _command = command
             self.theme = theme
             self.livePreview = livePreview
+            self.focusMode = focusMode
         }
 
         public func makeCoordinator() -> Coordinator {
@@ -61,6 +64,7 @@ import TaskEngine
             // Display-only glyph rendering (• bullets, ☐/☑ checkboxes).
             textView.textContentStorage?.delegate = context.coordinator
             context.coordinator.livePreview = livePreview
+            context.coordinator.focusMode = focusMode
             context.coordinator.restyle(textView)
             return scrollView
         }
@@ -68,7 +72,9 @@ import TaskEngine
         public func updateNSView(_ scrollView: NSScrollView, context: Context) {
             guard let textView = scrollView.documentView as? NSTextView else { return }
             let modeChanged = context.coordinator.livePreview != livePreview
+                || context.coordinator.focusMode != focusMode
             context.coordinator.livePreview = livePreview
+            context.coordinator.focusMode = focusMode
             if textView.string != text {
                 textView.string = text
                 context.coordinator.restyle(textView)
@@ -101,6 +107,7 @@ import TaskEngine
             let text: Binding<String>
             let theme: MarkdownTheme
             var livePreview = true
+            var focusMode = false
             var lastCommandID: UUID?
             private var lastCursorLine: NSRange?
             private var pendingRestyle: Task<Void, Never>?
@@ -116,9 +123,14 @@ import TaskEngine
 
             func restyle(_ textView: NSTextView) {
                 guard let storage = textView.textStorage else { return }
-                let visible = livePreview ? cursorParagraph(textView) : nil
-                lastCursorLine = visible
-                MarkdownHighlighter.highlight(storage, theme: theme, hideMarkersOutside: livePreview ? visible : nil)
+                let cursor = cursorParagraph(textView)
+                lastCursorLine = cursor
+                MarkdownHighlighter.highlight(
+                    storage,
+                    theme: theme,
+                    hideMarkersOutside: livePreview ? cursor : nil,
+                    dimOutside: focusMode ? cursor : nil
+                )
             }
 
             private func scheduleRestyle(_ textView: NSTextView) {
@@ -148,7 +160,7 @@ import TaskEngine
             }
 
             public func textViewDidChangeSelection(_ notification: Notification) {
-                guard livePreview, let textView = notification.object as? NSTextView else { return }
+                guard livePreview || focusMode, let textView = notification.object as? NSTextView else { return }
                 // Only restyle when the cursor moved to a different paragraph.
                 if cursorParagraph(textView) != lastCursorLine {
                     restyle(textView)
@@ -224,19 +236,22 @@ import TaskEngine
         @Binding var command: EditorCommandRequest?
         var theme: MarkdownTheme
         var livePreview: Bool
+        var focusMode: Bool
 
         public init(
             text: Binding<String>,
             scrollTarget: Binding<NSRange?> = .constant(nil),
             command: Binding<EditorCommandRequest?> = .constant(nil),
             theme: MarkdownTheme = .default,
-            livePreview: Bool = true
+            livePreview: Bool = true,
+            focusMode: Bool = false
         ) {
             _text = text
             _scrollTarget = scrollTarget
             _command = command
             self.theme = theme
             self.livePreview = livePreview
+            self.focusMode = focusMode
         }
 
         public func makeCoordinator() -> Coordinator {
@@ -267,13 +282,16 @@ import TaskEngine
             tap.delegate = context.coordinator
             textView.addGestureRecognizer(tap)
             context.coordinator.livePreview = livePreview
+            context.coordinator.focusMode = focusMode
             context.coordinator.restyle(textView)
             return textView
         }
 
         public func updateUIView(_ textView: UITextView, context: Context) {
             let modeChanged = context.coordinator.livePreview != livePreview
+                || context.coordinator.focusMode != focusMode
             context.coordinator.livePreview = livePreview
+            context.coordinator.focusMode = focusMode
             if textView.text != text {
                 textView.text = text
                 context.coordinator.restyle(textView)
@@ -308,6 +326,7 @@ import TaskEngine
             let text: Binding<String>
             let theme: MarkdownTheme
             var livePreview = true
+            var focusMode = false
             var lastCommandID: UUID?
             private var lastCursorLine: NSRange?
             private var pendingRestyle: Task<Void, Never>?
@@ -322,12 +341,13 @@ import TaskEngine
             }
 
             func restyle(_ textView: UITextView) {
-                let visible = livePreview ? cursorParagraph(textView) : nil
-                lastCursorLine = visible
+                let cursor = cursorParagraph(textView)
+                lastCursorLine = cursor
                 MarkdownHighlighter.highlight(
                     textView.textStorage,
                     theme: theme,
-                    hideMarkersOutside: livePreview ? visible : nil
+                    hideMarkersOutside: livePreview ? cursor : nil,
+                    dimOutside: focusMode ? cursor : nil
                 )
             }
 
@@ -389,7 +409,7 @@ import TaskEngine
             }
 
             public func textViewDidChangeSelection(_ textView: UITextView) {
-                guard livePreview else { return }
+                guard livePreview || focusMode else { return }
                 if cursorParagraph(textView) != lastCursorLine {
                     restyle(textView)
                 }
