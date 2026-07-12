@@ -18,6 +18,10 @@ final class NotesModel {
 
     var state: VaultState = .loading
     var notes: [VaultItem] = []
+    /// Folder relative paths present on disk (the vault tree IS the scheme).
+    var folders: [String] = []
+    /// Open note tabs, in open order (selection switches, ✕ closes).
+    var openTabs: [VaultItem.ID] = []
     var selectedID: VaultItem.ID?
     var noteText = ""
 
@@ -67,11 +71,26 @@ final class NotesModel {
         observation?.cancel()
     }
 
-    /// Markdown files only, stable order.
+    /// Markdown files only, stable order; folder set captured alongside.
     private func apply(_ snapshot: [VaultItem]) {
         notes = snapshot
             .filter { !$0.isDirectory && $0.relativePath.lowercased().hasSuffix(".md") }
             .sorted { $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending }
+        var seen = Set(snapshot.filter(\.isDirectory).map(\.relativePath))
+        // Folders implied by note paths count even if the dir entry is absent
+        // from a partial snapshot.
+        for note in notes {
+            let components = note.relativePath.split(separator: "/").dropLast()
+            var path = ""
+            for component in components {
+                path = path.isEmpty ? String(component) : path + "/" + component
+                seen.insert(path)
+            }
+        }
+        folders = seen.filter { !$0.isEmpty }.sorted {
+            $0.localizedStandardCompare($1) == .orderedAscending
+        }
+        openTabs.removeAll { id in !notes.contains { $0.id == id } }
     }
 
     func select(_ id: VaultItem.ID?) {
@@ -81,6 +100,9 @@ final class NotesModel {
     private func performSelect(_ id: VaultItem.ID?) async {
         await flushSave()
         selectedID = id
+        if let id, !openTabs.contains(id) {
+            openTabs.append(id)
+        }
         guard let id, let item = notes.first(where: { $0.id == id }) else {
             loadedURL = nil
             noteText = ""
@@ -141,6 +163,50 @@ final class NotesModel {
                 await performSelect(VaultPath.relativePath(of: url, in: root))
             } catch {
                 // Surfaced implicitly: note won't appear.
+            }
+        }
+    }
+
+    func closeTab(_ id: VaultItem.ID) {
+        openTabs.removeAll { $0 == id }
+        if selectedID == id {
+            select(openTabs.last)
+        }
+    }
+
+    func createFolder(named name: String) {
+        guard let root else { return }
+        let cleaned = name.trimmingCharacters(in: .whitespaces)
+            .replacingOccurrences(of: "/", with: "-")
+        guard !cleaned.isEmpty else { return }
+        Task {
+            try? await store.createFolder(at: root.appendingPathComponent(cleaned, isDirectory: true))
+            if let root = self.root {
+                apply(VaultEnumerator.snapshot(of: root))
+            }
+        }
+    }
+
+    /// Move a note into a folder ("" = vault root). Files are truth: this
+    /// is a real coordinated move; tabs and selection follow the new id.
+    func move(_ item: VaultItem, toFolder folder: String) {
+        guard let root else { return }
+        let name = item.relativePath.split(separator: "/").last.map(String.init) ?? item.relativePath
+        let newRelative = folder.isEmpty ? name : folder + "/" + name
+        guard newRelative != item.relativePath else { return }
+        Task {
+            await flushSave()
+            do {
+                try await store.move(from: item.url, to: root.appendingPathComponent(newRelative))
+                if let index = openTabs.firstIndex(of: item.id) {
+                    openTabs[index] = newRelative
+                }
+                if selectedID == item.id {
+                    selectedID = newRelative
+                }
+                apply(VaultEnumerator.snapshot(of: root))
+            } catch {
+                // Move failed; list refresh will show reality.
             }
         }
     }

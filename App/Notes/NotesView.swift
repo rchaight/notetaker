@@ -17,6 +17,8 @@ struct NotesView: View {
     @State private var showingImporter = false
     @State private var importStatus: String?
     @State private var aiStatus: String?
+    @State private var showingNewFolder = false
+    @State private var newFolderName = ""
 
     var body: some View {
         NavigationSplitView {
@@ -33,6 +35,9 @@ struct NotesView: View {
                         }
                         .keyboardShortcut("i", modifiers: [.command, .shift])
                         .help("Convert a PDF, image, RTF, HTML, or text file to a markdown note (⇧⌘I)")
+                        Button("New Folder", systemImage: "folder.badge.plus") {
+                            showingNewFolder = true
+                        }
                     }
                 }
                 .fileImporter(
@@ -71,6 +76,14 @@ struct NotesView: View {
         #if os(iOS)
         .searchable(text: $searchText, prompt: "Search all notes")
         #endif
+        .alert("New Folder", isPresented: $showingNewFolder) {
+            TextField("Folder name", text: $newFolderName)
+            Button("Create") {
+                model.createFolder(named: newFolderName)
+                newFolderName = ""
+            }
+            Button("Cancel", role: .cancel) { newFolderName = "" }
+        }
         .task { await model.start() }
         .task(id: searchText) {
             // Semantic results trail the instant FTS list slightly.
@@ -111,25 +124,17 @@ struct NotesView: View {
             get: { model.selectedID },
             set: { model.select($0) }
         )) {
-            ForEach(visibleNotes) { note in
-                NavigationLink(value: note.id) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(noteTitle(note))
-                            if noteFolder(note) != nil {
-                                Text(noteFolder(note)!)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        Spacer()
-                        syncBadge(note)
-                    }
+            if searching {
+                // Search results stay flat (ranked), with folder subtitles.
+                ForEach(visibleNotes) { note in
+                    noteRow(note, showFolder: true)
                 }
-                .contextMenu {
-                    Button("Delete", systemImage: "trash", role: .destructive) {
-                        model.delete(note)
-                    }
+            } else {
+                ForEach(visibleNotes.filter { !$0.relativePath.contains("/") }) { note in
+                    noteRow(note, showFolder: false)
+                }
+                ForEach(topLevelFolders, id: \.self) { folder in
+                    folderGroup(folder)
                 }
             }
         }
@@ -170,6 +175,59 @@ struct NotesView: View {
 
     @ViewBuilder private var detail: some View {
         if model.selectedID != nil {
+            VStack(spacing: 0) {
+                if model.openTabs.count > 1 {
+                    tabStrip
+                }
+                editorPane
+            }
+        } else {
+            ContentUnavailableView(
+                "Select a Note",
+                systemImage: "note.text",
+                description: Text("Choose a note from the list, or create one.")
+            )
+        }
+    }
+
+    private var tabStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 4) {
+                ForEach(model.openTabs, id: \.self) { id in
+                    HStack(spacing: 4) {
+                        Text(URL(fileURLWithPath: id).deletingPathExtension().lastPathComponent)
+                            .font(.callout)
+                            .lineLimit(1)
+                        Button {
+                            model.closeTab(id)
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                        .buttonStyle(.plain)
+                        .opacity(0.6)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(
+                        id == model.selectedID ? AnyShapeStyle(.selection) : AnyShapeStyle(.clear),
+                        in: Capsule()
+                    )
+                    .contentShape(Capsule())
+                    .onTapGesture {
+                        if id != model.selectedID {
+                            model.select(id)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+        }
+    }
+
+    @ViewBuilder private var editorPane: some View {
+        if true {
             MarkdownEditor(
                 text: Binding(
                     get: { model.noteText },
@@ -219,12 +277,6 @@ struct NotesView: View {
             #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
             #endif
-        } else {
-            ContentUnavailableView(
-                "Select a Note",
-                systemImage: "note.text",
-                description: Text("Choose a note from the list, or create one.")
-            )
         }
     }
 
@@ -270,6 +322,71 @@ struct NotesView: View {
             }
             try? await Task.sleep(for: .seconds(3))
             aiStatus = nil
+        }
+    }
+
+    private var searching: Bool {
+        !searchText.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    private var topLevelFolders: [String] {
+        model.folders.filter { !$0.contains("/") }
+    }
+
+    private func subfolders(of folder: String) -> [String] {
+        model.folders.filter {
+            $0.hasPrefix(folder + "/") && !$0.dropFirst(folder.count + 1).contains("/")
+        }
+    }
+
+    private func notes(in folder: String) -> [VaultItem] {
+        visibleNotes.filter {
+            let dir = $0.relativePath.split(separator: "/").dropLast().joined(separator: "/")
+            return dir == folder
+        }
+    }
+
+    private func folderGroup(_ folder: String) -> AnyView {
+        let name = folder.split(separator: "/").last.map(String.init) ?? folder
+        return AnyView(
+            DisclosureGroup {
+                ForEach(notes(in: folder)) { note in
+                    noteRow(note, showFolder: false)
+                }
+                ForEach(subfolders(of: folder), id: \.self) { child in
+                    folderGroup(child)
+                }
+            } label: {
+                Label(name, systemImage: "folder")
+            }
+        )
+    }
+
+    private func noteRow(_ note: VaultItem, showFolder: Bool) -> some View {
+        NavigationLink(value: note.id) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(noteTitle(note))
+                    if showFolder, let folder = noteFolder(note) {
+                        Text(folder)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                syncBadge(note)
+            }
+        }
+        .contextMenu {
+            Menu("Move To") {
+                Button("Vault Root") { model.move(note, toFolder: "") }
+                ForEach(model.folders, id: \.self) { folder in
+                    Button(folder) { model.move(note, toFolder: folder) }
+                }
+            }
+            Button("Delete", systemImage: "trash", role: .destructive) {
+                model.delete(note)
+            }
         }
     }
 
