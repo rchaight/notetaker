@@ -77,12 +77,18 @@ public enum TaskTokenParser {
         guard let match = regex.firstMatch(in: text, range: NSRange(location: 0, length: ns.length))
         else { return nil }
         let token = ns.substring(with: match.range(at: 1)).lowercased()
-        text = ns.replacingCharacters(in: match.range, with: "")
 
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = calendar.timeZone
         formatter.dateFormat = "yyyy-MM-dd"
+
+        // Impossible calendar dates (">2026-13-45") must not become metadata —
+        // leave the token visible in the text instead of storing garbage.
+        if token.first?.isNumber == true, formatter.date(from: token) == nil {
+            return nil
+        }
+        text = ns.replacingCharacters(in: match.range, with: "")
 
         switch token {
         case "today":

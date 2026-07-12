@@ -56,6 +56,7 @@ public enum RecurrenceParser {
             : Int(ns.substring(with: match.range(at: 2))) ?? 1
         let unitWord = ns.substring(with: match.range(at: 3)).lowercased()
 
+        guard count >= 1 else { return nil } // "&every 0 days" must never parse
         let kind: Recurrence.Kind = kindWord == "after" ? .afterCompletion : .fixed
         let recurrence: Recurrence
         if let weekday = weekdays[unitWord] {
@@ -112,10 +113,14 @@ public enum RecurrenceEngine {
             return formatter.string(from: next)
         case .fixed:
             // Advance from the scheduled due date; catch up past-due series
-            // so the next instance is always in the future.
+            // so the next instance is always in the future. The loop is
+            // hang-proof: it exits whenever a step fails to move forward.
             var base = currentDue.flatMap { formatter.date(from: $0) } ?? completionDay
             repeat {
-                base = calendar.date(byAdding: unit, value: recurrence.interval, to: base) ?? base
+                guard let advanced = calendar.date(
+                    byAdding: unit, value: max(recurrence.interval, 1), to: base
+                ), advanced > base else { break }
+                base = advanced
             } while calendar.startOfDay(for: base) <= completionDay
             return formatter.string(from: base)
         }

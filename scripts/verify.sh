@@ -13,7 +13,7 @@ for round in $(seq 1 "$ROUNDS"); do
   echo "=== test round $round/$ROUNDS ==="
   for PKG in Packages/*/; do
     NAME=$(basename "$PKG")
-    RESULT=$(cd "$PKG" && swift test --scratch-path "$HOME/.cache/notetaker-build/$NAME" 2>&1 | tail -1)
+    RESULT=$( (cd "$PKG" && swift test --scratch-path "$HOME/.cache/notetaker-build/$NAME" 2>&1 | tail -1) || true )
     if ! grep -q ' passed' <<<"$RESULT"; then
       echo "FAIL [$NAME round $round]: $RESULT"
       exit 1

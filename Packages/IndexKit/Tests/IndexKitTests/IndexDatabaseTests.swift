@@ -104,3 +104,54 @@ struct IndexDatabaseTests {
         #expect(try db.searchNoteIds(matching: "searchable").isEmpty)
     }
 }
+
+struct AuditHardeningDatabaseTests {
+    @Test func cascadeIsScopedToTheDeletedNote() throws {
+        let (db, _) = try IndexDatabase.open(path: nil)
+        try db.queue.write { database in
+            try NoteRecord(id: "gone.md", title: "gone", folder: "", modifiedAt: nil, contentHash: "a").insert(database)
+            try NoteRecord(id: "stays.md", title: "stays", folder: "", modifiedAt: nil, contentHash: "b")
+                .insert(database)
+            try TaskRecord(id: "gone.md#0", noteId: "gone.md", line: 0, text: "g",
+                           rawLine: "- [ ] g", checked: false).insert(database)
+            try TaskRecord(id: "stays.md#0", noteId: "stays.md", line: 0, text: "s",
+                           rawLine: "- [ ] s", checked: false).insert(database)
+        }
+        try db.queue.write { database in
+            _ = try NoteRecord.deleteOne(database, key: "gone.md")
+        }
+        let survivors = try db.queue.read { database in
+            try TaskRecord.fetchAll(database).map(\.id)
+        }
+        #expect(survivors == ["stays.md#0"], "cascade must not touch other notes")
+    }
+
+    @Test func fileBackedDataSurvivesReopen() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("IndexReopen-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let path = dir.appendingPathComponent("index.sqlite").path
+
+        let (first, _) = try IndexDatabase.open(path: path)
+        let indexer = NoteIndexer(database: first)
+        try indexer.index(noteId: "keep.md", contents: "- [ ] survive restart\n", modifiedAt: nil)
+
+        let (second, wiped) = try IndexDatabase.open(path: path)
+        #expect(!wiped, "matching schema must not wipe")
+        #expect(try second.openTasks().map(\.text) == ["survive restart"])
+    }
+
+    @Test func wipeThenRescanRestoresEverything() throws {
+        let (db, _) = try IndexDatabase.open(path: nil)
+        let indexer = NoteIndexer(database: db)
+        try indexer.index(noteId: "a.md", contents: "- [ ] alpha #tag\nsee [[Beta]]\n", modifiedAt: nil)
+        let tasksBefore = try db.openTasks()
+
+        try db.wipeAllRows()
+        #expect(try db.openTasks().isEmpty)
+        try indexer.rescan(notes: [("a.md", "- [ ] alpha #tag\nsee [[Beta]]\n", nil)])
+        #expect(try db.openTasks() == tasksBefore, "the designed recovery path must fully restore")
+        #expect(try db.searchNoteIds(matching: "alpha") == ["a.md"], "FTS restored too")
+    }
+}

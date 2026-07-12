@@ -15,10 +15,19 @@ public enum SyntaxMarkers {
             guard NSMaxRange(item.range) <= ns.length else { continue }
             switch item.kind {
             case .heading:
-                // "## Title" — hide hashes plus the following space.
+                // "## Title" (up to 3 leading spaces is still a valid ATX
+                // heading) — hide indent + hashes + the following space.
                 let prefix = ns.substring(with: item.range)
-                var hashes = 0
+                var lead = 0
                 for character in prefix {
+                    if character == " ", lead < 3 {
+                        lead += 1
+                    } else {
+                        break
+                    }
+                }
+                var hashes = 0
+                for character in prefix.dropFirst(lead) {
                     if character == "#" {
                         hashes += 1
                     } else {
@@ -26,8 +35,8 @@ public enum SyntaxMarkers {
                     }
                 }
                 if hashes > 0 {
-                    let extra = prefix.dropFirst(hashes).first == " " ? 1 : 0
-                    markers.append(NSRange(location: item.range.location, length: hashes + extra))
+                    let extra = prefix.dropFirst(lead + hashes).first == " " ? 1 : 0
+                    markers.append(NSRange(location: item.range.location, length: lead + hashes + extra))
                 }
             case .strong:
                 appendSymmetric(item.range, in: ns, delimiterLength: 2, allowed: ["*", "_"], to: &markers)
@@ -82,9 +91,11 @@ public enum SyntaxMarkers {
             case .listItem:
                 // Hide the "- " / "* " / "1. " bullet; a task item then leads
                 // with its visible [ ]/[x] checkbox token.
+                // Same 24-char head window as TaskCheckboxes.tokens — the two
+                // must agree or deep-nested bullets hide while tokens miss.
                 appendLinePrefixMarkers(
                     pattern: "^ *(?:[-*+]|[0-9]+[.)]) ",
-                    range: NSRange(location: item.range.location, length: min(item.range.length, 12)),
+                    range: NSRange(location: item.range.location, length: min(item.range.length, 24)),
                     in: ns, to: &markers, firstLineOnly: true
                 )
             case .link:

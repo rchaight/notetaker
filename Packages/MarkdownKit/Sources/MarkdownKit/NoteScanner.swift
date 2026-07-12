@@ -28,7 +28,7 @@ public enum NoteScanner {
         pattern: #"^\s*(?:[-*+]|[0-9]+[.)])\s+\[( |x|X)\]\s+(.+)$"#
     )
     private static let wikilinkRegex = try? NSRegularExpression(
-        pattern: #"\[\[([^\]\|#]+)(?:#[^\]\|]*)?(?:\|[^\]]*)?\]\]"#
+        pattern: #"\[\[([^\[\]\|#]+)(?:#[^\]\|]*)?(?:\|[^\]]*)?\]\]"#
     )
     private static let tagRegex = try? NSRegularExpression(
         pattern: #"(?<=^|\s)#([\p{L}\p{N}_][\p{L}\p{N}_\-/]*)"#
@@ -37,8 +37,10 @@ public enum NoteScanner {
     public static func tasks(in text: String) -> [ScannedTask] {
         guard let regex = taskRegex else { return [] }
         var tasks: [ScannedTask] = []
-        for (index, lineSub) in text.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
-            let line = String(lineSub)
+        for (index, rawLine) in splitLines(text).enumerated() {
+            // Match against the CR-stripped copy; report rawLine untouched so
+            // outbound line edits stay byte-exact on CRLF files.
+            let line = strippingCarriageReturn(rawLine)
             let range = NSRange(location: 0, length: (line as NSString).length)
             guard let match = regex.firstMatch(in: line, range: range) else { continue }
             let ns = line as NSString
@@ -55,7 +57,7 @@ public enum NoteScanner {
             }
             tasks.append(ScannedTask(
                 line: index,
-                rawLine: line,
+                rawLine: rawLine,
                 checked: stateChar.lowercased() == "x",
                 text: ns.substring(with: match.range(at: 2)).trimmingCharacters(in: .whitespaces),
                 indent: indent

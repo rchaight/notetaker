@@ -18,7 +18,7 @@ public enum TaskLineToggler {
         anchorLine: Int,
         expectedRawLine: String
     ) -> Result? {
-        var lines = contents.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        var lines = splitLines(contents)
         guard let target = locate(in: lines, anchorLine: anchorLine, expectedRawLine: expectedRawLine)
         else { return nil }
         guard let (flipped, nowChecked) = flipCheckbox(in: lines[target]) else { return nil }
@@ -32,13 +32,12 @@ public enum TaskLineToggler {
         anchorLine: Int,
         expectedRawLine: String
     ) -> Int? {
-        let lines = contents.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        return locate(in: lines, anchorLine: anchorLine, expectedRawLine: expectedRawLine)
+        locate(in: splitLines(contents), anchorLine: anchorLine, expectedRawLine: expectedRawLine)
     }
 
     /// Replaces one whole line, preserving every other byte.
     public static func replacingLine(_ contents: String, at line: Int, with newLine: String) -> String {
-        var lines = contents.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        var lines = splitLines(contents)
         guard line >= 0, line < lines.count else { return contents }
         lines[line] = newLine
         return lines.joined(separator: "\n")

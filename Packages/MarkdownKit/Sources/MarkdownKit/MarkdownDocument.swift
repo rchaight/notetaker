@@ -58,11 +58,11 @@ public struct Frontmatter: Equatable, Sendable {
 
     static func split(_ source: String) -> (frontmatter: Frontmatter, body: String, bodyUTF16Offset: Int)? {
         guard source.hasPrefix("---\n") || source.hasPrefix("---\r\n") else { return nil }
-        let lines = source.split(separator: "\n", omittingEmptySubsequences: false)
+        let lines = splitLines(source)
         var values: [String: String] = [:]
 
         for (index, rawLine) in lines.enumerated().dropFirst() {
-            let line = rawLine.hasSuffix("\r") ? rawLine.dropLast() : rawLine
+            let line = strippingCarriageReturn(rawLine)
             if line == "---" {
                 let blockLineCount = index + 1
                 let block = lines.prefix(blockLineCount).joined(separator: "\n") + "\n"

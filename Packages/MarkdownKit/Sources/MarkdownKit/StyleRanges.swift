@@ -50,21 +50,22 @@ public enum MarkdownStyler {
 /// offsets; TextKit wants UTF-16 NSRanges. This converter bridges the two.
 struct SourceConverter {
     private let lineStartUTF16: [Int]
-    private let lines: [Substring]
+    private let lines: [String]
 
     init(_ source: String) {
+        // Scan for LF at the UTF-16 level: "\r\n" is a single Swift grapheme,
+        // so Character-based search would miss every CRLF line break.
+        let ns = source as NSString
         var starts = [0]
-        var runningUTF16 = 0
-        var collected: [Substring] = []
-        var current = source.startIndex
-        while current < source.endIndex {
-            let lineEnd = source[current...].firstIndex(of: "\n")
-                .map(source.index(after:)) ?? source.endIndex
-            let line = source[current ..< lineEnd]
-            collected.append(line)
-            runningUTF16 += line.utf16.count
-            starts.append(runningUTF16)
-            current = lineEnd
+        var collected: [String] = []
+        var lineStart = 0
+        for offset in 0 ..< ns.length where ns.character(at: offset) == 0x0A {
+            collected.append(ns.substring(with: NSRange(location: lineStart, length: offset - lineStart + 1)))
+            starts.append(offset + 1)
+            lineStart = offset + 1
+        }
+        if lineStart < ns.length {
+            collected.append(ns.substring(from: lineStart))
         }
         lineStartUTF16 = starts
         lines = collected

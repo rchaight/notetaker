@@ -84,7 +84,7 @@ public struct TaskFilter: Equatable, Sendable {
                 case .week:
                     guard let dueDate,
                           dueDate <= SmartBuckets.isoDay(offsetFromToday: 7, today: today, calendar: calendar),
-                          bucket != .inbox
+                          bucket == .today || bucket == .upcoming
                     else { return false }
                 }
             case let .label(wanted):
