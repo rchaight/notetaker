@@ -51,7 +51,11 @@ final class VaultIndexService {
         started = true
         do {
             let resolved: URL
-            do {
+            if let custom = VaultRegistry.activeCustomRoot() {
+                // Custom folder vault: local observers, per-vault index.
+                resolved = custom
+                isLocalFallback = true
+            } else { do {
                 resolved = try await UbiquityContainer.documentsURL()
             } catch {
                 let local = try FileManager.default
@@ -60,14 +64,16 @@ final class VaultIndexService {
                 try FileManager.default.createDirectory(at: local, withIntermediateDirectories: true)
                 isLocalFallback = true
                 resolved = local
-            }
+            } }
             root = resolved
 
             let indexDir = try FileManager.default
                 .url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
                 .appendingPathComponent("Index", isDirectory: true)
             try FileManager.default.createDirectory(at: indexDir, withIntermediateDirectories: true)
-            let (db, _) = try IndexDatabase.open(path: indexDir.appendingPathComponent("index.sqlite").path)
+            let indexName = VaultRegistry.activeId == VaultRegistry.iCloudId
+                ? "index.sqlite" : "index-\(VaultRegistry.activeId).sqlite"
+            let (db, _) = try IndexDatabase.open(path: indexDir.appendingPathComponent(indexName).path)
             database = db
             indexer = NoteIndexer(database: db)
 

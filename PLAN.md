@@ -262,7 +262,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 - [x] Saved smart searches (persisted search queries as sidebar entries).
 - [x] Daily note spine (Today note command + calendar navigation).
 - [x] Note templates (template files with placeholders).
-- [ ] Multi-vault switcher.
+- [x] Multi-vault switcher.
 
 ### M7 — Project management / Gantt (ProjectKit)
 **Goal:** PM as another view over the same todos + frontmatter, not a second data model.

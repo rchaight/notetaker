@@ -19,6 +19,8 @@ struct NotesView: View {
     @State private var semanticIds: [String] = []
     @State private var showingImporter = false
     @State private var showingImagePicker = false
+    @State private var showingVaultPicker = false
+    @AppStorage(VaultRegistry.activeKey) private var activeVault = VaultRegistry.iCloudId
     @State private var selectedTag: String?
     @State private var allTags: [(tag: String, count: Int)] = []
     @State private var pinnedIds: [String] = []
@@ -70,6 +72,44 @@ struct NotesView: View {
                         }
                         .keyboardShortcut("d", modifiers: [.command, .shift])
                         .help("Open today's daily note (⇧⌘D)")
+                        #if os(macOS)
+                            Menu {
+                                Button {
+                                    activeVault = VaultRegistry.iCloudId
+                                } label: {
+                                    if activeVault == VaultRegistry.iCloudId {
+                                        Label("iCloud Vault", systemImage: "checkmark")
+                                    } else {
+                                        Text("iCloud Vault")
+                                    }
+                                }
+                                ForEach(VaultRegistry.entries) { entry in
+                                    Button {
+                                        activeVault = entry.id
+                                    } label: {
+                                        if activeVault == entry.id {
+                                            Label(entry.name, systemImage: "checkmark")
+                                        } else {
+                                            Text(entry.name)
+                                        }
+                                    }
+                                }
+                                Divider()
+                                Button("Add Folder Vault…", systemImage: "folder.badge.plus") {
+                                    showingVaultPicker = true
+                                }
+                            } label: {
+                                Label("Vault", systemImage: "externaldrive")
+                            }
+                            .help("Switch between vaults or add a folder vault")
+                            .fileImporter(
+                                isPresented: $showingVaultPicker, allowedContentTypes: [.folder]
+                            ) { outcome in
+                                guard case let .success(url) = outcome,
+                                      let entry = VaultRegistry.add(url: url) else { return }
+                                activeVault = entry.id
+                            }
+                        #endif
                     }
                 }
                 .fileImporter(

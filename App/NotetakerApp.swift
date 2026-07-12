@@ -23,9 +23,13 @@ struct NotetakerApp: App {
         #endif
     }
 
+    @AppStorage(VaultRegistry.activeKey) private var activeVault = VaultRegistry.iCloudId
+
     var body: some Scene {
         WindowGroup {
-            AppShell()
+            // .id: switching vaults rebuilds the shell (fresh model + index
+            // service rooted in the new vault).
+            AppShell().id(activeVault)
         }
         .defaultSize(width: 1150, height: 720)
 

@@ -38,10 +38,31 @@ final class NotesModel {
     private var dirty = false
 
     private var started = false
+    #if os(macOS)
+        private var watcher: DirectoryWatcher?
+    #endif
 
     func start() async {
         guard !started else { return }
         started = true
+
+        #if os(macOS)
+            if let custom = VaultRegistry.activeCustomRoot() {
+                root = custom
+                apply(VaultEnumerator.snapshot(of: custom))
+                state = .ready
+                let watcher = DirectoryWatcher(root: custom)
+                self.watcher = watcher
+                observation = Task {
+                    for await _ in watcher.events {
+                        if let root = self.root {
+                            self.apply(VaultEnumerator.snapshot(of: root))
+                        }
+                    }
+                }
+                return
+            }
+        #endif
 
         // Show the list IMMEDIATELY — cold ubiquity resolution can take
         // seconds and must never blank the UI. Cached root first, then the
@@ -95,6 +116,9 @@ final class NotesModel {
     func stop() {
         observer?.stop()
         observation?.cancel()
+        #if os(macOS)
+            watcher?.stop()
+        #endif
     }
 
     /// Markdown files only, stable order; folder set captured alongside.
