@@ -1,4 +1,6 @@
+import AIKit
 import EditorKit
+import MarkdownKit
 import SwiftUI
 import UniformTypeIdentifiers
 import VaultKit
@@ -12,6 +14,7 @@ struct NotesView: View {
     @State private var searchText = ""
     @State private var showingImporter = false
     @State private var importStatus: String?
+    @State private var aiStatus: String?
 
     var body: some View {
         NavigationSplitView {
@@ -160,7 +163,22 @@ struct NotesView: View {
                     .padding(12)
             }
             .toolbar {
-                ToolbarItem {
+                ToolbarItemGroup(placement: .primaryAction) {
+                    Menu {
+                        Button("Summarize Note", systemImage: "text.append") {
+                            runAI(summarize: true)
+                        }
+                        Button("Extract Action Items", systemImage: "checklist") {
+                            runAI(summarize: false)
+                        }
+                        if let aiStatus {
+                            Divider()
+                            Text(aiStatus)
+                        }
+                    } label: {
+                        Label("AI", systemImage: "sparkles")
+                    }
+                    .disabled(aiStatus?.hasSuffix("…") == true)
                     Button(
                         livePreview ? "Source Mode" : "Live Preview",
                         systemImage: livePreview ? "chevron.left.forwardslash.chevron.right" : "eye"
@@ -183,6 +201,46 @@ struct NotesView: View {
                 systemImage: "note.text",
                 description: Text("Choose a note from the list, or create one.")
             )
+        }
+    }
+
+    /// AI actions edit the note text like any other edit — autosave and the
+    /// indexer treat the result exactly as if the user typed it.
+    private func runAI(summarize: Bool) {
+        let source = model.noteText
+        guard !source.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        aiStatus = summarize ? "Summarizing…" : "Extracting…"
+        Task {
+            var providers: [any AIProvider] = []
+            #if canImport(FoundationModels)
+                providers.append(FoundationModelsProvider())
+            #endif
+            let router = AIRouter(providers: providers)
+            do {
+                if summarize {
+                    let (summary, provider) = try await router.summarize(source)
+                    let block = "> **Summary** *(\(provider))*: \(summary)\n\n"
+                    let doc = MarkdownDocument(source: source)
+                    model.noteText = (doc.frontmatter?.rawBlock ?? "") + block + doc.body
+                } else {
+                    let (tasks, provider) = try await router.extractActionItems(from: source)
+                    guard !tasks.isEmpty else {
+                        aiStatus = "No action items found"
+                        try? await Task.sleep(for: .seconds(3))
+                        aiStatus = nil
+                        return
+                    }
+                    let section = "\n## Action Items *(\(provider))*\n\n"
+                        + tasks.map(\.markdownLine).joined(separator: "\n") + "\n"
+                    model.noteText = source + section
+                }
+                model.textChanged()
+                aiStatus = "Done (\(summarize ? "summary" : "action items") added)"
+            } catch {
+                aiStatus = "AI failed: \(error)"
+            }
+            try? await Task.sleep(for: .seconds(3))
+            aiStatus = nil
         }
     }
 

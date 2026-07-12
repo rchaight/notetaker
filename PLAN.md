@@ -231,9 +231,9 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 ### M6 — AI features (AIKit) — private/on-device by default
 **Goal:** the `AIProvider` abstraction with Foundation Models + None (MVP), Ollama + PCC (v1), all gated and offline-safe.
 **Steps:**
-- [ ] `AIProvider` protocol + `Capabilities`; router keyed on `tokenCount(for:)`, task type, `SystemLanguageModel.default.availability`, reachability, privacy pref.
-- [ ] `FoundationModelsProvider`: `@Generable`/`@Guide` guided generation for **NL task parsing** (text → typed `Todo`/date/priority/tags) and **action-item extraction** (note → `[Todo]` inserted as inline `- [ ]`); short summarize; auto-tag/auto-title. Route >~3k-token inputs to PCC/Ollama.
-- [ ] `NoneProvider`: `NSDataDetector`/regex task parsing + keyword search fallback (app fully usable on ineligible hardware/offline).
+- [x] `AIProvider` protocol + `Capabilities`; router keyed on `tokenCount(for:)`, task type, `SystemLanguageModel.default.availability`, reachability, privacy pref. *(Protocol + availability-ordered router shipped; token-count routing lands with the Ollama tier.)*
+- [x] `FoundationModelsProvider`: `@Generable`/`@Guide` guided generation for **NL task parsing** (text → typed `Todo`/date/priority/tags) and **action-item extraction** (note → `[Todo]` inserted as inline `- [ ]`); short summarize; auto-tag/auto-title. Route >~3k-token inputs to PCC/Ollama. *(Parse/extract/summarize shipped, live generation CLI-verified; auto-tag/title + long-input routing with Ollama pass.)*
+- [x] `NoneProvider`: `NSDataDetector`/regex task parsing + keyword search fallback (app fully usable on ineligible hardware/offline).
 - [ ] Semantic search: `NLContextualEmbedding` (256-tok paragraph chunks) → `VecturaKit` local vector store; expose notes/todos as `IndexedEntity` for system Spotlight/Siri semantic search.
 - [ ] `OllamaProvider` (`mattt/ollama-swift`): config UX (prefill `http://<homelab-ip>:11434`, optional Bonjour, `/api/tags` health-check + model picker, Test Connection, persist URL only in Keychain). Long-note summarization, transcript cleanup, project-plan drafting; default Gemma3-12B/Qwen3, tool-calling model for structured extraction.
 - [ ] PCC `.deep` tier (32K, entitlement) for long/reasoning tasks. Per-note AI-tier indicator + logging; AI-authorship provenance marking.

@@ -15,7 +15,7 @@ import Testing
     private let boldTrait = UIFontDescriptor.SymbolicTraits.traitBold
 #endif
 
-struct ThemeTests {
+@Suite(.serialized) @MainActor struct ThemeTests {
     let theme = MarkdownTheme.default
 
     @Test func headingFontsScaleDownByLevel() {
@@ -46,7 +46,7 @@ struct ThemeTests {
     }
 }
 
-struct HighlighterTests {
+@Suite(.serialized) @MainActor struct HighlighterTests {
     private func storage(_ text: String) -> NSTextStorage {
         let storage = NSTextStorage(string: text)
         MarkdownHighlighter.highlight(storage)
