@@ -274,6 +274,70 @@ final class NotesModel {
         return formatter.date(from: day)
     }
 
+    /// Copies picked files/folders INTO the vault: .md/.txt/.markdown files
+    /// land at the root (uniquified); folders copy their whole note tree
+    /// under the folder's name. Returns a status line for the UI.
+    func importIntoVault(urls: [URL]) async -> String {
+        guard let root else { return "Vault not ready" }
+        var copied = 0
+        var skipped = 0
+        let noteExtensions: Set<String> = ["md", "markdown", "txt"]
+        let existing = Set(notes.map(\.relativePath))
+
+        func uniqueRelative(_ desired: String) -> String {
+            guard existing.contains(desired) || FileManager.default
+                .fileExists(atPath: root.appendingPathComponent(desired).path) else { return desired }
+            let url = URL(fileURLWithPath: desired)
+            let base = url.deletingPathExtension().relativePath
+            let ext = url.pathExtension
+            var counter = 2
+            var candidate = "\(base) \(counter).\(ext)"
+            while FileManager.default.fileExists(atPath: root.appendingPathComponent(candidate).path) {
+                counter += 1
+                candidate = "\(base) \(counter).\(ext)"
+            }
+            return candidate
+        }
+
+        for url in urls {
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            var isDirectory: ObjCBool = false
+            FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
+            if isDirectory.boolValue {
+                let base = url.lastPathComponent
+                let enumerator = FileManager.default.enumerator(
+                    at: url, includingPropertiesForKeys: [.isRegularFileKey]
+                )
+                while let item = enumerator?.nextObject() as? URL {
+                    guard noteExtensions.contains(item.pathExtension.lowercased()),
+                          (try? item.resourceValues(forKeys: [.isRegularFileKey]))?
+                          .isRegularFile == true else { continue }
+                    let relative = base + "/" + item.path
+                        .replacingOccurrences(of: url.path + "/", with: "")
+                    let destination = root.appendingPathComponent(uniqueRelative(relative))
+                    do {
+                        try await store.createFolder(at: destination.deletingLastPathComponent())
+                        try await store.copy(from: item, to: destination)
+                        copied += 1
+                    } catch { skipped += 1 }
+                }
+            } else if noteExtensions.contains(url.pathExtension.lowercased()) {
+                let destination = root.appendingPathComponent(uniqueRelative(url.lastPathComponent))
+                do {
+                    try await store.copy(from: url, to: destination)
+                    copied += 1
+                } catch { skipped += 1 }
+            } else {
+                skipped += 1
+            }
+        }
+        apply(VaultEnumerator.snapshot(of: root))
+        return skipped == 0
+            ? "Imported \(copied) note\(copied == 1 ? "" : "s")"
+            : "Imported \(copied), skipped \(skipped) (not markdown/text)"
+    }
+
     /// Notes under Templates/ act as templates for new notes.
     var templates: [VaultItem] {
         notes.filter { $0.relativePath.hasPrefix("Templates/") }

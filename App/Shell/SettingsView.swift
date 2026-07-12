@@ -5,6 +5,8 @@ import SwiftUI
 /// App settings; sections fill in as their milestones land (vault location,
 /// AI providers, appearance, security).
 struct SettingsView: View {
+    @AppStorage(VaultRegistry.activeKey) private var activeVault = VaultRegistry.iCloudId
+    @State private var showingVaultChooser = false
     @AppStorage("doclingServeURL") private var doclingServeURL = ""
     @State private var probeResult: String?
     @AppStorage("fileParserEngineDir") private var engineDirOverride = ""
@@ -21,6 +23,33 @@ struct SettingsView: View {
                 Form {
                     Section("General") {
                         LabeledContent("Version", value: "0.1.0 (pre-alpha)")
+                    }
+                    Section("Vault location") {
+                        LabeledContent(
+                            "Active vault",
+                            value: VaultRegistry.activeCustomRoot()?.path
+                                ?? "iCloud Drive › Notetaker"
+                        )
+                        HStack {
+                            Button("Use iCloud Vault") {
+                                activeVault = VaultRegistry.iCloudId
+                            }
+                            .disabled(activeVault == VaultRegistry.iCloudId)
+                            Button("Choose Folder…") {
+                                showingVaultChooser = true
+                            }
+                            .fileImporter(
+                                isPresented: $showingVaultChooser,
+                                allowedContentTypes: [.folder]
+                            ) { outcome in
+                                guard case let .success(url) = outcome,
+                                      let entry = VaultRegistry.add(url: url) else { return }
+                                activeVault = entry.id
+                            }
+                        }
+                        Text("Switching vaults reloads the app shell. Folder vaults don't sync via iCloud.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                     Section("Document conversion") {
                         #if os(macOS)

@@ -20,6 +20,7 @@ struct NotesView: View {
     @State private var showingImporter = false
     @State private var showingImagePicker = false
     @State private var showingVaultPicker = false
+    @State private var showingVaultImporter = false
     @AppStorage(VaultRegistry.activeKey) private var activeVault = VaultRegistry.iCloudId
     @State private var selectedTag: String?
     @State private var allTags: [(tag: String, count: Int)] = []
@@ -307,14 +308,38 @@ struct NotesView: View {
         }
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 2) {
-                Button {
-                    showingImporter = true
-                } label: {
-                    Label("Import Document…", systemImage: "square.and.arrow.down")
-                        .font(.callout)
+                HStack(spacing: 14) {
+                    Button {
+                        showingImporter = true
+                    } label: {
+                        Label("Import Document…", systemImage: "square.and.arrow.down")
+                            .font(.callout)
+                    }
+                    Button {
+                        showingVaultImporter = true
+                    } label: {
+                        Label("Add to Vault…", systemImage: "folder.badge.plus")
+                            .font(.callout)
+                    }
                 }
                 .buttonStyle(.borderless)
                 .padding(.vertical, 4)
+                .fileImporter(
+                    isPresented: $showingVaultImporter,
+                    allowedContentTypes: [
+                        .folder, .plainText,
+                        UTType(filenameExtension: "md") ?? .plainText,
+                        UTType(filenameExtension: "markdown") ?? .plainText,
+                    ],
+                    allowsMultipleSelection: true
+                ) { outcome in
+                    guard case let .success(urls) = outcome else { return }
+                    Task {
+                        importStatus = await model.importIntoVault(urls: urls)
+                        try? await Task.sleep(for: .seconds(4))
+                        importStatus = nil
+                    }
+                }
                 if let importStatus {
                     Text(importStatus)
                         .font(.caption)
@@ -713,16 +738,19 @@ struct NotesView: View {
         }
     }
 
-    /// Applies a List selection tag only when `id` is non-nil (section
-    /// rows must not duplicate the main list's tags).
+    /// Main Vault rows carry the List selection tag; auxiliary-section
+    /// copies (Pinned/Recents/Bookmarks) select via their own tap instead —
+    /// duplicate tags make selection jump, and an unconditional tap gesture
+    /// would swallow the List's selection clicks (user-reported).
     private struct SelectableTag: ViewModifier {
         let id: String?
+        let select: (String) -> Void
 
         func body(content: Content) -> some View {
             if let id {
                 content.tag(id)
             } else {
-                content
+                content.onTapGesture { select("") }
             }
         }
     }
@@ -782,15 +810,6 @@ struct NotesView: View {
             syncBadge(note)
         }
         .contentShape(Rectangle())
-        .onTapGesture {
-            // Auxiliary sections (Pinned/Recents/Bookmarks) can show the
-            // same note as the main list; giving every copy the same
-            // selection tag makes the List jump between duplicates. Only
-            // the main rows carry tags — section rows select directly.
-            if !selectable {
-                model.select(note.id)
-            }
-        }
         .contextMenu {
             Button(
                 pinnedIds.contains(note.id) ? "Unpin" : "Pin",
@@ -813,7 +832,9 @@ struct NotesView: View {
                 }
             }
         }
-        .modifier(SelectableTag(id: selectable ? note.id : nil))
+        .modifier(SelectableTag(id: selectable ? note.id : nil) { _ in
+            model.select(note.id)
+        })
         .contextMenu {
             Menu("Move To") {
                 Button("Vault Root") { model.move(note, toFolder: "") }
