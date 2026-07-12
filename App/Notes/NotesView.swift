@@ -327,7 +327,7 @@ struct NotesView: View {
             )
             .safeAreaInset(edge: .top, spacing: 0) { formatBar }
             .overlay(alignment: .bottomTrailing) {
-                Text("\(wordCount) words")
+                Text(statsChip)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 10)
@@ -512,6 +512,14 @@ struct NotesView: View {
 
     private var wordCount: Int {
         model.noteText.split(whereSeparator: \.isWhitespace).count
+    }
+
+    private var statsChip: String {
+        let words = wordCount
+        guard words > 0 else { return "0 words" }
+        // ~220 wpm silent-reading average; floor at one minute.
+        let minutes = max(1, Int((Double(words) / 220.0).rounded()))
+        return "\(words) words · \(minutes) min read"
     }
 
     private func noteTitle(_ note: VaultItem) -> String {
