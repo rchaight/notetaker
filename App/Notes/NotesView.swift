@@ -181,7 +181,24 @@ struct NotesView: View {
                 if model.openTabs.count > 1 {
                     tabStrip
                 }
-                editorPane
+                // Plain split, NOT .inspector: the system inspector's
+                // toolbar/constraint integration throws during layout on
+                // the macOS 27 beta (same family as the .searchable crash).
+                HStack(spacing: 0) {
+                    editorPane
+                    if showInspector {
+                        Divider()
+                        NoteInspector(
+                            noteId: model.selectedID ?? "",
+                            noteTitle: selectedTitle,
+                            noteText: model.noteText,
+                            service: indexService,
+                            onJump: { scrollTarget = $0 },
+                            onOpen: { model.select($0) }
+                        )
+                        .frame(width: 270)
+                    }
+                }
             }
         } else {
             ContentUnavailableView(
@@ -238,17 +255,6 @@ struct NotesView: View {
                 scrollTarget: $scrollTarget,
                 livePreview: livePreview
             )
-            .inspector(isPresented: $showInspector) {
-                NoteInspector(
-                    noteId: model.selectedID ?? "",
-                    noteTitle: selectedTitle,
-                    noteText: model.noteText,
-                    service: indexService,
-                    onJump: { scrollTarget = $0 },
-                    onOpen: { model.select($0) }
-                )
-                .inspectorColumnWidth(min: 200, ideal: 260, max: 360)
-            }
             .overlay(alignment: .bottomTrailing) {
                 Text("\(wordCount) words")
                     .font(.caption)
