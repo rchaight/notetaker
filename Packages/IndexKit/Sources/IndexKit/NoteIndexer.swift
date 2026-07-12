@@ -44,6 +44,7 @@ public struct NoteIndexer: Sendable {
         // file), so scan the full contents, not just the body.
         let scanned = NoteScanner.tasks(in: contents)
         let links = NoteScanner.wikilinkTargets(in: document.body)
+        let tags = Set(NoteScanner.tags(in: document.body))
 
         try database.queue.write { db in
             try note.save(db)
@@ -78,6 +79,10 @@ public struct NoteIndexer: Sendable {
             }
             for target in links {
                 try OutLinkRecord(noteId: noteId, targetTitle: target).save(db)
+            }
+            try NoteTagRecord.filter(Column("noteId") == noteId).deleteAll(db)
+            for tag in tags {
+                try NoteTagRecord(noteId: noteId, tag: tag).save(db)
             }
         }
         try database.updateFullText(noteId: noteId, title: title, body: document.body)

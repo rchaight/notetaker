@@ -130,3 +130,28 @@ struct PipelineIntegrationTests {
         #expect(labels[tasks[0].id] == ["research"], "quick-added labels survive the round trip")
     }
 }
+
+@Suite struct NoteTagTests {
+    @Test func nestedTagsIndexAndQuery() throws {
+        let (db, _) = try IndexDatabase.open(path: nil)
+        let indexer = NoteIndexer(database: db)
+        try indexer.index(noteId: "a.md", contents: "# A\nwork on #project/alpha today\n", modifiedAt: nil)
+        try indexer.index(noteId: "b.md", contents: "# B\n#project/beta and #home\n", modifiedAt: nil)
+        try indexer.index(noteId: "c.md", contents: "# C\nplain #project note\n", modifiedAt: nil)
+
+        let tags = try db.tagsWithCounts()
+        #expect(tags.map(\.tag) == ["home", "project", "project/alpha", "project/beta"])
+        #expect(try db.noteIds(withTag: "project") == ["a.md", "b.md", "c.md"])
+        #expect(try db.noteIds(withTag: "project/alpha") == ["a.md"])
+        #expect(try db.noteIds(withTag: "home") == ["b.md"])
+    }
+
+    @Test func retaggingReplacesOldRows() throws {
+        let (db, _) = try IndexDatabase.open(path: nil)
+        let indexer = NoteIndexer(database: db)
+        try indexer.index(noteId: "a.md", contents: "#old\n", modifiedAt: nil)
+        try indexer.index(noteId: "a.md", contents: "#new\n", modifiedAt: nil)
+        #expect(try db.noteIds(withTag: "old").isEmpty)
+        #expect(try db.noteIds(withTag: "new") == ["a.md"])
+    }
+}

@@ -253,6 +253,17 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 - [x] Code block cards: full-width rounded tinted card + language badge via NSTextLayoutFragment custom drawing.
 - [x] Table grid rendering (full): bordered grid presentation for markdown tables; fall back to raw text on the cursor's table.
 
+### M6.6 — Notes organization (user-selected feature queue, before M7)
+**Goal:** the 11 chosen organization features (backlinks panel + TOC shipped earlier).
+
+- [x] Nested tag tree: schema v6 noteTag table; sidebar Tags section with per-level counts; tag tap filters the note list.
+- [ ] Tag + [[wikilink]] autocomplete while typing in the editor.
+- [ ] Sidebar sections: Pinned notes, Recents, Bookmarks.
+- [ ] Saved smart searches (persisted search queries as sidebar entries).
+- [ ] Daily note spine (Today note command + calendar navigation).
+- [ ] Note templates (template files with placeholders).
+- [ ] Multi-vault switcher.
+
 ### M7 — Project management / Gantt (ProjectKit)
 **Goal:** PM as another view over the same todos + frontmatter, not a second data model.
 **Steps (staged for de-risking):**

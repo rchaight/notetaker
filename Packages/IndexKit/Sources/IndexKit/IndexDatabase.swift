@@ -7,7 +7,7 @@ import GRDB
 /// the caller trigger a full rescan.
 public final class IndexDatabase: Sendable {
     /// Bump when the schema changes; mismatch wipes and rebuilds.
-    public static let schemaVersion = 5
+    public static let schemaVersion = 6
 
     public let queue: DatabaseQueue
 
@@ -73,6 +73,12 @@ public final class IndexDatabase: Sendable {
                     .references(TaskRecord.databaseTableName, onDelete: .cascade)
                 t.column("label", .text).notNull().indexed()
                 t.primaryKey(["taskId", "label"])
+            }
+            try db.create(table: NoteTagRecord.databaseTableName) { t in
+                t.column("noteId", .text).notNull().indexed()
+                    .references(NoteRecord.databaseTableName, onDelete: .cascade)
+                t.column("tag", .text).notNull().indexed()
+                t.primaryKey(["noteId", "tag"])
             }
             try db.create(table: OutLinkRecord.databaseTableName) { t in
                 t.column("noteId", .text).notNull().indexed()
@@ -240,9 +246,34 @@ public extension IndexDatabase {
     }
 
     /// Wipes every row (schema intact) — the "delete index, re-scan" path.
+    /// Every distinct note tag with how many notes carry it. Nested tags
+    /// ("project/alpha") count toward themselves only; the UI aggregates
+    /// ancestors from the components.
+    public func tagsWithCounts() throws -> [(tag: String, count: Int)] {
+        try queue.read { db in
+            try Row.fetchAll(db, sql: """
+            SELECT tag, COUNT(DISTINCT noteId) AS notes
+            FROM noteTag GROUP BY tag ORDER BY tag
+            """).map { ($0["tag"] as String, $0["notes"] as Int) }
+        }
+    }
+
+    /// Notes carrying `tag` or any nested tag under it ("project" matches
+    /// "project" and "project/alpha").
+    public func noteIds(withTag tag: String) throws -> [String] {
+        try queue.read { db in
+            try String.fetchAll(db, sql: """
+            SELECT DISTINCT noteId FROM noteTag
+            WHERE tag = ?1 OR tag LIKE ?1 || '/%'
+            ORDER BY noteId
+            """, arguments: [tag])
+        }
+    }
+
     func wipeAllRows() throws {
         try queue.write { db in
             try db.execute(sql: "DELETE FROM \(TaskLabelRecord.databaseTableName)")
+            try db.execute(sql: "DELETE FROM \(NoteTagRecord.databaseTableName)")
             try db.execute(sql: "DELETE FROM \(OutLinkRecord.databaseTableName)")
             try db.execute(sql: "DELETE FROM \(TaskRecord.databaseTableName)")
             try db.execute(sql: "DELETE FROM \(NoteRecord.databaseTableName)")

@@ -74,6 +74,17 @@ public struct TaskLabelRecord: Codable, Equatable, Sendable, FetchableRecord, Pe
 }
 
 /// A [[wikilink]] from one note to a target title (backlinks = reverse query).
+public struct NoteTagRecord: Codable, Equatable, Sendable, FetchableRecord, PersistableRecord {
+    public static let databaseTableName = "noteTag"
+    public var noteId: String
+    public var tag: String
+
+    public init(noteId: String, tag: String) {
+        self.noteId = noteId
+        self.tag = tag
+    }
+}
+
 public struct OutLinkRecord: Codable, Equatable, Sendable, FetchableRecord, PersistableRecord {
     public static let databaseTableName = "outLink"
 

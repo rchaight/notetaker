@@ -19,6 +19,8 @@ struct NotesView: View {
     @State private var semanticIds: [String] = []
     @State private var showingImporter = false
     @State private var showingImagePicker = false
+    @State private var selectedTag: String?
+    @State private var allTags: [(tag: String, count: Int)] = []
     @State private var importStatus: String?
     @State private var aiStatus: String?
     @State private var showingNewFolder = false
@@ -140,6 +142,22 @@ struct NotesView: View {
                 ForEach(visibleNotes) { note in
                     noteRow(note, showFolder: true)
                 }
+            } else if let selectedTag {
+                Section {
+                    ForEach(visibleNotes) { note in
+                        noteRow(note, showFolder: true)
+                    }
+                } header: {
+                    HStack {
+                        Label(selectedTag, systemImage: "number")
+                        Spacer()
+                        Button("Clear", systemImage: "xmark.circle.fill") {
+                            self.selectedTag = nil
+                        }
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.plain)
+                    }
+                }
             } else {
                 ForEach(visibleNotes.filter { !$0.relativePath.contains("/") }) { note in
                     noteRow(note, showFolder: false)
@@ -155,8 +173,16 @@ struct NotesView: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
+                if !allTags.isEmpty {
+                    Section("Tags") {
+                        ForEach(topLevelTagNodes, id: \.path) { node in
+                            tagRow(node)
+                        }
+                    }
+                }
             }
         }
+        .task(id: indexService.tasksVersion) { allTags = indexService.noteTags() }
         .overlay {
             if visibleNotes.isEmpty {
                 ContentUnavailableView(
@@ -461,6 +487,70 @@ struct NotesView: View {
         }
     }
 
+    /// One node per distinct tag path component; counts include nested tags.
+    private struct TagNode {
+        let path: String
+        let name: String
+        let count: Int
+        let children: [TagNode]
+    }
+
+    private var topLevelTagNodes: [TagNode] {
+        Self.tagNodes(under: "", from: allTags)
+    }
+
+    private static func tagNodes(
+        under prefix: String, from tags: [(tag: String, count: Int)]
+    ) -> [TagNode] {
+        let depth = prefix.isEmpty ? 0 : prefix.split(separator: "/").count
+        var names: [String] = []
+        var seen = Set<String>()
+        for (tag, _) in tags where prefix.isEmpty || tag == prefix || tag.hasPrefix(prefix + "/") {
+            let parts = tag.split(separator: "/")
+            guard parts.count > depth else { continue }
+            let name = String(parts[depth])
+            if seen.insert(name).inserted { names.append(name) }
+        }
+        return names.map { name in
+            let path = prefix.isEmpty ? name : prefix + "/" + name
+            let count = tags
+                .filter { $0.tag == path || $0.tag.hasPrefix(path + "/") }
+                .reduce(0) { $0 + $1.count }
+            return TagNode(
+                path: path, name: name, count: count,
+                children: tagNodes(under: path, from: tags)
+            )
+        }
+    }
+
+    // AnyView: the tree is recursive; opaque return types can't be
+    // self-referential (same pattern as folderGroup).
+    private func tagRow(_ node: TagNode) -> AnyView {
+        if node.children.isEmpty {
+            AnyView(tagLabel(node))
+        } else {
+            AnyView(DisclosureGroup {
+                ForEach(node.children, id: \.path) { child in
+                    tagRow(child)
+                }
+            } label: {
+                tagLabel(node)
+            })
+        }
+    }
+
+    private func tagLabel(_ node: TagNode) -> some View {
+        HStack {
+            Label(node.name, systemImage: "number")
+            Spacer()
+            Text("\(node.count)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { selectedTag = node.path }
+    }
+
     private var searching: Bool {
         !searchText.trimmingCharacters(in: .whitespaces).isEmpty
     }
@@ -539,6 +629,10 @@ struct NotesView: View {
 
     /// FTS-ranked results first, semantic (meaning-based) extras after.
     private var visibleNotes: [VaultItem] {
+        if let selectedTag, !searching {
+            let ids = Set(indexService.tagNoteIds(selectedTag))
+            return model.notes.filter { ids.contains($0.id) }
+        }
         guard !searchText.trimmingCharacters(in: .whitespaces).isEmpty else { return model.notes }
         let ranked = indexService.searchNoteIds(searchText)
         let merged = ranked + semanticIds.filter { !ranked.contains($0) }
