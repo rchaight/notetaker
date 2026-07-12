@@ -7,6 +7,25 @@ public enum VaultError: Error, Equatable, Sendable {
 }
 
 public enum UbiquityContainer {
+    /// The container's deterministic on-disk location once it has ever been
+    /// materialized — lets the UI render instantly while the (potentially
+    /// slow, cold) ubiquity resolution confirms in the background.
+    public static func wellKnownDocumentsURL(containerIdentifier: String) -> URL? {
+        #if os(macOS)
+            let path = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Library/Mobile Documents", isDirectory: true)
+                .appendingPathComponent(
+                    containerIdentifier.replacingOccurrences(of: ".", with: "~"),
+                    isDirectory: true
+                )
+                .appendingPathComponent("Documents", isDirectory: true)
+            return FileManager.default.fileExists(atPath: path.path) ? path : nil
+        #else
+            _ = containerIdentifier
+            return nil // iOS containers live inside app group paths
+        #endif
+    }
+
     /// Resolves the app's ubiquity `Documents/` directory, creating it if
     /// needed. `FileManager.url(forUbiquityContainerIdentifier:)` can block,
     /// so it runs off the caller's executor.

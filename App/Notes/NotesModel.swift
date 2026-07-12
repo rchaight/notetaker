@@ -39,15 +39,17 @@ final class NotesModel {
         guard !started else { return }
         started = true
 
-        // Show the list IMMEDIATELY from the last known vault root — cold
-        // ubiquity resolution can take seconds and must never blank the UI.
-        if let cached = UserDefaults.standard.string(forKey: "lastVaultRoot") {
-            let url = URL(fileURLWithPath: cached, isDirectory: true)
-            if FileManager.default.fileExists(atPath: url.path) {
-                root = url
-                apply(VaultEnumerator.snapshot(of: url))
-                state = .ready
-            }
+        // Show the list IMMEDIATELY — cold ubiquity resolution can take
+        // seconds and must never blank the UI. Cached root first, then the
+        // container's deterministic on-disk path.
+        let provisional = UserDefaults.standard.string(forKey: "lastVaultRoot")
+            .map { URL(fileURLWithPath: $0, isDirectory: true) }
+            .flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
+            ?? UbiquityContainer.wellKnownDocumentsURL(containerIdentifier: "iCloud.com.rchaight.notetaker")
+        if let provisional {
+            root = provisional
+            apply(VaultEnumerator.snapshot(of: provisional))
+            state = .ready
         }
 
         do {

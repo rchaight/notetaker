@@ -27,6 +27,7 @@ struct NotesView: View {
     var body: some View {
         NavigationSplitView {
             sidebar
+                .navigationSplitViewColumnWidth(min: 200, ideal: 260, max: 420)
                 .navigationTitle("Notes")
                 .toolbar {
                     ToolbarItemGroup(placement: .primaryAction) {
