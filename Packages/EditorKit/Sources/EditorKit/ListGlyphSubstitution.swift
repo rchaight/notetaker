@@ -31,10 +31,12 @@ public enum ListGlyphSubstitution {
             return mutable
         }
 
-        // Order matters: task items start with "- " too.
-        if let swapped = swap("- [ ]", with: pad + "☐" + pad + pad + pad) { return swapped }
-        if let swapped = swap("- [x]", with: pad + "☑" + pad + pad + pad) { return swapped }
-        if let swapped = swap("- [X]", with: pad + "☑" + pad + pad + pad) { return swapped }
+        // Order matters: task items start with "- " too. The glyph replaces
+        // "[" — the FIRST character of the clickable token range — so the
+        // toggle link and its styling land on the glyph, not on padding.
+        if let swapped = swap("- [ ]", with: pad + pad + "☐" + pad + pad) { return swapped }
+        if let swapped = swap("- [x]", with: pad + pad + "☑" + pad + pad) { return swapped }
+        if let swapped = swap("- [X]", with: pad + pad + "☑" + pad + pad) { return swapped }
         if let swapped = swap("- ", with: "•" + pad) { return swapped }
         if let swapped = swap("* ", with: "•" + pad) { return swapped }
         if let swapped = swap("+ ", with: "•" + pad) { return swapped }

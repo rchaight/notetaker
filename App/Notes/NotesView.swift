@@ -18,6 +18,7 @@ struct NotesView: View {
     @State private var searchText = ""
     @State private var semanticIds: [String] = []
     @State private var showingImporter = false
+    @State private var showingImagePicker = false
     @State private var importStatus: String?
     @State private var aiStatus: String?
     @State private var showingNewFolder = false
@@ -360,6 +361,38 @@ struct NotesView: View {
                     }
                     .keyboardShortcut("0", modifiers: [.command, .option])
                     .help("Outline, backlinks & mentions (⌥⌘0)")
+                    Menu {
+                        Button("Table", systemImage: "tablecells") {
+                            editorCommand = EditorCommandRequest(.insertBlock(
+                                "| Column 1 | Column 2 |\n| --- | --- |\n|  |  |",
+                                cursorOffset: 2
+                            ))
+                        }
+                        Button("Image…", systemImage: "photo") {
+                            showingImagePicker = true
+                        }
+                        Button("Horizontal Rule", systemImage: "minus") {
+                            editorCommand = EditorCommandRequest(.insertBlock("---", cursorOffset: nil))
+                        }
+                    } label: {
+                        Label("Insert", systemImage: "plus.square")
+                    }
+                    .help("Insert a table, image, or divider")
+                    .fileImporter(
+                        isPresented: $showingImagePicker, allowedContentTypes: [.image]
+                    ) { outcome in
+                        guard case let .success(url) = outcome else { return }
+                        Task {
+                            guard let path = await model.attachImage(from: url) else {
+                                importStatus = "Image attach failed"
+                                return
+                            }
+                            let alt = url.deletingPathExtension().lastPathComponent
+                            editorCommand = EditorCommandRequest(.insertBlock(
+                                "![\(alt)](\(path))", cursorOffset: nil
+                            ))
+                        }
+                    }
                     Button("Focus", systemImage: focusMode ? "circle.circle.fill" : "circle.circle") {
                         focusMode.toggle()
                     }

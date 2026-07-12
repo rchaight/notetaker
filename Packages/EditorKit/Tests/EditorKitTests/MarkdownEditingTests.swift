@@ -177,6 +177,17 @@ struct GlyphSubstitutionTests {
         let link = swapped.attribute(.link, at: 2, effectiveRange: nil)
         #expect(link != nil, "checkbox click-through must survive substitution")
     }
+
+    @Test func glyphSitsOnTheClickableTokenRange() throws {
+        // The toggle link covers "[ ]" (offsets 2–4 of "- [ ]"): the glyph
+        // must be the FIRST character of that range or the link's styling
+        // lands on padding beside an unclickable box.
+        for (line, glyph) in [("- [ ] t", "☐"), ("- [x] t", "☑")] {
+            let swapped = try #require(display(line))
+            let index = try #require(swapped.firstIndex(of: Character(glyph)))
+            #expect(swapped.distance(from: swapped.startIndex, to: index) == 2)
+        }
+    }
 }
 
 @MainActor struct ThemeTokenTests {
@@ -402,5 +413,38 @@ struct TableGridTests {
         let cursorInside = (text as NSString).range(of: "| a | b |\n")
         MarkdownHighlighter.highlight(storage, hideMarkersOutside: cursorInside)
         #expect(storage.attribute(.foregroundColor, at: pipeAt, effectiveRange: nil) as? PlatformColor != .clear)
+    }
+}
+
+struct InsertBlockTests {
+    private func apply(_ text: String, cursor: Int, block: String, offset: Int? = nil) -> (String, NSRange)? {
+        guard let edit = MarkdownEditing.apply(
+            .insertBlock(block, cursorOffset: offset),
+            to: text, selection: NSRange(location: cursor, length: 0)
+        ) else { return nil }
+        let ns = (text as NSString).replacingCharacters(in: edit.range, with: edit.replacement)
+        return (ns, edit.selection)
+    }
+
+    @Test func insertsAfterNonEmptyParagraph() throws {
+        let (result, _) = try #require(apply("some text\nmore\n", cursor: 3, block: "---"))
+        #expect(result == "some text\n\n---\nmore\n")
+    }
+
+    @Test func replacesEmptyLineInPlace() throws {
+        let (result, _) = try #require(apply("above\n\nbelow\n", cursor: 6, block: "---"))
+        #expect(result == "above\n---\n\nbelow\n")
+    }
+
+    @Test func atEndOfFileWithoutTrailingNewline() throws {
+        let (result, _) = try #require(apply("tail", cursor: 4, block: "---"))
+        #expect(result == "tail\n\n---\n")
+    }
+
+    @Test func cursorOffsetLandsInsideBlock() throws {
+        let table = "| Column 1 | Column 2 |\n| --- | --- |\n|  |  |"
+        let (result, selection) = try #require(apply("intro\n", cursor: 2, block: table, offset: 2))
+        let ns = result as NSString
+        #expect(ns.substring(with: NSRange(location: selection.location, length: 8)) == "Column 1")
     }
 }

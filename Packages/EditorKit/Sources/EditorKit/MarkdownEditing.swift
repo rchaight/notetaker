@@ -11,6 +11,10 @@ public enum EditorCommand: Equatable, Sendable {
     case setHeading(Int)
     /// [selection](url-placeholder) with the cursor on the placeholder.
     case link
+    /// Insert a block (table, image line, rule) on its own paragraph after
+    /// the cursor's, blank-line separated; cursor lands `cursorOffset` into
+    /// the block (or after it when nil).
+    case insertBlock(String, cursorOffset: Int?)
 }
 
 /// A one-shot command request: the UUID lets the editor execute exactly
@@ -49,6 +53,8 @@ public enum MarkdownEditing {
             return toggleLinePrefix(prefix, in: ns, selection: selection)
         case let .setHeading(level):
             return setHeading(level, in: ns, selection: selection)
+        case let .insertBlock(block, cursorOffset):
+            return insertBlock(block, cursorOffset: cursorOffset, in: ns, selection: selection)
         case .link:
             let selected = ns.substring(with: selection)
             let label = selected.isEmpty ? "link text" : selected
@@ -59,6 +65,33 @@ public enum MarkdownEditing {
                 selection: NSRange(location: urlStart, length: 3)
             )
         }
+    }
+
+    private static func insertBlock(
+        _ block: String, cursorOffset: Int?, in ns: NSString, selection: NSRange
+    ) -> EditResult {
+        let paragraph = ns.paragraphRange(for: selection)
+        let line = ns.substring(with: paragraph)
+        let location: Int
+        let replacement: String
+        if line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            // The cursor's line is empty — the block takes its place.
+            location = paragraph.location
+            replacement = block + "\n"
+        } else {
+            location = NSMaxRange(paragraph)
+            // A paragraph at EOF has no trailing newline to build on.
+            replacement = (line.hasSuffix("\n") ? "\n" : "\n\n") + block + "\n"
+        }
+        let blockStart = location
+            + (replacement as NSString).length - (block as NSString).length - 1
+        let cursor = cursorOffset.map { blockStart + min($0, (block as NSString).length) }
+            ?? location + (replacement as NSString).length
+        return EditResult(
+            range: NSRange(location: location, length: 0),
+            replacement: replacement,
+            selection: NSRange(location: cursor, length: 0)
+        )
     }
 
     private static func wrap(

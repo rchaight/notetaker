@@ -56,6 +56,9 @@ import TaskEngine
             textView.backgroundColor = theme.editorBackground
             scrollView.drawsBackground = false
             textView.insertionPointColor = theme.accentColor
+            // Checkbox toggles ride on .link — the system's blue underline
+            // must not restyle them (theme attributes already do).
+            textView.linkTextAttributes = [.cursor: NSCursor.pointingHand]
             textView.selectedTextAttributes = [.backgroundColor: theme.selectionBackground]
             // Hard-wrap to the view: long lines must never widen the
             // window (SwiftUI windows grow to content ideal width).
@@ -364,6 +367,7 @@ import TaskEngine
             textView.textContainerInset = UIEdgeInsets(top: 16, left: 12, bottom: 16, right: 12)
             textView.backgroundColor = theme.editorBackground
             textView.tintColor = theme.accentColor
+            textView.linkTextAttributes = [:]
             textView.text = text
             (textView.textLayoutManager?.textContentManager as? NSTextContentStorage)?
                 .delegate = context.coordinator

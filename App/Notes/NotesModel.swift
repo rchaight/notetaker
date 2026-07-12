@@ -166,6 +166,34 @@ final class NotesModel {
         }
     }
 
+    /// Copies an image into the vault's Attachments folder and returns a
+    /// markdown-ready path (percent-encoded) relative to the selected
+    /// note's folder — ready for `![alt](path)`.
+    func attachImage(from source: URL) async -> String? {
+        guard let root else { return nil }
+        let scoped = source.startAccessingSecurityScopedResource()
+        defer { if scoped { source.stopAccessingSecurityScopedResource() } }
+        let attachments = root.appendingPathComponent("Attachments", isDirectory: true)
+        try? await store.createFolder(at: attachments)
+        let base = source.deletingPathExtension().lastPathComponent
+        let ext = source.pathExtension.isEmpty ? "png" : source.pathExtension
+        var name = "\(base).\(ext)"
+        var counter = 2
+        while FileManager.default.fileExists(atPath: attachments.appendingPathComponent(name).path) {
+            name = "\(base) \(counter).\(ext)"
+            counter += 1
+        }
+        do {
+            try await store.copy(from: source, to: attachments.appendingPathComponent(name))
+        } catch {
+            return nil
+        }
+        let noteDepth = (selectedID ?? "").split(separator: "/").count - 1
+        let up = String(repeating: "../", count: max(noteDepth, 0))
+        let relative = up + "Attachments/" + name
+        return relative.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? relative
+    }
+
     func createNote(in folder: String = "") {
         guard let root else { return }
         Task {
