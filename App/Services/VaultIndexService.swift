@@ -1,3 +1,4 @@
+import ConversionKit
 import Foundation
 import IndexKit
 import MarkdownKit
@@ -182,6 +183,58 @@ final class VaultIndexService {
     func subtaskProgress() -> [String: (done: Int, total: Int)] {
         guard let database else { return [:] }
         return (try? database.subtaskProgress()) ?? [:]
+    }
+
+    /// Imports an external document: convert on-device → write to
+    /// Imports/<name>.md with provenance frontmatter → index. Returns the
+    /// created note id, or nil with a reason string.
+    func importFile(_ url: URL) async -> Result<String, String> {
+        guard let root, let indexer else { return .failure("vault not ready") }
+        let converter = NativeConverter()
+        guard converter.canConvert(fileExtension: url.pathExtension) else {
+            return .failure("\(url.pathExtension) needs the Docling tier (coming in this milestone)")
+        }
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer {
+            if accessing {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+        let result: ConversionResult
+        do {
+            result = try await converter.convert(url)
+        } catch {
+            return .failure("conversion failed: \(error)")
+        }
+
+        let importsDir = root.appendingPathComponent("Imports", isDirectory: true)
+        var candidate = "Imports/\(result.suggestedName).md"
+        var counter = 2
+        while FileManager.default.fileExists(atPath: root.appendingPathComponent(candidate).path) {
+            candidate = "Imports/\(result.suggestedName) \(counter).md"
+            counter += 1
+        }
+        _ = importsDir // directory created by coordinated write below
+
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        let contents = """
+        ---
+        imported-from: \(url.lastPathComponent)
+        converted-by: \(result.provenance)
+        imported: \(stamp)
+        ---
+
+        """ + result.markdown
+
+        do {
+            let destination = root.appendingPathComponent(candidate)
+            try await store.writeString(contents, to: destination)
+            try indexer.index(noteId: candidate, contents: contents, modifiedAt: nil)
+            tasksVersion += 1
+            return .success(candidate)
+        } catch {
+            return .failure("write failed: \(error.localizedDescription)")
+        }
     }
 
     /// Quick Add: one parsed line appended to Inbox.md at the vault root.

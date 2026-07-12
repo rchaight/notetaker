@@ -1,5 +1,6 @@
 import EditorKit
 import SwiftUI
+import UniformTypeIdentifiers
 import VaultKit
 
 /// The Notes tab: vault note list on the left, live markdown editor on the
@@ -9,6 +10,8 @@ struct NotesView: View {
     @State private var model = NotesModel()
     @State private var livePreview = true
     @State private var searchText = ""
+    @State private var showingImporter = false
+    @State private var importStatus: String?
 
     var body: some View {
         NavigationSplitView {
@@ -20,6 +23,39 @@ struct NotesView: View {
                             model.createNote()
                         }
                         .keyboardShortcut("n", modifiers: [.command])
+                    }
+                    ToolbarItem {
+                        Button("Import Document", systemImage: "square.and.arrow.down") {
+                            showingImporter = true
+                        }
+                        .help("Convert a PDF, image, RTF, HTML, or text file to a markdown note")
+                    }
+                }
+                .fileImporter(
+                    isPresented: $showingImporter,
+                    allowedContentTypes: [
+                        .pdf,
+                        .image,
+                        .rtf,
+                        .html,
+                        .plainText,
+                        UTType(filenameExtension: "md") ?? .plainText,
+                    ],
+                    allowsMultipleSelection: true
+                ) { outcome in
+                    guard case let .success(urls) = outcome else { return }
+                    Task {
+                        for url in urls {
+                            let result = await indexService.importFile(url)
+                            switch result {
+                            case let .success(noteId):
+                                importStatus = "Imported \(noteId)"
+                            case let .failure(reason):
+                                importStatus = "Import failed: \(reason)"
+                            }
+                        }
+                        try? await Task.sleep(for: .seconds(4))
+                        importStatus = nil
                     }
                 }
         } detail: {
