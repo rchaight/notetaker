@@ -27,8 +27,8 @@ Loop-engineering state file. Read this + PLAN.md at the start of every pass.
 | M0 — Repo bootstrap (Xcode project, packages, iCloud entitlements, CI) | ✅ 2026-07-10 | ✅ 2026-07-10 |
 | M1 — iCloud storage + sync skeleton (VaultKit) | ✅ 2026-07-11 | ✅ 2026-07-11 (two-device sync verified both directions on Mac + iPhone; live conflict drill optional/deferred — machinery unit-tested) |
 | M2 — Markdown editor, Liquid Glass (MarkdownKit + EditorKit) | ✅ 2026-07-11 | ✅ 2026-07-11 (checkbox + full marker hiding fixes applied; Writing Tools absent system-wide on this beta — revisit on next macOS 27 seed) |
-| M3 — Inline todos + index + master To-Do list (IndexKit + TaskEngine) | ✅ 2026-07-11 | pending (deferred within-milestone: jump-to-note, drag-reorder, durable ^task-ids, search-match highlighting) |
-| M4 — Todo depth: recurrence, dates, labels, filters | | |
+| M3 — Inline todos + index + master To-Do list (IndexKit + TaskEngine) | ✅ 2026-07-11 | ✅ 2026-07-11 (user: "worked out great") |
+| M4 — Todo depth: recurrence, dates, labels, filters | ✅ 2026-07-12 | pending (deferred: EventKit→M9, Task Score, visual filter builder, in-note Completed section) |
 | M5 — Import/conversion pipeline (File-Parser/Docling reuse) | | |
 | M6 — AI features (Apple Intelligence / Ollama) | | |
 | M7 — Project management / Gantt (ProjectKit) | | |
