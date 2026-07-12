@@ -118,6 +118,7 @@ import TaskEngine
             var focusMode = false
             var imageBase: URL?
             var codeRegions: [CodeCardRegions.Region] = []
+            var tableRegions: [TableGrid.Region] = []
             var lastCommandID: UUID?
             private var lastCursorLine: NSRange?
             private var pendingRestyle: Task<Void, Never>?
@@ -142,6 +143,7 @@ import TaskEngine
                     dimOutside: focusMode ? cursor : nil
                 )
                 codeRegions = CodeCardRegions.regions(in: textView.string, styled: styled)
+                tableRegions = TableGrid.regions(in: textView.string, styled: styled)
             }
 
             private func scheduleRestyle(_ textView: NSTextView) {
@@ -232,6 +234,27 @@ import TaskEngine
                         from: contentManager.documentRange.location, to: elementRange.endLocation
                     )
                     let paragraphRange = NSRange(location: start, length: max(end - start, 0))
+                    if let table = tableRegions.first(where: {
+                        NSIntersectionRange($0.range, paragraphRange).length > 0
+                    }), let cursorLine = lastCursorLine,
+                    NSIntersectionRange(table.range, cursorLine).length == 0,
+                    let row = table.rows.first(where: {
+                        NSIntersectionRange($0.range, paragraphRange).length > 0
+                    }) {
+                        let fragment = TableRowLayoutFragment(
+                            textElement: textElement, range: textElement.elementRange
+                        )
+                        fragment.cells = row.cells
+                        fragment.columns = TableGrid.columnLayout(
+                            for: table, headerFont: theme.tableHeaderFont, bodyFont: theme.baseFont
+                        )
+                        fragment.isSeparator = row.isSeparator
+                        fragment.isHeader = row.range == table.rows.first?.range
+                        fragment.isFirstRow = fragment.isHeader
+                        fragment.isLastRow = row.range == table.rows.last?.range
+                        fragment.theme = theme
+                        return fragment
+                    }
                     if let region = codeRegions.first(where: {
                         NSIntersectionRange($0.range, paragraphRange).length > 0
                     }) {
@@ -404,6 +427,7 @@ import TaskEngine
             var focusMode = false
             var imageBase: URL?
             var codeRegions: [CodeCardRegions.Region] = []
+            var tableRegions: [TableGrid.Region] = []
             var lastCommandID: UUID?
             private var lastCursorLine: NSRange?
             private var pendingRestyle: Task<Void, Never>?
@@ -427,6 +451,7 @@ import TaskEngine
                     dimOutside: focusMode ? cursor : nil
                 )
                 codeRegions = CodeCardRegions.regions(in: textView.text ?? "", styled: styled)
+                tableRegions = TableGrid.regions(in: textView.text ?? "", styled: styled)
             }
 
             private func scheduleRestyle(_ textView: UITextView) {
@@ -501,6 +526,27 @@ import TaskEngine
                         from: contentManager.documentRange.location, to: elementRange.endLocation
                     )
                     let paragraphRange = NSRange(location: start, length: max(end - start, 0))
+                    if let table = tableRegions.first(where: {
+                        NSIntersectionRange($0.range, paragraphRange).length > 0
+                    }), let cursorLine = lastCursorLine,
+                    NSIntersectionRange(table.range, cursorLine).length == 0,
+                    let row = table.rows.first(where: {
+                        NSIntersectionRange($0.range, paragraphRange).length > 0
+                    }) {
+                        let fragment = TableRowLayoutFragment(
+                            textElement: textElement, range: textElement.elementRange
+                        )
+                        fragment.cells = row.cells
+                        fragment.columns = TableGrid.columnLayout(
+                            for: table, headerFont: theme.tableHeaderFont, bodyFont: theme.baseFont
+                        )
+                        fragment.isSeparator = row.isSeparator
+                        fragment.isHeader = row.range == table.rows.first?.range
+                        fragment.isFirstRow = fragment.isHeader
+                        fragment.isLastRow = row.range == table.rows.last?.range
+                        fragment.theme = theme
+                        return fragment
+                    }
                     if let region = codeRegions.first(where: {
                         NSIntersectionRange($0.range, paragraphRange).length > 0
                     }) {

@@ -67,6 +67,16 @@ public enum MarkdownHighlighter {
         }
         // Marker hiding comes last so its .clear color survives focus dim.
         if let visible = hideMarkersOutside {
+            // Tables: the drawn grid carries the content while the cursor is
+            // elsewhere; raw pipes come back the moment the cursor enters.
+            for item in styled
+                where item.kind == .table
+                && NSIntersectionRange(item.range, visible).length == 0
+                && NSMaxRange(item.range) <= fullRange.length {
+                storage.addAttribute(
+                    .foregroundColor, value: PlatformColor.clear, range: item.range
+                )
+            }
             // Thematic breaks: the drawn divider carries the meaning, so the
             // dashes go clear at FULL size (0.01pt would collapse the row).
             for item in styled

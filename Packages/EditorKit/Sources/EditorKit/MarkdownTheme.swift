@@ -64,6 +64,10 @@ public struct MarkdownTheme: @unchecked Sendable {
         return .boldSystemFont(ofSize: (baseFontSize * scale).rounded())
     }
 
+    public var tableHeaderFont: PlatformFont {
+        .boldSystemFont(ofSize: baseFontSize * 0.95)
+    }
+
     public var monoFont: PlatformFont {
         .monospacedSystemFont(ofSize: baseFontSize * 0.93, weight: .regular)
     }

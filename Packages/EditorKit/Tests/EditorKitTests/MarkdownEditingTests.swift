@@ -339,3 +339,68 @@ struct CodeCardRegionTests {
                 "glyph substitution guard depends on this containment")
     }
 }
+
+struct TableGridTests {
+    private let table = """
+    intro
+
+    | Name | Role |
+    | ---- | :--: |
+    | Ada  | Math |
+    | Grace | Code |
+
+    outro
+    """
+
+    private func regions(_ text: String) -> [TableGrid.Region] {
+        TableGrid.regions(in: text, styled: MarkdownStyler.styleRanges(in: text))
+    }
+
+    @Test func parsesRowsCellsAndSeparator() {
+        let found = regions(table)
+        #expect(found.count == 1)
+        let rows = found[0].rows
+        #expect(rows.count == 4)
+        #expect(rows[0].cells == ["Name", "Role"])
+        #expect(rows[1].isSeparator)
+        #expect(rows[3].cells == ["Grace", "Code"])
+        #expect(found[0].columnCount == 2)
+    }
+
+    @Test func rowRangesSliceTheSource() {
+        let found = regions(table)
+        let ns = table as NSString
+        #expect(ns.substring(with: found[0].rows[2].range).contains("Ada"))
+    }
+
+    @Test func columnLayoutIsMonotonicWithPadding() {
+        let found = regions(table)
+        let layout = TableGrid.columnLayout(
+            for: found[0],
+            headerFont: MarkdownTheme.default.tableHeaderFont,
+            bodyFont: MarkdownTheme.default.baseFont
+        )
+        #expect(layout.count == 2)
+        #expect(layout[1].x == layout[0].x + layout[0].width)
+        #expect(layout.allSatisfy { $0.width >= 44 })
+    }
+
+    @Test func plainPipeTextIsNotATable() {
+        #expect(regions("a | b without header row\n").isEmpty)
+    }
+}
+
+@MainActor struct TableHidingTests {
+    @Test func tableClearsOffCursorRevealsOnCursor() {
+        let text = "cursor\n\n| a | b |\n| - | - |\n| 1 | 2 |\n"
+        let storage = NSTextStorage(string: text)
+        let cursorOutside = NSRange(location: 0, length: 7)
+        MarkdownHighlighter.highlight(storage, hideMarkersOutside: cursorOutside)
+        let pipeAt = (text as NSString).range(of: "| a").location
+        #expect(storage.attribute(.foregroundColor, at: pipeAt, effectiveRange: nil) as? PlatformColor == .clear)
+
+        let cursorInside = (text as NSString).range(of: "| a | b |\n")
+        MarkdownHighlighter.highlight(storage, hideMarkersOutside: cursorInside)
+        #expect(storage.attribute(.foregroundColor, at: pipeAt, effectiveRange: nil) as? PlatformColor != .clear)
+    }
+}
