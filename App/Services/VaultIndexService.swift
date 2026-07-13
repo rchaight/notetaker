@@ -318,6 +318,7 @@ final class VaultIndexService {
         _ task: TaskRecord, due: String?, start: String?? = nil
     ) async {
         guard let root, let indexer else { return }
+        await beforeNoteMutation?(task.noteId)
         let url = root.appendingPathComponent(task.noteId)
         guard let contents = try? await store.readString(at: url),
               let line = TaskLineToggler.locate(
@@ -351,6 +352,7 @@ final class VaultIndexService {
     func addDependency(dependent: TaskRecord, target: TaskRecord) async {
         guard let root, let indexer, dependent.noteId == target.noteId,
               dependent.id != target.id else { return }
+        await beforeNoteMutation?(dependent.noteId)
         let url = root.appendingPathComponent(dependent.noteId)
         guard var contents = try? await store.readString(at: url),
               let targetLine = TaskLineToggler.locate(
@@ -438,6 +440,7 @@ final class VaultIndexService {
     /// Flags live in the note's frontmatter (files are truth; they sync).
     func setNoteFlag(_ noteId: String, key: String, value: Bool) async {
         guard let root, let indexer else { return }
+        await beforeNoteMutation?(noteId)
         let url = root.appendingPathComponent(noteId)
         guard let contents = try? await store.readString(at: url) else { return }
         let document = MarkdownDocument(source: contents)
@@ -499,9 +502,15 @@ final class VaultIndexService {
     /// add) so an open editor can refresh — files are truth, and the note
     /// on screen must show them.
     var onNoteMutated: ((String) -> Void)?
+    /// Awaited BEFORE this service rewrites a note file: the editor flushes
+    /// pending keystrokes so the read below sees them — otherwise the
+    /// debounced autosave fires moments later and silently reverts the
+    /// mutation (user-reported as "Make Project does nothing").
+    var beforeNoteMutation: ((String) async -> Void)?
 
     func toggle(_ task: TaskRecord) async {
         guard let root, let indexer else { return }
+        await beforeNoteMutation?(task.noteId)
         let url = root.appendingPathComponent(task.noteId)
         guard let contents = try? await store.readString(at: url) else { return }
 

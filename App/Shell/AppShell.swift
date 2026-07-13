@@ -17,7 +17,7 @@ struct AppShell: View {
             Tab("To-Do", systemImage: "checklist") {
                 TodoView(service: indexService)
             }
-            Tab("Projects", systemImage: "chart.gantt") {
+            Tab("Projects", systemImage: "calendar.day.timeline.left") {
                 ProjectsView(service: indexService)
             }
             #if DEBUG
@@ -41,6 +41,10 @@ struct AppShell: View {
         .task {
             indexService.onNoteMutated = { [weak notesModel = notesModel] noteId in
                 notesModel?.reloadIfDisplayed(noteId: noteId)
+            }
+            indexService.beforeNoteMutation = { [weak notesModel = notesModel] noteId in
+                guard let notesModel, notesModel.selectedID == noteId else { return }
+                await notesModel.flushSave()
             }
             await indexService.start()
         }

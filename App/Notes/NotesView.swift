@@ -423,6 +423,53 @@ struct NotesView: View {
                 Divider().frame(height: 16)
                 formatButton("link", "Link (⌘K)") { .link }
                     .keyboardShortcut("k", modifiers: [.command])
+                Divider().frame(height: 16)
+                Menu {
+                    Button("Table", systemImage: "tablecells") {
+                        editorCommand = EditorCommandRequest(.insertBlock(
+                            "| Column 1 | Column 2 |\n| --- | --- |\n|  |  |",
+                            cursorOffset: 2
+                        ))
+                    }
+                    Button("Image…", systemImage: "photo") {
+                        showingImagePicker = true
+                    }
+                    Button("Horizontal Rule", systemImage: "minus") {
+                        editorCommand = EditorCommandRequest(.insertBlock("---", cursorOffset: nil))
+                    }
+                } label: {
+                    Image(systemName: "plus.square")
+                        .frame(width: 26, height: 22)
+                }
+                .menuIndicator(.hidden)
+                .help("Insert a table, image, or divider")
+                .fileImporter(
+                    isPresented: $showingImagePicker, allowedContentTypes: [.image]
+                ) { outcome in
+                    guard case let .success(url) = outcome else { return }
+                    Task {
+                        guard let path = await model.attachImage(from: url) else {
+                            importStatus = "Image attach failed"
+                            return
+                        }
+                        let alt = url.deletingPathExtension().lastPathComponent
+                        editorCommand = EditorCommandRequest(.insertBlock(
+                            "![\(alt)](\(path))", cursorOffset: nil
+                        ))
+                    }
+                }
+                Spacer()
+                Button {
+                    livePreview.toggle()
+                } label: {
+                    Image(systemName: livePreview
+                        ? "chevron.left.forwardslash.chevron.right" : "eye")
+                        .frame(width: 26, height: 22)
+                }
+                .keyboardShortcut("/", modifiers: [.command])
+                .help(livePreview
+                    ? "Show all markdown syntax (⌘/)"
+                    : "Hide syntax except on the current line (⌘/)")
             }
             .buttonStyle(.borderless)
             .padding(.horizontal, 10)
@@ -526,7 +573,7 @@ struct NotesView: View {
                         let isProject = indexService.isProject(id)
                         Button(
                             isProject ? "Remove from Projects" : "Make Project",
-                            systemImage: isProject ? "chart.gantt" : "chart.gantt"
+                            systemImage: isProject ? "calendar.day.timeline.left" : "calendar.day.timeline.left"
                         ) {
                             Task {
                                 await indexService.setNoteFlag(id, key: "project", value: !isProject)
@@ -541,38 +588,6 @@ struct NotesView: View {
                     }
                     .keyboardShortcut("0", modifiers: [.command, .option])
                     .help("Outline, backlinks & mentions (⌥⌘0)")
-                    Menu {
-                        Button("Table", systemImage: "tablecells") {
-                            editorCommand = EditorCommandRequest(.insertBlock(
-                                "| Column 1 | Column 2 |\n| --- | --- |\n|  |  |",
-                                cursorOffset: 2
-                            ))
-                        }
-                        Button("Image…", systemImage: "photo") {
-                            showingImagePicker = true
-                        }
-                        Button("Horizontal Rule", systemImage: "minus") {
-                            editorCommand = EditorCommandRequest(.insertBlock("---", cursorOffset: nil))
-                        }
-                    } label: {
-                        Label("Insert", systemImage: "plus.square")
-                    }
-                    .help("Insert a table, image, or divider")
-                    .fileImporter(
-                        isPresented: $showingImagePicker, allowedContentTypes: [.image]
-                    ) { outcome in
-                        guard case let .success(url) = outcome else { return }
-                        Task {
-                            guard let path = await model.attachImage(from: url) else {
-                                importStatus = "Image attach failed"
-                                return
-                            }
-                            let alt = url.deletingPathExtension().lastPathComponent
-                            editorCommand = EditorCommandRequest(.insertBlock(
-                                "![\(alt)](\(path))", cursorOffset: nil
-                            ))
-                        }
-                    }
                     if let day = model.openDailyNoteDate {
                         Button("Previous Day", systemImage: "chevron.backward") {
                             model.openDailyNote(
@@ -589,16 +604,6 @@ struct NotesView: View {
                         focusMode.toggle()
                     }
                     .help(focusMode ? "Focus mode on — dims other paragraphs" : "Focus mode")
-                    Button(
-                        livePreview ? "Source Mode" : "Live Preview",
-                        systemImage: livePreview ? "chevron.left.forwardslash.chevron.right" : "eye"
-                    ) {
-                        livePreview.toggle()
-                    }
-                    .keyboardShortcut("/", modifiers: [.command])
-                    .help(livePreview
-                        ? "Show all markdown syntax (⌘/)"
-                        : "Hide syntax except on the current line (⌘/)")
                 }
             }
             .navigationTitle(selectedTitle)
@@ -835,7 +840,7 @@ struct NotesView: View {
                     )
                 }
             }
-            Button("Make Project", systemImage: "chart.gantt") {
+            Button("Make Project", systemImage: "calendar.day.timeline.left") {
                 Task {
                     await indexService.setNoteFlag(note.id, key: "project", value: true)
                 }

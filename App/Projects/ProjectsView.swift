@@ -45,7 +45,7 @@ struct ProjectsView: View {
                 if projects.isEmpty {
                     ContentUnavailableView(
                         "No Projects Yet",
-                        systemImage: "chart.gantt",
+                        systemImage: "calendar.day.timeline.left",
                         description: Text(
                             "Create one with the + button, right-click a note and choose Make Project, or add `project: true` to a note's frontmatter."
                         )
@@ -57,7 +57,7 @@ struct ProjectsView: View {
                 ProjectDetailView(service: service, project: project)
             } else {
                 ContentUnavailableView(
-                    "Select a Project", systemImage: "chart.gantt", description: nil
+                    "Select a Project", systemImage: "calendar.day.timeline.left", description: nil
                 )
             }
         }

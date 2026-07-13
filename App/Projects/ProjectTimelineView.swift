@@ -37,7 +37,7 @@ struct ProjectTimelineView: View {
         if nodes.isEmpty {
             ContentUnavailableView(
                 "Nothing to Chart",
-                systemImage: "chart.gantt",
+                systemImage: "calendar.day.timeline.left",
                 description: Text("Give tasks dates (>due, ~start) or dependencies (^id, blockedby:^id).")
             )
         } else if let scheduled = ProjectSchedule.schedule(nodes) {
