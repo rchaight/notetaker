@@ -185,9 +185,10 @@ final class VaultIndexService {
                 changed = true
             }
         }
-        if changed {
-            tasksVersion += 1
-        }
+        // Always bump: views key their queries on this counter, and the
+        // FIRST scan after launch must refresh them even when no file
+        // changed (favorites/pins read the db before it opened otherwise).
+        tasksVersion += 1
     }
 
     /// ".Note.md.icloud" (possibly nested in folders) → "Note.md".

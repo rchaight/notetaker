@@ -37,6 +37,12 @@ struct NotesView: View {
     @State private var showInspector = false
     @State private var scrollTarget: NSRange?
     @State private var editorCommand: EditorCommandRequest?
+    /// List selection for VAULT rows only; decoupled from model.selectedID
+    /// so a click in Favorites/Recents highlights THAT row instead.
+    @State private var listSelection: String?
+    /// "section|noteId" of the clicked section row, nil when the Vault
+    /// list owns the highlight.
+    @State private var sectionHighlight: String?
 
     var body: some View {
         NavigationSplitView {
@@ -197,8 +203,14 @@ struct NotesView: View {
 
     private var noteList: some View {
         List(selection: Binding(
-            get: { model.selectedID },
-            set: { model.select($0) }
+            get: { listSelection },
+            set: { id in
+                listSelection = id
+                sectionHighlight = nil
+                if let id {
+                    model.select(id)
+                }
+            }
         )) {
             if searching {
                 if !savedSearches.contains(trimmedSearch) {
@@ -237,17 +249,17 @@ struct NotesView: View {
                 if !favoriteIds.isEmpty || !favoriteFolders.isEmpty {
                     Section("Favorites") {
                         ForEach(favoriteFolders.filter { model.folders.contains($0) }, id: \.self) { folder in
-                            folderGroup(folder, selectable: false)
+                            folderGroup(folder, selectable: false, section: "favfolder")
                         }
                         ForEach(notes(withIds: favoriteIds)) { note in
-                            noteRow(note, showFolder: true, selectable: false)
+                            noteRow(note, showFolder: true, selectable: false, section: "fav")
                         }
                     }
                 }
                 if !model.recents.isEmpty {
                     Section("Recents") {
                         ForEach(notes(withIds: Array(model.recents.prefix(5)))) { note in
-                            noteRow(note, showFolder: true, selectable: false)
+                            noteRow(note, showFolder: true, selectable: false, section: "recent")
                         }
                     }
                 }
@@ -270,14 +282,14 @@ struct NotesView: View {
                 if !pinnedIds.isEmpty {
                     Section("Pinned") {
                         ForEach(notes(withIds: pinnedIds)) { note in
-                            noteRow(note, showFolder: true, selectable: false)
+                            noteRow(note, showFolder: true, selectable: false, section: "pin")
                         }
                     }
                 }
                 if !bookmarkedIds.isEmpty {
                     Section("Bookmarks") {
                         ForEach(notes(withIds: bookmarkedIds)) { note in
-                            noteRow(note, showFolder: true, selectable: false)
+                            noteRow(note, showFolder: true, selectable: false, section: "book")
                         }
                     }
                 }
@@ -302,6 +314,12 @@ struct NotesView: View {
                         }
                     }
                 }
+            }
+        }
+        .onAppear { listSelection = model.selectedID }
+        .onChange(of: model.selectedID) {
+            if sectionHighlight == nil {
+                listSelection = model.selectedID
             }
         }
         .task(id: indexService.tasksVersion) {
@@ -819,15 +837,17 @@ struct NotesView: View {
     /// selectable: false renders rows as tap-to-open copies — a folder can
     /// appear in Favorites AND the Vault tree, and duplicate List selection
     /// tags make the duplicate group render empty.
-    private func folderGroup(_ folder: String, selectable: Bool = true) -> AnyView {
+    private func folderGroup(
+        _ folder: String, selectable: Bool = true, section: String = ""
+    ) -> AnyView {
         let name = folder.split(separator: "/").last.map(String.init) ?? folder
         return AnyView(
             DisclosureGroup {
                 ForEach(notes(in: folder)) { note in
-                    noteRow(note, showFolder: false, selectable: selectable)
+                    noteRow(note, showFolder: false, selectable: selectable, section: section)
                 }
                 ForEach(subfolders(of: folder), id: \.self) { child in
-                    folderGroup(child, selectable: selectable)
+                    folderGroup(child, selectable: selectable, section: section)
                 }
             } label: {
                 Label(name, systemImage: "folder")
@@ -856,7 +876,7 @@ struct NotesView: View {
     }
 
     private func noteRow(
-        _ note: VaultItem, showFolder: Bool, selectable: Bool = true
+        _ note: VaultItem, showFolder: Bool, selectable: Bool = true, section: String = ""
     ) -> some View {
         // Plain tagged row: NavigationLink(value:) here makes SwiftUI infer
         // a 3-column split with an empty middle pane. Selection drives all.
@@ -924,8 +944,15 @@ struct NotesView: View {
             }
         }
         .modifier(SelectableTag(id: selectable ? note.id : nil) { _ in
+            sectionHighlight = section + "|" + note.id
+            listSelection = nil
             model.select(note.id)
         })
+        .listRowBackground(
+            !selectable && sectionHighlight == section + "|" + note.id
+                ? Color.accentColor.opacity(0.22)
+                : Color.clear
+        )
     }
 
     /// FTS-ranked results first, semantic (meaning-based) extras after.
