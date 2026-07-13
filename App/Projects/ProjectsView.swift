@@ -101,6 +101,7 @@ struct ProjectDetailView: View {
     enum Mode: String, CaseIterable, Identifiable {
         case tasks = "Tasks"
         case timeline = "Timeline"
+        case board = "Board"
         var id: String { rawValue }
     }
 
@@ -112,6 +113,8 @@ struct ProjectDetailView: View {
                 ScrollView {
                     ProjectTimelineView(service: service, project: project, tasks: tasks)
                 }
+            case .board:
+                ProjectBoardView(service: service, tasks: tasks)
             }
         }
         .toolbar {
