@@ -237,7 +237,7 @@ struct NotesView: View {
                 if !favoriteIds.isEmpty || !favoriteFolders.isEmpty {
                     Section("Favorites") {
                         ForEach(favoriteFolders.filter { model.folders.contains($0) }, id: \.self) { folder in
-                            folderGroup(folder)
+                            folderGroup(folder, selectable: false)
                         }
                         ForEach(notes(withIds: favoriteIds)) { note in
                             noteRow(note, showFolder: true, selectable: false)
@@ -811,15 +811,18 @@ struct NotesView: View {
         }
     }
 
-    private func folderGroup(_ folder: String) -> AnyView {
+    /// selectable: false renders rows as tap-to-open copies — a folder can
+    /// appear in Favorites AND the Vault tree, and duplicate List selection
+    /// tags make the duplicate group render empty.
+    private func folderGroup(_ folder: String, selectable: Bool = true) -> AnyView {
         let name = folder.split(separator: "/").last.map(String.init) ?? folder
         return AnyView(
             DisclosureGroup {
                 ForEach(notes(in: folder)) { note in
-                    noteRow(note, showFolder: false)
+                    noteRow(note, showFolder: false, selectable: selectable)
                 }
                 ForEach(subfolders(of: folder), id: \.self) { child in
-                    folderGroup(child)
+                    folderGroup(child, selectable: selectable)
                 }
             } label: {
                 Label(name, systemImage: "folder")
