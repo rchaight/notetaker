@@ -8,10 +8,13 @@ import SwiftUI
 /// orange, done in green, `#milestone` tasks as diamonds. Scrolls
 /// horizontally; zoom picks the visible span.
 struct ProjectTimelineView: View {
+    let service: VaultIndexService
     let project: NoteRecord
     let tasks: [TaskRecord]
 
     @State private var zoom: Zoom = .week
+    @State private var draggingId: String?
+    @State private var dragDays = 0
 
     enum Zoom: String, CaseIterable, Identifiable {
         case day = "Day"
@@ -62,7 +65,17 @@ struct ProjectTimelineView: View {
     }
 
     private func chart(_ scheduled: [ScheduledTask]) -> some View {
-        Chart(scheduled) { bar in
+        // Live preview: the dragged bar renders shifted while the gesture
+        // is in flight; the file write happens once, on release.
+        let display = scheduled.map { bar in
+            bar.id == draggingId
+                ? ScheduledTask(
+                    id: bar.id, node: bar.node,
+                    start: bar.start + dragDays, end: bar.end + dragDays, slack: bar.slack
+                )
+                : bar
+        }
+        return Chart(display) { bar in
             if isMilestone(bar) {
                 PointMark(
                     x: .value("Date", date(for: bar.end)),
@@ -83,6 +96,16 @@ struct ProjectTimelineView: View {
         }
         .chartScrollableAxes(.horizontal)
         .chartXVisibleDomain(length: zoom.visibleSeconds)
+        .chartOverlay { proxy in
+            GeometryReader { _ in
+                Rectangle()
+                    .fill(.clear)
+                    .contentShape(Rectangle())
+                    // Long-press-then-drag: a bare drag must keep panning
+                    // the scrollable chart.
+                    .gesture(rescheduleGesture(proxy: proxy, scheduled: scheduled))
+            }
+        }
         .chartXAxis {
             AxisMarks(values: .stride(by: zoom == .month ? .month : .day, count: zoom == .day ? 1 : 7)) {
                 AxisGridLine()
@@ -90,6 +113,58 @@ struct ProjectTimelineView: View {
             }
         }
         .frame(minHeight: CGFloat(scheduled.count) * 32 + 60)
+    }
+
+    private func rescheduleGesture(
+        proxy: ChartProxy, scheduled: [ScheduledTask]
+    ) -> some Gesture {
+        LongPressGesture(minimumDuration: 0.25)
+            .sequenced(before: DragGesture())
+            .onChanged { phase in
+                guard case let .second(true, drag?) = phase else { return }
+                if draggingId == nil {
+                    // Hit-test the categorical axis for the pressed row.
+                    if let title: String = proxy.value(atY: drag.startLocation.y),
+                       let bar = scheduled.first(where: { $0.node.title == title }) {
+                        draggingId = bar.id
+                    }
+                }
+                dragDays = dayDelta(for: drag.translation.width, proxy: proxy)
+            }
+            .onEnded { phase in
+                defer {
+                    draggingId = nil
+                    dragDays = 0
+                }
+                guard case let .second(true, drag?) = phase,
+                      let id = draggingId,
+                      let bar = scheduled.first(where: { $0.id == id }),
+                      let task = tasks.first(where: { $0.id == id })
+                else { return }
+                let delta = dayDelta(for: drag.translation.width, proxy: proxy)
+                guard delta != 0 else { return }
+                let newDue = isoDay(for: bar.end + delta)
+                let newStart: String?? = task.startDate != nil
+                    ? .some(isoDay(for: bar.start + delta)) : nil
+                Task { await service.reschedule(task, due: newDue, start: newStart) }
+            }
+    }
+
+    private func dayDelta(for translation: CGFloat, proxy: ChartProxy) -> Int {
+        let base = date(for: 0)
+        guard let x0 = proxy.position(forX: base),
+              let x1 = proxy.position(forX: base.addingTimeInterval(86400)),
+              x1 > x0
+        else { return 0 }
+        return Int((translation / (x1 - x0)).rounded())
+    }
+
+    private func isoDay(for dayOffset: Int) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date(for: dayOffset))
     }
 
     private var legend: some View {

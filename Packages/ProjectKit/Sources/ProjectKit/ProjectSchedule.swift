@@ -36,6 +36,14 @@ public struct ScheduledTask: Equatable, Sendable, Identifiable {
     public let slack: Int
     public var isCritical: Bool { slack == 0 }
     public var duration: Int { end - start + 1 }
+
+    public init(id: String, node: TaskNode, start: Int, end: Int, slack: Int) {
+        self.id = id
+        self.node = node
+        self.start = start
+        self.end = end
+        self.slack = slack
+    }
 }
 
 /// Critical-path-method scheduling over the dependency graph. Ungated —

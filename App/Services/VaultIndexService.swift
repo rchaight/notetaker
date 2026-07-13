@@ -311,6 +311,40 @@ final class VaultIndexService {
         }
     }
 
+    /// Reschedule: rewrite the source line's >due (and optionally ~start)
+    /// tokens — same locate→rewrite→coordinated-write→reindex shape as
+    /// toggle, with the same drift protection.
+    func reschedule(
+        _ task: TaskRecord, due: String?, start: String?? = nil
+    ) async {
+        guard let root, let indexer else { return }
+        let url = root.appendingPathComponent(task.noteId)
+        guard let contents = try? await store.readString(at: url),
+              let line = TaskLineToggler.locate(
+                  contents: contents, anchorLine: task.line, expectedRawLine: task.rawLine
+              )
+        else {
+            try? indexer.index(
+                noteId: task.noteId,
+                contents: (try? await store.readString(at: url)) ?? "",
+                modifiedAt: nil
+            )
+            tasksVersion += 1
+            return
+        }
+        var rewritten = TaskLineRewriter.settingDueDate(task.rawLine, to: due)
+        if case let .some(newStart) = start {
+            rewritten = TaskLineRewriter.settingStartDate(rewritten, to: newStart)
+        }
+        guard rewritten != task.rawLine else { return }
+        let updated = TaskLineToggler.replacingLine(contents, at: line, with: rewritten)
+        try? await store.writeString(updated, to: url)
+        try? indexer.index(noteId: task.noteId, contents: updated, modifiedAt: nil)
+        knownMTimes[task.noteId] = nil
+        tasksVersion += 1
+        onNoteMutated?(task.noteId)
+    }
+
     func projects() -> [NoteRecord] {
         (try? database?.projects()) ?? []
     }

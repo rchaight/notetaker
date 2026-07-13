@@ -110,7 +110,7 @@ struct ProjectDetailView: View {
             case .tasks: taskList
             case .timeline:
                 ScrollView {
-                    ProjectTimelineView(project: project, tasks: tasks)
+                    ProjectTimelineView(service: service, project: project, tasks: tasks)
                 }
             }
         }

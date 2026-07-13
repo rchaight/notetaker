@@ -91,3 +91,34 @@ struct DependencyTokenTests {
         #expect(parsed.dependsOn.isEmpty)
     }
 }
+
+struct TaskLineRewriterTests {
+    @Test func replacesExistingDueToken() {
+        #expect(TaskLineRewriter.settingDueDate("- [ ] call dean >2026-07-10 !p1", to: "2026-07-15")
+            == "- [ ] call dean >2026-07-15 !p1")
+        #expect(TaskLineRewriter.settingDueDate("- [ ] soon >tomorrow", to: "2026-08-01")
+            == "- [ ] soon >2026-08-01")
+    }
+
+    @Test func appendsWhenAbsentAndRemovesOnNil() {
+        #expect(TaskLineRewriter.settingDueDate("- [ ] bare task", to: "2026-07-15")
+            == "- [ ] bare task >2026-07-15")
+        #expect(TaskLineRewriter.settingDueDate("- [ ] dated >2026-07-15 #tag", to: nil)
+            == "- [ ] dated #tag")
+    }
+
+    @Test func startTokenAndCRLFSurvive() {
+        #expect(TaskLineRewriter.settingStartDate("- [ ] slow burn ~2026-07-01", to: "2026-07-05")
+            == "- [ ] slow burn ~2026-07-05")
+        #expect(TaskLineRewriter.settingDueDate("- [ ] windows line\r", to: "2026-07-15")
+            == "- [ ] windows line >2026-07-15\r")
+    }
+
+    @Test func rewriteRoundTripsThroughParser() {
+        let rewritten = TaskLineRewriter.settingDueDate("- [ ] ship it depends:^build !p2", to: "2026-09-01")
+        let parsed = TaskTokenParser.parse(String(rewritten.dropFirst(6)))
+        #expect(parsed.dueDate == "2026-09-01")
+        #expect(parsed.priority == 2)
+        #expect(parsed.dependsOn == ["build"])
+    }
+}
