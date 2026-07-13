@@ -41,6 +41,10 @@ public enum AutocompleteContext {
             let previous = head.index(before: index)
             let character = head[previous]
             if character == "#" {
+                // A bare "#" is ambiguous: it's how headings start ("# ").
+                // Only a # with tag characters after it is a tag context —
+                // "#w" triggers, "# " never does.
+                guard !body.isEmpty else { return nil }
                 let atStart = previous == head.startIndex
                 if atStart || head[head.index(before: previous)].isWhitespace {
                     return Match(kind: .tag, query: body)

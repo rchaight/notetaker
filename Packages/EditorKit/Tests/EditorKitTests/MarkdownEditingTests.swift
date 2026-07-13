@@ -460,8 +460,10 @@ struct AutocompleteTests {
             .init(kind: .tag, query: "pro"))
         #expect(match("x #project/al", cursorAfter: "/al") ==
             .init(kind: .tag, query: "project/al"))
-        #expect(match("bare # here", cursorAfter: "bare #") ==
-            .init(kind: .tag, query: ""))
+        // A bare "#" must NOT trigger — it's also the heading marker.
+        #expect(match("bare # here", cursorAfter: "bare #") == nil)
+        #expect(match("# ", cursorAfter: "#") == nil)
+        #expect(match("## Sec", cursorAfter: "##") == nil)
         #expect(match("not#atag", cursorAfter: "not#a") == nil)
         #expect(match("after space #tag done", cursorAfter: "done") == nil)
     }
