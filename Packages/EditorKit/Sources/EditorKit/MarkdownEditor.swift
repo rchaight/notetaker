@@ -5,6 +5,24 @@ import TaskEngine
 // TextKit 2 markdown editor with live syntax styling on every keystroke.
 // The underlying storage is always the plain CommonMark source — styling
 // is attributes only, so the file on disk stays valid markdown.
+/// Ranges whose appearance depends on cursor position: syntax markers
+/// (hidden off-cursor) plus table/thematic-break bodies (rendered clear
+/// off-cursor). A cursor transition touching none of these cannot change
+/// layout, so the editor skips the whole-document restyle.
+@MainActor
+func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
+    var ranges = SyntaxMarkers.markerRanges(in: text, styled: styled)
+    for item in styled {
+        switch item.kind {
+        case .table, .thematicBreak:
+            ranges.append(item.range)
+        default:
+            continue
+        }
+    }
+    return ranges
+}
+
 #if canImport(AppKit)
     import AppKit
 
@@ -134,6 +152,7 @@ import TaskEngine
             var linkCandidates: [String] = []
             var codeRegions: [CodeCardRegions.Region] = []
             var tableRegions: [TableGrid.Region] = []
+            var revealRanges: [NSRange] = []
             var lastCommandID: UUID?
             private var lastCursorLine: NSRange?
             private var pendingRestyle: Task<Void, Never>?
@@ -159,6 +178,7 @@ import TaskEngine
                 )
                 codeRegions = CodeCardRegions.regions(in: textView.string, styled: styled)
                 tableRegions = TableGrid.regions(in: textView.string, styled: styled)
+                revealRanges = markdownRevealRanges(in: textView.string, styled: styled)
             }
 
             private func scheduleRestyle(_ textView: NSTextView) {
@@ -231,9 +251,23 @@ import TaskEngine
 
             public func textViewDidChangeSelection(_ notification: Notification) {
                 guard livePreview || focusMode, let textView = notification.object as? NSTextView else { return }
-                // Only restyle when the cursor moved to a different paragraph.
-                if cursorParagraph(textView) != lastCursorLine {
+                let cursor = cursorParagraph(textView)
+                guard cursor != lastCursorLine else { return }
+                // Full restyle reflows text under the click (markers reveal
+                // at full size) — skip it when neither the old nor the new
+                // cursor paragraph contains anything hidden (user-reported
+                // "erratic jumps" clicking around plain text).
+                if focusMode || cursorTransitionAffectsLayout(from: lastCursorLine, to: cursor) {
                     restyle(textView)
+                } else {
+                    lastCursorLine = cursor
+                }
+            }
+
+            private func cursorTransitionAffectsLayout(from old: NSRange?, to new: NSRange) -> Bool {
+                revealRanges.contains { range in
+                    NSIntersectionRange(range, new).length > 0
+                        || old.map { NSIntersectionRange(range, $0).length > 0 } ?? false
                 }
             }
 
@@ -498,6 +532,7 @@ import TaskEngine
             var linkCandidates: [String] = []
             var codeRegions: [CodeCardRegions.Region] = []
             var tableRegions: [TableGrid.Region] = []
+            var revealRanges: [NSRange] = []
             var lastCommandID: UUID?
             private var lastCursorLine: NSRange?
             private var pendingRestyle: Task<Void, Never>?
@@ -522,6 +557,7 @@ import TaskEngine
                 )
                 codeRegions = CodeCardRegions.regions(in: textView.text ?? "", styled: styled)
                 tableRegions = TableGrid.regions(in: textView.text ?? "", styled: styled)
+                revealRanges = markdownRevealRanges(in: textView.text ?? "", styled: styled)
             }
 
             private func scheduleRestyle(_ textView: UITextView) {
@@ -661,8 +697,19 @@ import TaskEngine
 
             public func textViewDidChangeSelection(_ textView: UITextView) {
                 guard livePreview || focusMode else { return }
-                if cursorParagraph(textView) != lastCursorLine {
+                let cursor = cursorParagraph(textView)
+                guard cursor != lastCursorLine else { return }
+                if focusMode || cursorTransitionAffectsLayout(from: lastCursorLine, to: cursor) {
                     restyle(textView)
+                } else {
+                    lastCursorLine = cursor
+                }
+            }
+
+            private func cursorTransitionAffectsLayout(from old: NSRange?, to new: NSRange) -> Bool {
+                revealRanges.contains { range in
+                    NSIntersectionRange(range, new).length > 0
+                        || old.map { NSIntersectionRange(range, $0).length > 0 } ?? false
                 }
             }
 

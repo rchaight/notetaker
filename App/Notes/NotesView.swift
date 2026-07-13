@@ -43,6 +43,7 @@ struct NotesView: View {
     /// "section|noteId" of the clicked section row, nil when the Vault
     /// list owns the highlight.
     @State private var sectionHighlight: String?
+    @State private var expandedFolders: Set<String> = []
 
     var body: some View {
         NavigationSplitView {
@@ -841,8 +842,20 @@ struct NotesView: View {
         _ folder: String, selectable: Bool = true, section: String = ""
     ) -> AnyView {
         let name = folder.split(separator: "/").last.map(String.init) ?? folder
+        // Sections and the vault tree track expansion separately — the same
+        // folder can be open in Favorites and closed in the Vault list.
+        let key = section + "|" + folder
         return AnyView(
-            DisclosureGroup {
+            DisclosureGroup(isExpanded: Binding(
+                get: { expandedFolders.contains(key) },
+                set: { expanded in
+                    if expanded {
+                        expandedFolders.insert(key)
+                    } else {
+                        expandedFolders.remove(key)
+                    }
+                }
+            )) {
                 ForEach(notes(in: folder)) { note in
                     noteRow(note, showFolder: false, selectable: selectable, section: section)
                 }
@@ -851,10 +864,19 @@ struct NotesView: View {
                 }
             } label: {
                 Label(name, systemImage: "folder")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                     // Folders expand; they are never the List selection
                     // (their implicit tag also highlighted duplicates and
                     // clicking one cleared the open note).
                     .selectionDisabled(true)
+                    .onTapGesture {
+                        if expandedFolders.contains(key) {
+                            expandedFolders.remove(key)
+                        } else {
+                            expandedFolders.insert(key)
+                        }
+                    }
                     .contextMenu {
                         Button(
                             favoriteFolders.contains(folder)
