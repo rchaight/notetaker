@@ -9,6 +9,8 @@ struct ProjectsView: View {
     @State private var projects: [NoteRecord] = []
     @State private var progress: [String: (done: Int, total: Int)] = [:]
     @State private var selectedId: String?
+    @State private var showingNewProject = false
+    @State private var newProjectName = ""
 
     var body: some View {
         NavigationSplitView {
@@ -18,13 +20,34 @@ struct ProjectsView: View {
             }
             .navigationTitle("Projects")
             .navigationSplitViewColumnWidth(min: 220, ideal: 300, max: 420)
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("New Project", systemImage: "plus") {
+                        newProjectName = ""
+                        showingNewProject = true
+                    }
+                    .help("Create a project note (a regular .md note with project frontmatter)")
+                }
+            }
+            .alert("New Project", isPresented: $showingNewProject) {
+                TextField("Project name", text: $newProjectName)
+                Button("Create") {
+                    Task {
+                        if let id = await service.createProject(named: newProjectName) {
+                            projects = service.projects()
+                            selectedId = id
+                        }
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            }
             .overlay {
                 if projects.isEmpty {
                     ContentUnavailableView(
                         "No Projects Yet",
                         systemImage: "chart.gantt",
                         description: Text(
-                            "Right-click a note and choose Make Project, or add `project: true` to its frontmatter."
+                            "Create one with the + button, right-click a note and choose Make Project, or add `project: true` to a note's frontmatter."
                         )
                     )
                 }

@@ -522,6 +522,20 @@ struct NotesView: View {
                         Label("AI", systemImage: "sparkles")
                     }
                     .disabled(aiStatus?.hasSuffix("…") == true)
+                    if let id = model.selectedID {
+                        let isProject = indexService.isProject(id)
+                        Button(
+                            isProject ? "Remove from Projects" : "Make Project",
+                            systemImage: isProject ? "chart.gantt" : "chart.gantt"
+                        ) {
+                            Task {
+                                await indexService.setNoteFlag(id, key: "project", value: !isProject)
+                            }
+                        }
+                        .help(isProject
+                            ? "This note is a project — click to remove the project flag"
+                            : "Turn this note into a project (adds project: true frontmatter)")
+                    }
                     Button("Info", systemImage: "sidebar.right") {
                         showInspector.toggle()
                     }

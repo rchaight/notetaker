@@ -375,6 +375,46 @@ final class VaultIndexService {
         onNoteMutated?(dependent.noteId)
     }
 
+    /// Creates a project note (frontmatter-marked) at the vault root and
+    /// returns its noteId.
+    func createProject(named name: String) async -> String? {
+        guard let root, let indexer else { return nil }
+        let base = name.trimmingCharacters(in: .whitespaces)
+        let title = base.isEmpty ? "New Project" : base
+        var fileName = title + ".md"
+        var counter = 2
+        while FileManager.default.fileExists(atPath: root.appendingPathComponent(fileName).path) {
+            fileName = "\(title) \(counter).md"
+            counter += 1
+        }
+        let contents = """
+        ---
+        project: true
+        status: active
+        ---
+        # \(title)
+
+        - [ ] first task
+
+        """
+        let url = root.appendingPathComponent(fileName)
+        do {
+            try await store.writeString(contents, to: url)
+            try indexer.index(noteId: fileName, contents: contents, modifiedAt: nil)
+            knownMTimes[fileName] = nil
+            tasksVersion += 1
+            onNoteMutated?(fileName)
+            return fileName
+        } catch {
+            return nil
+        }
+    }
+
+    /// Whether a note currently carries the project flag.
+    func isProject(_ noteId: String) -> Bool {
+        projects().contains { $0.id == noteId }
+    }
+
     func projects() -> [NoteRecord] {
         (try? database?.projects()) ?? []
     }
