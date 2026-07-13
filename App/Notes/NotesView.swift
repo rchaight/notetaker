@@ -28,6 +28,7 @@ struct NotesView: View {
     @State private var bookmarkedIds: [String] = []
     @State private var favoriteIds: [String] = []
     @AppStorage("savedNoteSearches") private var savedSearchesData = "[]"
+    @AppStorage("favoriteFolders") private var favoriteFoldersData = "[]"
     @State private var importStatus: String?
     @State private var aiStatus: String?
     @State private var showingNewFolder = false
@@ -233,8 +234,11 @@ struct NotesView: View {
             } else {
                 // Layout per user direction: Favorites, Recents, then the
                 // full vault (root notes + folders); curated sections follow.
-                if !favoriteIds.isEmpty {
+                if !favoriteIds.isEmpty || !favoriteFolders.isEmpty {
                     Section("Favorites") {
+                        ForEach(favoriteFolders.filter { model.folders.contains($0) }, id: \.self) { folder in
+                            folderGroup(folder)
+                        }
                         ForEach(notes(withIds: favoriteIds)) { note in
                             noteRow(note, showFolder: true, selectable: false)
                         }
@@ -731,6 +735,18 @@ struct NotesView: View {
         .onTapGesture { selectedTag = node.path }
     }
 
+    private var favoriteFolders: [String] {
+        (try? JSONDecoder().decode([String].self, from: Data(favoriteFoldersData.utf8))) ?? []
+    }
+
+    private func toggleFavoriteFolder(_ folder: String) {
+        let updated = favoriteFolders.contains(folder)
+            ? favoriteFolders.filter { $0 != folder }
+            : favoriteFolders + [folder]
+        favoriteFoldersData = (try? JSONEncoder().encode(updated))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? favoriteFoldersData
+    }
+
     private var trimmedSearch: String {
         searchText.trimmingCharacters(in: .whitespaces)
     }
@@ -808,6 +824,13 @@ struct NotesView: View {
             } label: {
                 Label(name, systemImage: "folder")
                     .contextMenu {
+                        Button(
+                            favoriteFolders.contains(folder)
+                                ? "Remove from Favorites" : "Add to Favorites",
+                            systemImage: favoriteFolders.contains(folder) ? "star.slash" : "star"
+                        ) {
+                            toggleFavoriteFolder(folder)
+                        }
                         Button("New Note Here", systemImage: "square.and.pencil") {
                             model.createNote(in: folder)
                         }
@@ -838,17 +861,12 @@ struct NotesView: View {
             syncBadge(note)
         }
         .contentShape(Rectangle())
+        .modifier(SelectableTag(id: selectable ? note.id : nil) { _ in
+            model.select(note.id)
+        })
+        // ONE context menu only: stacking a second .contextMenu shadows the
+        // first entirely (user-reported as missing Favorites/Make Project).
         .contextMenu {
-            Button(
-                pinnedIds.contains(note.id) ? "Unpin" : "Pin",
-                systemImage: pinnedIds.contains(note.id) ? "pin.slash" : "pin"
-            ) {
-                Task {
-                    await indexService.setNoteFlag(
-                        note.id, key: "pinned", value: !pinnedIds.contains(note.id)
-                    )
-                }
-            }
             Button(
                 favoriteIds.contains(note.id) ? "Remove from Favorites" : "Add to Favorites",
                 systemImage: favoriteIds.contains(note.id) ? "star.slash" : "star"
@@ -859,9 +877,14 @@ struct NotesView: View {
                     )
                 }
             }
-            Button("Make Project", systemImage: "calendar.day.timeline.left") {
+            Button(
+                pinnedIds.contains(note.id) ? "Unpin" : "Pin",
+                systemImage: pinnedIds.contains(note.id) ? "pin.slash" : "pin"
+            ) {
                 Task {
-                    await indexService.setNoteFlag(note.id, key: "project", value: true)
+                    await indexService.setNoteFlag(
+                        note.id, key: "pinned", value: !pinnedIds.contains(note.id)
+                    )
                 }
             }
             Button(
@@ -874,11 +897,12 @@ struct NotesView: View {
                     )
                 }
             }
-        }
-        .modifier(SelectableTag(id: selectable ? note.id : nil) { _ in
-            model.select(note.id)
-        })
-        .contextMenu {
+            Button("Make Project", systemImage: "calendar.day.timeline.left") {
+                Task {
+                    await indexService.setNoteFlag(note.id, key: "project", value: true)
+                }
+            }
+            Divider()
             Menu("Move To") {
                 Button("Vault Root") { model.move(note, toFolder: "") }
                 ForEach(model.folders, id: \.self) { folder in
