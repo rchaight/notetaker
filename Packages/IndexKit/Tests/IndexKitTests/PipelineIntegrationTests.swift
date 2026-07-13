@@ -202,3 +202,25 @@ struct PipelineIntegrationTests {
         #expect(try db.tasks(inNote: "Apollo.md").count == 3)
     }
 }
+
+@Suite struct DependencyIndexTests {
+    @Test func blockIdsAndDependenciesRoundTrip() throws {
+        let (db, _) = try IndexDatabase.open(path: nil)
+        let indexer = NoteIndexer(database: db)
+        try indexer.index(
+            noteId: "p.md",
+            contents: """
+            - [ ] design ^design >2026-07-20
+            - [ ] build depends:^design ^build
+            - [ ] ship blockedby:design,build
+            """,
+            modifiedAt: nil
+        )
+        let tasks = try db.tasks(inNote: "p.md")
+        #expect(tasks[0].blockId == "design")
+        #expect(tasks[1].dependsOn == "design")
+        #expect(tasks[1].blockId == "build")
+        #expect(tasks[2].dependsOn == "design build")
+        #expect(tasks[2].text == "ship")
+    }
+}

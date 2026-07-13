@@ -59,11 +59,16 @@ public struct TaskRecord: Codable, Equatable, Sendable, Identifiable, FetchableR
     public var recurrence: String?
     /// Enclosing task's id for indented subtasks; nil = top level.
     public var parentId: String?
+    /// `^id` naming this task for dependency references.
+    public var blockId: String?
+    /// blockedby:/depends: references, space-joined (dependency graph input).
+    public var dependsOn: String?
 
     public init(
         id: String, noteId: String, line: Int, text: String, rawLine: String,
         checked: Bool, dueDate: String? = nil, startDate: String? = nil,
-        priority: Int? = nil, recurrence: String? = nil, parentId: String? = nil
+        priority: Int? = nil, recurrence: String? = nil, parentId: String? = nil,
+        blockId: String? = nil, dependsOn: String? = nil
     ) {
         self.id = id
         self.noteId = noteId
@@ -76,6 +81,8 @@ public struct TaskRecord: Codable, Equatable, Sendable, Identifiable, FetchableR
         self.priority = priority
         self.recurrence = recurrence
         self.parentId = parentId
+        self.blockId = blockId
+        self.dependsOn = dependsOn
     }
 }
 

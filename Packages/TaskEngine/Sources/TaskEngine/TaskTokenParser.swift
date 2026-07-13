@@ -15,6 +15,10 @@ public struct ParsedTaskMetadata: Equatable, Sendable {
     public let labels: [String]
     /// `&every …` / `&after …` repetition rule.
     public let recurrence: Recurrence?
+    /// `^id` — this task's stable block id (for dependency references).
+    public let blockId: String?
+    /// `blockedby:^id` / `depends:^id` — block ids this task waits on.
+    public let dependsOn: [String]
 
     public init(
         cleanText: String,
@@ -22,7 +26,9 @@ public struct ParsedTaskMetadata: Equatable, Sendable {
         startDate: String? = nil,
         priority: Int?,
         labels: [String],
-        recurrence: Recurrence? = nil
+        recurrence: Recurrence? = nil,
+        blockId: String? = nil,
+        dependsOn: [String] = []
     ) {
         self.cleanText = cleanText
         self.dueDate = dueDate
@@ -30,6 +36,8 @@ public struct ParsedTaskMetadata: Equatable, Sendable {
         self.priority = priority
         self.labels = labels
         self.recurrence = recurrence
+        self.blockId = blockId
+        self.dependsOn = dependsOn
     }
 }
 
@@ -51,13 +59,57 @@ public enum TaskTokenParser {
         let priority = extractPriority(&working)
         let recurrence = RecurrenceParser.extract(from: &working)
         let labels = tagTokens(in: working)
+        let blockId = extractBlockId(&working)
+        let dependsOn = extractDependencies(&working)
         let clean = working
             .replacingOccurrences(of: #"\s{2,}"#, with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespaces)
         return ParsedTaskMetadata(
             cleanText: clean, dueDate: dueDate, startDate: startDate,
-            priority: priority, labels: labels, recurrence: recurrence
+            priority: priority, labels: labels, recurrence: recurrence,
+            blockId: blockId, dependsOn: dependsOn
         )
+    }
+
+    // MARK: - Dependencies
+
+    /// `^design-api` at a word boundary names this task for others to
+    /// reference (Obsidian block-id style). First one wins.
+    private static let blockIdRegex = try? NSRegularExpression(
+        pattern: #"(?<=^|\s)\^([A-Za-z0-9][A-Za-z0-9_-]*)\b"#
+    )
+    /// `blockedby:^id` / `depends:^id` (comma-separated ids allowed).
+    private static let dependsRegex = try? NSRegularExpression(
+        pattern: #"(?<=^|\s)(?:blockedby|depends):\^?([A-Za-z0-9][A-Za-z0-9_,^-]*)"#,
+        options: [.caseInsensitive]
+    )
+
+    private static func extractBlockId(_ text: inout String) -> String? {
+        guard let regex = blockIdRegex else { return nil }
+        let ns = text as NSString
+        guard let match = regex.firstMatch(in: text, range: NSRange(location: 0, length: ns.length))
+        else { return nil }
+        let id = ns.substring(with: match.range(at: 1))
+        text = ns.replacingCharacters(in: match.range, with: "")
+        return id
+    }
+
+    private static func extractDependencies(_ text: inout String) -> [String] {
+        guard let regex = dependsRegex else { return [] }
+        var found: [String] = []
+        while true {
+            let ns = text as NSString
+            guard let match = regex.firstMatch(
+                in: text, range: NSRange(location: 0, length: ns.length)
+            ) else { break }
+            let refs = ns.substring(with: match.range(at: 1))
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "^ ")) }
+                .filter { !$0.isEmpty }
+            found.append(contentsOf: refs)
+            text = ns.replacingCharacters(in: match.range, with: "")
+        }
+        return found
     }
 
     // MARK: - Dates

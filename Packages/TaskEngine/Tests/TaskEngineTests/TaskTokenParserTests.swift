@@ -58,3 +58,36 @@ struct TaskTokenParserTests {
         ))
     }
 }
+
+struct DependencyTokenTests {
+    @Test func blockIdParsesAndCleans() {
+        let parsed = TaskTokenParser.parse("design the API ^design-api >2026-08-01")
+        #expect(parsed.blockId == "design-api")
+        #expect(parsed.cleanText == "design the API")
+        #expect(parsed.dueDate == "2026-08-01")
+    }
+
+    @Test func dependsAndBlockedByParse() {
+        let one = TaskTokenParser.parse("build it depends:^design-api")
+        #expect(one.dependsOn == ["design-api"])
+        #expect(one.cleanText == "build it")
+        let two = TaskTokenParser.parse("ship blockedby:design,build !p1")
+        #expect(two.dependsOn == ["design", "build"])
+        #expect(two.cleanText == "ship")
+        #expect(two.priority == 1)
+    }
+
+    @Test func caretInMathDoesNotFalselyMatch() {
+        let parsed = TaskTokenParser.parse("compute 2^10 quickly")
+        // "^10"-style mid-word carets are preceded by non-space; only
+        // whitespace-anchored ^ids count.
+        #expect(parsed.blockId == nil)
+        #expect(parsed.cleanText == "compute 2^10 quickly")
+    }
+
+    @Test func plainTasksUnaffected() {
+        let parsed = TaskTokenParser.parse("simple task >today #tag")
+        #expect(parsed.blockId == nil)
+        #expect(parsed.dependsOn.isEmpty)
+    }
+}

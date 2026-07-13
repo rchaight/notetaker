@@ -268,12 +268,27 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 **Goal:** PM as another view over the same todos + frontmatter, not a second data model.
 **Steps (staged for de-risking):**
 - [x] Project = a note with frontmatter (`status`/`start`/`due`/`project`); its tasks are the inline todos referencing it. Milestones as zero-duration diamonds.
-- [ ] `ProjectKit`: DependencyEdge graph sourced from inline `blockedby:`/`depends:`; topological schedule computation; auto-% complete from checked child todos (Linear-style); ungated critical-path + slack (never paywalled).
+- [x] `ProjectKit`: DependencyEdge graph sourced from inline `blockedby:`/`depends:`; topological schedule computation; auto-% complete from checked child todos (Linear-style); ungated critical-path + slack (never paywalled).
 - [ ] **M7a — read-only timeline:** Swift Charts `BarMark` per task (x-range start→end) vs categorical task axis; day/week/month zoom; lightweight roadmap default for small projects.
 - [ ] **M7b — interactive Gantt:** custom `Canvas`+gesture layer for drag-move/resize-duration, draw-a-line finish-to-start dependencies with auto-cascade + downstream-impact indicator. *If time-boxed:* license Ganttis instead.
 - [ ] Alternate Kanban + canvas/board view per project; "graduate" roadmap → full Gantt.
 **Done:** a project note's inline todos render as Gantt bars; checking off children updates % complete automatically; the critical path highlights with no paywall; (M7b) dragging a bar reschedules and cascades dependents.
 **Effort:** M7a ~1.5 weeks; M7b ~3–4 weeks (or ~1 week if licensing Ganttis).
+
+### M7.5 — To-Do UX upgrades (user-selected 2026-07-12, all 12 research items; after M7)
+- [ ] Completion fade: strike + ~0.4s fade before leaving the list.
+- [ ] Row density setting (Compact/Comfortable/Relaxed), persisted.
+- [ ] Jump-to-note from any task row.
+- [ ] Priority/label color chips consistent across List/Board/Agenda/Matrix (+ per-label colors).
+- [ ] "Set due date" + "delete line" write mutations (shared engine for the next two).
+- [ ] Swipe actions (iOS): complete / snooze-to-tomorrow / delete.
+- [ ] Drag-to-reschedule cards across date sections (Agenda/Board).
+- [ ] Multi-select + batch edit (priority/label/date/complete).
+- [ ] AI-powered Quick Add via existing FoundationModels provider (offline fallback = current parser).
+- [ ] Logbook: ✅YYYY-MM-DD completion token on toggle + completed view grouped by day.
+- [ ] Streak/karma strip (local-only, opt-in; builds on the Logbook token).
+- [ ] Command palette (⌘K): quick add, jump to filter/note, switch views.
+- [ ] Menu bar quick-add (macOS MenuBarExtra + hotkey; pulled forward from M9).
 
 ### M8 — Security hardening (SecurityKit)
 **Goal:** app lock + per-note Locked Notes + honest encryption posture.
