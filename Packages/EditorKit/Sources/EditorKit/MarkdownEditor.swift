@@ -185,12 +185,25 @@ import TaskEngine
                 guard let textView = notification.object as? NSTextView else { return }
                 text.wrappedValue = textView.string
                 scheduleRestyle(textView)
-                // Auto-offer tag/[[link completions while a token is open.
+                // Auto-offer tag/[[link completions while a token is open —
+                // but ONLY when we have matching candidates: invoking the
+                // popup with none lets AppKit substitute its own lexicon
+                // (typing "#" was surfacing system suggestions like #000).
                 let selection = textView.selectedRange()
                 if selection.length == 0,
-                   AutocompleteContext.match(in: textView.string, cursor: selection.location) != nil {
+                   let match = AutocompleteContext.match(
+                       in: textView.string, cursor: selection.location
+                   ),
+                   hasCandidates(for: match) {
                     textView.complete(nil)
                 }
+            }
+
+            private func hasCandidates(for match: AutocompleteContext.Match) -> Bool {
+                let pool = match.kind == .tag ? tagCandidates : linkCandidates
+                return !AutocompleteContext.completionStrings(
+                    query: match.query, partialLength: 0, candidates: pool
+                ).isEmpty
             }
 
             public func textView(

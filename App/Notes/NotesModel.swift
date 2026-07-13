@@ -207,10 +207,64 @@ final class NotesModel {
         do {
             try await store.writeString(noteText, to: url)
             dirty = false
+            await renameToMatchTitle()
         } catch {
             // Keep dirty; next debounce retries. Files are truth — never
             // drop edits silently.
         }
+    }
+
+    /// Obsidian-style title sync: when the note's first line is a heading,
+    /// the file is named after it. Runs after each successful save.
+    private func renameToMatchTitle() async {
+        guard let url = loadedURL, let root, let currentId = selectedID,
+              let title = Self.headingTitle(of: noteText) else { return }
+        let sanitized = Self.sanitizeFileName(title)
+        let current = url.deletingPathExtension().lastPathComponent
+        guard !sanitized.isEmpty, sanitized != current else { return }
+        let folder = url.deletingLastPathComponent()
+        var name = sanitized + ".md"
+        var counter = 2
+        while FileManager.default.fileExists(atPath: folder.appendingPathComponent(name).path) {
+            name = "\(sanitized) \(counter).md"
+            counter += 1
+        }
+        let destination = folder.appendingPathComponent(name)
+        do {
+            try await store.move(from: url, to: destination)
+            let newId = VaultPath.relativePath(of: destination, in: root)
+            loadedURL = destination
+            selectedID = newId
+            openTabs = openTabs.map { $0 == currentId ? newId : $0 }
+            recents = recents.map { $0 == currentId ? newId : $0 }
+            UserDefaults.standard.set(recents, forKey: "recentNotes")
+            apply(VaultEnumerator.snapshot(of: root))
+        } catch {
+            // Rename is cosmetic; the save above already succeeded.
+        }
+    }
+
+    /// The first non-empty body line when it's a markdown heading.
+    static func headingTitle(of text: String) -> String? {
+        let document = MarkdownDocument(source: text)
+        for line in splitLines(document.body) {
+            let trimmed = strippingCarriageReturn(line).trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty else { continue }
+            guard trimmed.hasPrefix("#") else { return nil }
+            let title = trimmed.drop { $0 == "#" }.trimmingCharacters(in: .whitespaces)
+            return title.isEmpty ? nil : title
+        }
+        return nil
+    }
+
+    /// Filesystem- and sync-safe file name from a heading.
+    static func sanitizeFileName(_ title: String) -> String {
+        String(
+            title.map { "/\\:?%*|\"<>".contains($0) ? "-" : $0 }
+        )
+        .trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+        .prefix(80)
+        .trimmingCharacters(in: .whitespaces)
     }
 
     /// Copies an image into the vault's Attachments folder and returns a
