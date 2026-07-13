@@ -794,7 +794,12 @@ struct NotesView: View {
             if let id {
                 content.tag(id)
             } else {
-                content.onTapGesture { select("") }
+                // selectionDisabled: ForEach rows get IMPLICIT selection
+                // tags from their identity, so a copy of a selected note in
+                // Favorites/Recents would highlight too (user-reported).
+                content
+                    .selectionDisabled(true)
+                    .onTapGesture { select("") }
             }
         }
     }
@@ -826,6 +831,10 @@ struct NotesView: View {
                 }
             } label: {
                 Label(name, systemImage: "folder")
+                    // Folders expand; they are never the List selection
+                    // (their implicit tag also highlighted duplicates and
+                    // clicking one cleared the open note).
+                    .selectionDisabled(true)
                     .contextMenu {
                         Button(
                             favoriteFolders.contains(folder)
