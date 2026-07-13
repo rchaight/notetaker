@@ -96,8 +96,41 @@ struct ProjectDetailView: View {
     let service: VaultIndexService
     let project: NoteRecord
     @State private var tasks: [TaskRecord] = []
+    @State private var mode: Mode = .tasks
+
+    enum Mode: String, CaseIterable, Identifiable {
+        case tasks = "Tasks"
+        case timeline = "Timeline"
+        var id: String { rawValue }
+    }
 
     var body: some View {
+        Group {
+            switch mode {
+            case .tasks: taskList
+            case .timeline:
+                ScrollView {
+                    ProjectTimelineView(project: project, tasks: tasks)
+                }
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Picker("Mode", selection: $mode) {
+                    ForEach(Mode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+        }
+        .navigationTitle(project.title)
+        .task(id: "\(project.id)-\(service.tasksVersion)") {
+            tasks = service.tasks(inNote: project.id)
+        }
+    }
+
+    private var taskList: some View {
         List {
             Section {
                 LabeledContent("Status", value: project.projectStatus ?? "—")
@@ -126,10 +159,6 @@ struct ProjectDetailView: View {
                     }
                 }
             }
-        }
-        .navigationTitle(project.title)
-        .task(id: "\(project.id)-\(service.tasksVersion)") {
-            tasks = service.tasks(inNote: project.id)
         }
     }
 }
