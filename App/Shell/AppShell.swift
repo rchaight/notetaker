@@ -44,7 +44,7 @@ struct AppShell: View {
             }
             indexService.beforeNoteMutation = { [weak notesModel = notesModel] noteId in
                 guard let notesModel, notesModel.selectedID == noteId else { return }
-                await notesModel.flushSave()
+                await notesModel.flushSave(allowRename: false)
             }
             await indexService.start()
         }

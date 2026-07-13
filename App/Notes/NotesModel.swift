@@ -201,13 +201,18 @@ final class NotesModel {
         }
     }
 
-    func flushSave() async {
+    /// allowRename: false when a service mutation is about to rewrite the
+    /// file — a title-sync rename here would move it out from under the
+    /// mutation's URL and the edit would silently vanish.
+    func flushSave(allowRename: Bool = true) async {
         saveTask?.cancel()
         guard dirty, let url = loadedURL else { return }
         do {
             try await store.writeString(noteText, to: url)
             dirty = false
-            await renameToMatchTitle()
+            if allowRename {
+                await renameToMatchTitle()
+            }
         } catch {
             // Keep dirty; next debounce retries. Files are truth — never
             // drop edits silently.

@@ -864,11 +864,9 @@ struct NotesView: View {
             syncBadge(note)
         }
         .contentShape(Rectangle())
-        .modifier(SelectableTag(id: selectable ? note.id : nil) { _ in
-            model.select(note.id)
-        })
         // ONE context menu only: stacking a second .contextMenu shadows the
         // first entirely (user-reported as missing Favorites/Make Project).
+        // Attached BEFORE the tag/tap modifier — order matters on the beta.
         .contextMenu {
             Button(
                 favoriteIds.contains(note.id) ? "Remove from Favorites" : "Add to Favorites",
@@ -916,6 +914,9 @@ struct NotesView: View {
                 model.delete(note)
             }
         }
+        .modifier(SelectableTag(id: selectable ? note.id : nil) { _ in
+            model.select(note.id)
+        })
     }
 
     /// FTS-ranked results first, semantic (meaning-based) extras after.
