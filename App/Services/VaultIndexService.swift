@@ -345,6 +345,36 @@ final class VaultIndexService {
         onNoteMutated?(task.noteId)
     }
 
+    /// "Blocked by": gives `target` a ^block-id when needed and appends
+    /// blockedby:^id to `dependent`. Both lines live in the same note; one
+    /// read→rewrite→write pass keeps it atomic.
+    func addDependency(dependent: TaskRecord, target: TaskRecord) async {
+        guard let root, let indexer, dependent.noteId == target.noteId,
+              dependent.id != target.id else { return }
+        let url = root.appendingPathComponent(dependent.noteId)
+        guard var contents = try? await store.readString(at: url),
+              let targetLine = TaskLineToggler.locate(
+                  contents: contents, anchorLine: target.line, expectedRawLine: target.rawLine
+              )
+        else { return }
+        let (newTargetLine, blockId) = TaskLineRewriter.ensuringBlockId(target.rawLine)
+        if newTargetLine != target.rawLine {
+            contents = TaskLineToggler.replacingLine(contents, at: targetLine, with: newTargetLine)
+        }
+        guard let dependentLine = TaskLineToggler.locate(
+            contents: contents, anchorLine: dependent.line, expectedRawLine: dependent.rawLine
+        ) else { return }
+        let newDependentLine = TaskLineRewriter.addingDependency(dependent.rawLine, on: blockId)
+        guard newDependentLine != dependent.rawLine || newTargetLine != target.rawLine
+        else { return }
+        contents = TaskLineToggler.replacingLine(contents, at: dependentLine, with: newDependentLine)
+        try? await store.writeString(contents, to: url)
+        try? indexer.index(noteId: dependent.noteId, contents: contents, modifiedAt: nil)
+        knownMTimes[dependent.noteId] = nil
+        tasksVersion += 1
+        onNoteMutated?(dependent.noteId)
+    }
+
     func projects() -> [NoteRecord] {
         (try? database?.projects()) ?? []
     }

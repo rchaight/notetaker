@@ -151,10 +151,27 @@ struct ProjectDetailView: View {
                             .strikethrough(task.checked)
                             .foregroundStyle(task.checked ? .secondary : .primary)
                         Spacer()
+                        if task.dependsOn != nil {
+                            Image(systemName: "link")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .help("Has dependencies")
+                        }
                         if let due = task.dueDate {
                             Text(due)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                        }
+                    }
+                    .contextMenu {
+                        Menu("Blocked By") {
+                            ForEach(tasks.filter { $0.id != task.id }) { other in
+                                Button(other.text) {
+                                    Task {
+                                        await service.addDependency(dependent: task, target: other)
+                                    }
+                                }
+                            }
                         }
                     }
                 }

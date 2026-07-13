@@ -15,6 +15,7 @@ struct ProjectTimelineView: View {
     @State private var zoom: Zoom = .week
     @State private var draggingId: String?
     @State private var dragDays = 0
+    @State private var resizing = false
 
     enum Zoom: String, CaseIterable, Identifiable {
         case day = "Day"
@@ -68,12 +69,13 @@ struct ProjectTimelineView: View {
         // Live preview: the dragged bar renders shifted while the gesture
         // is in flight; the file write happens once, on release.
         let display = scheduled.map { bar in
-            bar.id == draggingId
-                ? ScheduledTask(
-                    id: bar.id, node: bar.node,
-                    start: bar.start + dragDays, end: bar.end + dragDays, slack: bar.slack
-                )
-                : bar
+            guard bar.id == draggingId else { return bar }
+            return ScheduledTask(
+                id: bar.id, node: bar.node,
+                start: resizing ? bar.start : bar.start + dragDays,
+                end: max(bar.end + dragDays, resizing ? bar.start : bar.start + dragDays),
+                slack: bar.slack
+            )
         }
         return Chart(display) { bar in
             if isMilestone(bar) {
@@ -123,10 +125,14 @@ struct ProjectTimelineView: View {
             .onChanged { phase in
                 guard case let .second(true, drag?) = phase else { return }
                 if draggingId == nil {
-                    // Hit-test the categorical axis for the pressed row.
+                    // Hit-test the categorical axis for the pressed row;
+                    // a press near the bar's right edge means resize.
                     if let title: String = proxy.value(atY: drag.startLocation.y),
                        let bar = scheduled.first(where: { $0.node.title == title }) {
                         draggingId = bar.id
+                        if let edge = proxy.position(forX: date(for: bar.end + 1)) {
+                            resizing = abs(drag.startLocation.x - edge) < 14
+                        }
                     }
                 }
                 dragDays = dayDelta(for: drag.translation.width, proxy: proxy)
@@ -135,6 +141,7 @@ struct ProjectTimelineView: View {
                 defer {
                     draggingId = nil
                     dragDays = 0
+                    resizing = false
                 }
                 guard case let .second(true, drag?) = phase,
                       let id = draggingId,
@@ -143,8 +150,9 @@ struct ProjectTimelineView: View {
                 else { return }
                 let delta = dayDelta(for: drag.translation.width, proxy: proxy)
                 guard delta != 0 else { return }
-                let newDue = isoDay(for: bar.end + delta)
-                let newStart: String?? = task.startDate != nil
+                let newEnd = resizing ? max(bar.end + delta, bar.start) : bar.end + delta
+                let newDue = isoDay(for: newEnd)
+                let newStart: String?? = (!resizing && task.startDate != nil)
                     ? .some(isoDay(for: bar.start + delta)) : nil
                 Task { await service.reschedule(task, due: newDue, start: newStart) }
             }

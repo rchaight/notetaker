@@ -18,6 +18,44 @@ public enum TaskLineRewriter {
         setToken(rawLine, prefix: "~", value: isoDay)
     }
 
+    /// Appends `^id` when the line has none; returns (line, id). A slug is
+    /// derived from the task text when `preferred` is nil.
+    public static func ensuringBlockId(
+        _ rawLine: String, preferred: String? = nil
+    ) -> (line: String, id: String) {
+        let parsed = TaskTokenParser.parse(
+            String(rawLine.drop { $0 == " " || $0 == "\t" })
+        )
+        if let existing = parsed.blockId {
+            return (rawLine, existing)
+        }
+        let slugSource = preferred ?? parsed.cleanText
+        var slug = slugSource.lowercased()
+            .map { $0.isLetter || $0.isNumber ? $0 : "-" }
+            .reduce(into: "") { partial, ch in
+                if ch != "-" || partial.last != "-" { partial.append(ch) }
+            }
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        slug = String(slug.prefix(24))
+        if slug.isEmpty { slug = "task" }
+        return (appending(rawLine, token: "^" + slug), slug)
+    }
+
+    /// Appends `blockedby:^id` (no-op when already referenced).
+    public static func addingDependency(_ rawLine: String, on blockId: String) -> String {
+        let parsed = TaskTokenParser.parse(
+            String(rawLine.drop { $0 == " " || $0 == "\t" })
+        )
+        guard !parsed.dependsOn.contains(blockId) else { return rawLine }
+        return appending(rawLine, token: "blockedby:^" + blockId)
+    }
+
+    private static func appending(_ rawLine: String, token: String) -> String {
+        let trailingWhitespace = String(rawLine.reversed().prefix { $0 == " " || $0 == "\r" }.reversed())
+        let body = String(rawLine.dropLast(trailingWhitespace.count))
+        return body + " " + token + trailingWhitespace
+    }
+
     private static func setToken(_ rawLine: String, prefix: String, value: String?) -> String {
         let pattern = "(?<=^|\\s)\(NSRegularExpression.escapedPattern(for: prefix))(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|[0-9]{4}-[0-9]{2}-[0-9]{2})\\b"
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive])

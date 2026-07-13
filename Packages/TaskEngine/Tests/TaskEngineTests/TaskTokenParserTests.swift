@@ -122,3 +122,20 @@ struct TaskLineRewriterTests {
         #expect(parsed.dependsOn == ["build"])
     }
 }
+
+struct DependencyRewriteTests {
+    @Test func ensuresBlockIdWithSlug() {
+        let (line, id) = TaskLineRewriter.ensuringBlockId("- [ ] Design the API! >2026-08-01")
+        #expect(id == "design-the-api")
+        #expect(line == "- [ ] Design the API! >2026-08-01 ^design-the-api")
+        let (unchanged, existing) = TaskLineRewriter.ensuringBlockId("- [ ] built ^build")
+        #expect(existing == "build")
+        #expect(unchanged == "- [ ] built ^build")
+    }
+
+    @Test func addsDependencyOnceOnly() {
+        let once = TaskLineRewriter.addingDependency("- [ ] ship it", on: "build")
+        #expect(once == "- [ ] ship it blockedby:^build")
+        #expect(TaskLineRewriter.addingDependency(once, on: "build") == once)
+    }
+}

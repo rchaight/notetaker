@@ -270,7 +270,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 - [x] Project = a note with frontmatter (`status`/`start`/`due`/`project`); its tasks are the inline todos referencing it. Milestones as zero-duration diamonds.
 - [x] `ProjectKit`: DependencyEdge graph sourced from inline `blockedby:`/`depends:`; topological schedule computation; auto-% complete from checked child todos (Linear-style); ungated critical-path + slack (never paywalled).
 - [x] **M7a — read-only timeline:** Swift Charts `BarMark` per task (x-range start→end) vs categorical task axis; day/week/month zoom; lightweight roadmap default for small projects.
-- [~] **M7b — interactive Gantt:** *(drag-move shipped pass 90; resize + dependency drawing pending)* custom `Canvas`+gesture layer for drag-move/resize-duration, draw-a-line finish-to-start dependencies with auto-cascade + downstream-impact indicator. *If time-boxed:* license Ganttis instead.
+- [x] **M7b — interactive Gantt:** *(drag-move + edge-resize on bars; dependencies via Blocked By context menu — deliberate substitution for draw-a-line, more reliable on the beta; cascade recomputes automatically on reindex)* custom `Canvas`+gesture layer for drag-move/resize-duration, draw-a-line finish-to-start dependencies with auto-cascade + downstream-impact indicator. *If time-boxed:* license Ganttis instead.
 - [ ] Alternate Kanban + canvas/board view per project; "graduate" roadmap → full Gantt.
 **Done:** a project note's inline todos render as Gantt bars; checking off children updates % complete automatically; the critical path highlights with no paywall; (M7b) dragging a bar reschedules and cascades dependents.
 **Effort:** M7a ~1.5 weeks; M7b ~3–4 weeks (or ~1 week if licensing Ganttis).
