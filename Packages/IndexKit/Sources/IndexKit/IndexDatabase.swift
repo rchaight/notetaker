@@ -7,7 +7,7 @@ import GRDB
 /// the caller trigger a full rescan.
 public final class IndexDatabase: Sendable {
     /// Bump when the schema changes; mismatch wipes and rebuilds.
-    public static let schemaVersion = 9
+    public static let schemaVersion = 10
 
     public let queue: DatabaseQueue
 
@@ -55,6 +55,7 @@ public final class IndexDatabase: Sendable {
                 t.column("contentHash", .text).notNull()
                 t.column("pinned", .boolean).notNull().defaults(to: false)
                 t.column("bookmarked", .boolean).notNull().defaults(to: false)
+                t.column("favorite", .boolean).notNull().defaults(to: false)
                 t.column("isProject", .boolean).notNull().defaults(to: false)
                 t.column("projectStatus", .text)
                 t.column("projectStart", .text)
@@ -284,6 +285,12 @@ public extension IndexDatabase {
             try TaskRecord.filter(Column("noteId") == noteId)
                 .order(Column("line"))
                 .fetchAll(db)
+        }
+    }
+
+    public func favoriteNoteIds() throws -> [String] {
+        try queue.read { db in
+            try String.fetchAll(db, sql: "SELECT id FROM note WHERE favorite ORDER BY title")
         }
     }
 

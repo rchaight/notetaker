@@ -43,6 +43,7 @@ public struct NoteIndexer: Sendable {
             modifiedAt: modifiedAt, contentHash: hash,
             pinned: flags["pinned"] == "true",
             bookmarked: flags["bookmarked"] == "true",
+            favorite: flags["favorite"] == "true",
             isProject: project != nil,
             projectStatus: project?.rawStatus,
             projectStart: project?.startDay,

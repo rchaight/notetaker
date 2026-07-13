@@ -26,6 +26,7 @@ struct NotesView: View {
     @State private var allTags: [(tag: String, count: Int)] = []
     @State private var pinnedIds: [String] = []
     @State private var bookmarkedIds: [String] = []
+    @State private var favoriteIds: [String] = []
     @AppStorage("savedNoteSearches") private var savedSearchesData = "[]"
     @State private var importStatus: String?
     @State private var aiStatus: String?
@@ -230,8 +231,15 @@ struct NotesView: View {
                     }
                 }
             } else {
-                // Layout per user direction: Recents first, then the full
-                // vault (root notes + folders); curated sections follow.
+                // Layout per user direction: Favorites, Recents, then the
+                // full vault (root notes + folders); curated sections follow.
+                if !favoriteIds.isEmpty {
+                    Section("Favorites") {
+                        ForEach(notes(withIds: favoriteIds)) { note in
+                            noteRow(note, showFolder: true, selectable: false)
+                        }
+                    }
+                }
                 if !model.recents.isEmpty {
                     Section("Recents") {
                         ForEach(notes(withIds: Array(model.recents.prefix(5)))) { note in
@@ -296,6 +304,7 @@ struct NotesView: View {
             allTags = indexService.noteTags()
             pinnedIds = indexService.pinnedNoteIds()
             bookmarkedIds = indexService.bookmarkedNoteIds()
+            favoriteIds = indexService.favoriteNoteIds()
         }
         .overlay {
             if visibleNotes.isEmpty {
@@ -837,6 +846,16 @@ struct NotesView: View {
                 Task {
                     await indexService.setNoteFlag(
                         note.id, key: "pinned", value: !pinnedIds.contains(note.id)
+                    )
+                }
+            }
+            Button(
+                favoriteIds.contains(note.id) ? "Remove from Favorites" : "Add to Favorites",
+                systemImage: favoriteIds.contains(note.id) ? "star.slash" : "star"
+            ) {
+                Task {
+                    await indexService.setNoteFlag(
+                        note.id, key: "favorite", value: !favoriteIds.contains(note.id)
                     )
                 }
             }

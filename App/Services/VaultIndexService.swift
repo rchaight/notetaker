@@ -429,6 +429,10 @@ final class VaultIndexService {
         (try? database?.tasks(inNote: noteId)) ?? []
     }
 
+    func favoriteNoteIds() -> [String] {
+        (try? database?.favoriteNoteIds()) ?? []
+    }
+
     func pinnedNoteIds() -> [String] {
         (try? database?.pinnedNoteIds()) ?? []
     }

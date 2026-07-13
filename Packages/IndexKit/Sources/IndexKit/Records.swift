@@ -11,9 +11,11 @@ public struct NoteRecord: Codable, Equatable, Sendable, FetchableRecord, Persist
     public var folder: String
     public var modifiedAt: Date?
     public var contentHash: String
-    /// Derived from frontmatter `pinned:`/`bookmarked:` — files stay truth.
+    /// Derived from frontmatter `pinned:`/`bookmarked:`/`favorite:` —
+    /// files stay truth.
     public var pinned: Bool
     public var bookmarked: Bool
+    public var favorite: Bool
     /// Frontmatter `project: true` + optional status/start/due (ISO days).
     public var isProject: Bool
     public var projectStatus: String?
@@ -23,6 +25,7 @@ public struct NoteRecord: Codable, Equatable, Sendable, FetchableRecord, Persist
     public init(
         id: String, title: String, folder: String, modifiedAt: Date?,
         contentHash: String, pinned: Bool = false, bookmarked: Bool = false,
+        favorite: Bool = false,
         isProject: Bool = false, projectStatus: String? = nil,
         projectStart: String? = nil, projectDue: String? = nil
     ) {
@@ -33,6 +36,7 @@ public struct NoteRecord: Codable, Equatable, Sendable, FetchableRecord, Persist
         self.contentHash = contentHash
         self.pinned = pinned
         self.bookmarked = bookmarked
+        self.favorite = favorite
         self.isProject = isProject
         self.projectStatus = projectStatus
         self.projectStart = projectStart
