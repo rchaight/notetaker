@@ -311,6 +311,18 @@ final class VaultIndexService {
         }
     }
 
+    func projects() -> [NoteRecord] {
+        (try? database?.projects()) ?? []
+    }
+
+    func noteTaskProgress() -> [String: (done: Int, total: Int)] {
+        (try? database?.noteTaskProgress()) ?? [:]
+    }
+
+    func tasks(inNote noteId: String) -> [TaskRecord] {
+        (try? database?.tasks(inNote: noteId)) ?? []
+    }
+
     func pinnedNoteIds() -> [String] {
         (try? database?.pinnedNoteIds()) ?? []
     }

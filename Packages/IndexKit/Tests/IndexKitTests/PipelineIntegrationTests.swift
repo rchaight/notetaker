@@ -169,3 +169,36 @@ struct PipelineIntegrationTests {
         #expect(try db.pinnedNoteIds().isEmpty)
     }
 }
+
+@Suite struct ProjectIndexTests {
+    @Test func projectFrontmatterIndexesWithProgress() throws {
+        let (db, _) = try IndexDatabase.open(path: nil)
+        let indexer = NoteIndexer(database: db)
+        try indexer.index(
+            noteId: "Apollo.md",
+            contents: """
+            ---
+            project: true
+            status: active
+            start: 2026-07-01
+            due: 2026-09-30
+            ---
+            # Apollo
+            - [x] design >2026-07-10
+            - [ ] build >2026-08-15
+            - [ ] launch >2026-09-30
+            """,
+            modifiedAt: nil
+        )
+        try indexer.index(noteId: "plain.md", contents: "# Not a project\n- [ ] chore\n", modifiedAt: nil)
+
+        let projects = try db.projects()
+        #expect(projects.map(\.id) == ["Apollo.md"])
+        #expect(projects[0].projectStatus == "active")
+        #expect(projects[0].projectDue == "2026-09-30")
+        let progress = try db.noteTaskProgress()["Apollo.md"]
+        #expect(progress?.done == 1)
+        #expect(progress?.total == 3)
+        #expect(try db.tasks(inNote: "Apollo.md").count == 3)
+    }
+}

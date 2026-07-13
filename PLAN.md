@@ -267,7 +267,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 ### M7 — Project management / Gantt (ProjectKit)
 **Goal:** PM as another view over the same todos + frontmatter, not a second data model.
 **Steps (staged for de-risking):**
-- [ ] Project = a note with frontmatter (`status`/`start`/`due`/`project`); its tasks are the inline todos referencing it. Milestones as zero-duration diamonds.
+- [x] Project = a note with frontmatter (`status`/`start`/`due`/`project`); its tasks are the inline todos referencing it. Milestones as zero-duration diamonds.
 - [ ] `ProjectKit`: DependencyEdge graph sourced from inline `blockedby:`/`depends:`; topological schedule computation; auto-% complete from checked child todos (Linear-style); ungated critical-path + slack (never paywalled).
 - [ ] **M7a — read-only timeline:** Swift Charts `BarMark` per task (x-range start→end) vs categorical task axis; day/week/month zoom; lightweight roadmap default for small projects.
 - [ ] **M7b — interactive Gantt:** custom `Canvas`+gesture layer for drag-move/resize-duration, draw-a-line finish-to-start dependencies with auto-cascade + downstream-impact indicator. *If time-boxed:* license Ganttis instead.

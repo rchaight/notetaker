@@ -2,6 +2,7 @@ import CryptoKit
 import Foundation
 import GRDB
 import MarkdownKit
+import ProjectKit
 import TaskEngine
 
 /// Inbound sync: note contents → index rows. One transaction per note;
@@ -36,11 +37,16 @@ public struct NoteIndexer: Sendable {
         let title = URL(fileURLWithPath: noteId).deletingPathExtension().lastPathComponent
         let folder = noteId.split(separator: "/").dropLast().joined(separator: "/")
         let flags = document.frontmatter?.values ?? [:]
+        let project = ProjectMetadata.parse(flags)
         let note = NoteRecord(
             id: noteId, title: title, folder: folder,
             modifiedAt: modifiedAt, contentHash: hash,
             pinned: flags["pinned"] == "true",
-            bookmarked: flags["bookmarked"] == "true"
+            bookmarked: flags["bookmarked"] == "true",
+            isProject: project != nil,
+            projectStatus: project?.rawStatus,
+            projectStart: project?.startDay,
+            projectDue: project?.dueDay
         )
 
         // Line numbers must be in FILE coordinates (outbound writes edit the

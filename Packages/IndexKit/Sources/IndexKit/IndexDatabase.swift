@@ -7,7 +7,7 @@ import GRDB
 /// the caller trigger a full rescan.
 public final class IndexDatabase: Sendable {
     /// Bump when the schema changes; mismatch wipes and rebuilds.
-    public static let schemaVersion = 7
+    public static let schemaVersion = 8
 
     public let queue: DatabaseQueue
 
@@ -55,6 +55,10 @@ public final class IndexDatabase: Sendable {
                 t.column("contentHash", .text).notNull()
                 t.column("pinned", .boolean).notNull().defaults(to: false)
                 t.column("bookmarked", .boolean).notNull().defaults(to: false)
+                t.column("isProject", .boolean).notNull().defaults(to: false)
+                t.column("projectStatus", .text)
+                t.column("projectStart", .text)
+                t.column("projectDue", .text)
             }
             try db.create(table: TaskRecord.databaseTableName) { t in
                 t.primaryKey("id", .text)
@@ -248,6 +252,39 @@ public extension IndexDatabase {
     }
 
     /// Wipes every row (schema intact) — the "delete index, re-scan" path.
+    public func projects() throws -> [NoteRecord] {
+        try queue.read { db in
+            try NoteRecord.filter(Column("isProject") == true)
+                .order(Column("projectDue").ascNullsLast, Column("title"))
+                .fetchAll(db)
+        }
+    }
+
+    /// Checked/total inline todos per note — drives auto-% complete.
+    public func noteTaskProgress() throws -> [String: (done: Int, total: Int)] {
+        try queue.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+            SELECT noteId, SUM(checked) AS done, COUNT(*) AS total
+            FROM task GROUP BY noteId
+            """)
+            var progress: [String: (done: Int, total: Int)] = [:]
+            for row in rows {
+                progress[row["noteId"]] = (row["done"] as Int, row["total"] as Int)
+            }
+            return progress
+        }
+    }
+
+    /// Every task (open and done, all nesting levels) in one note, in file
+    /// order — the project detail view shows the full picture.
+    public func tasks(inNote noteId: String) throws -> [TaskRecord] {
+        try queue.read { db in
+            try TaskRecord.filter(Column("noteId") == noteId)
+                .order(Column("line"))
+                .fetchAll(db)
+        }
+    }
+
     public func pinnedNoteIds() throws -> [String] {
         try queue.read { db in
             try String.fetchAll(db, sql: "SELECT id FROM note WHERE pinned ORDER BY title")

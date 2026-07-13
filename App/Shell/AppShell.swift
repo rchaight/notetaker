@@ -17,15 +17,8 @@ struct AppShell: View {
             Tab("To-Do", systemImage: "checklist") {
                 TodoView(service: indexService)
             }
-            Tab("Projects", systemImage: "folder") {
-                NavigationStack {
-                    ContentUnavailableView(
-                        "No Projects Yet",
-                        systemImage: "folder",
-                        description: Text("Create a project to plan and track larger work.")
-                    )
-                    .navigationTitle("Projects")
-                }
+            Tab("Projects", systemImage: "chart.gantt") {
+                ProjectsView(service: indexService)
             }
             #if DEBUG
                 // M1 sync-verification harness; visible on every platform in

@@ -821,6 +821,11 @@ struct NotesView: View {
                     )
                 }
             }
+            Button("Make Project", systemImage: "chart.gantt") {
+                Task {
+                    await indexService.setNoteFlag(note.id, key: "project", value: true)
+                }
+            }
             Button(
                 bookmarkedIds.contains(note.id) ? "Remove Bookmark" : "Bookmark",
                 systemImage: bookmarkedIds.contains(note.id) ? "bookmark.slash" : "bookmark"
