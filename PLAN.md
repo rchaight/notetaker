@@ -279,7 +279,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 - [x] Completion fade: strike + ~0.4s fade before leaving the list.
 - [x] Row density setting (Compact/Comfortable/Relaxed), persisted.
 - [x] Jump-to-note from any task row.
-- [ ] Priority/label color chips consistent across List/Board/Agenda/Matrix (+ per-label colors).
+- [x] Priority/label color chips consistent across List/Board/Agenda/Matrix (+ per-label colors).
 - [ ] "Set due date" + "delete line" write mutations (shared engine for the next two).
 - [ ] Swipe actions (iOS): complete / snooze-to-tomorrow / delete.
 - [ ] Drag-to-reschedule cards across date sections (Agenda/Board).

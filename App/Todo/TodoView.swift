@@ -16,6 +16,7 @@ struct TodoView: View {
     /// Things-style calm completion: rows strike + fade for a beat before
     /// the write removes them from the list.
     @State private var completingIds: Set<String> = []
+    @State private var taskLabels: [String: [String]] = [:]
     @AppStorage("todoDensity") private var densityRaw = "comfortable"
 
     private enum Density: String, CaseIterable {
@@ -255,7 +256,7 @@ struct TodoView: View {
 
     private func refresh() {
         let filter = TaskFilter.parse(filterText)
-        let labels = filter.isEmpty ? [:] : service.taskLabels()
+        let labels = service.taskLabels()
         let tasks = service.openTasks().filter { task in
             filter.isEmpty || filter.matches(
                 text: task.text, noteId: task.noteId, dueDate: task.dueDate,
@@ -266,6 +267,7 @@ struct TodoView: View {
             SmartBuckets.bucket(dueDate: $0.dueDate, startDate: $0.startDate)
         }
         subtaskProgress = service.subtaskProgress()
+        taskLabels = service.taskLabels()
     }
 
     private func row(_ task: TaskRecord) -> some View {
@@ -312,11 +314,8 @@ struct TodoView: View {
                     if let start = task.startDate {
                         Label("from \(start)", systemImage: "hourglass")
                     }
-                    if let priority = task.priority {
-                        Text("P\(priority)")
-                            .fontWeight(.semibold)
-                            .foregroundStyle(priorityColor(priority))
-                    }
+                    PriorityChip(priority: task.priority)
+                    LabelChips(labels: taskLabels[task.id] ?? [])
                     if let progress = subtaskProgress[task.id] {
                         Label("\(progress.done)/\(progress.total)", systemImage: "checklist")
                             .foregroundStyle(progress.done == progress.total ? .green : .secondary)

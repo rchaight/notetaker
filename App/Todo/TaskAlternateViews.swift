@@ -144,9 +144,7 @@ struct TaskCard: View {
                     if let due = task.dueDate {
                         Text(due)
                     }
-                    if let priority = task.priority {
-                        Text("P\(priority)").fontWeight(.semibold)
-                    }
+                    PriorityChip(priority: task.priority)
                     if let progress {
                         Text("\(progress.done)/\(progress.total)")
                     }
@@ -175,11 +173,7 @@ struct AgendaRow: View {
             .buttonStyle(.plain)
             Text(task.text)
             Spacer()
-            if let priority = task.priority {
-                Text("P\(priority)")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-            }
+            PriorityChip(priority: task.priority)
         }
     }
 }
