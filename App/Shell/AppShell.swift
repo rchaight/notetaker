@@ -1,3 +1,4 @@
+import SecurityKit
 import SwiftUI
 #if os(macOS)
     import AppKit
@@ -10,6 +11,12 @@ struct AppShell: View {
     @State private var notesModel = NotesModel()
     @State private var selectedTab = "notes"
     @State private var showingPalette = false
+    @Environment(\.scenePhase) private var scenePhase
+    @AppStorage("appLockEnabled") private var appLockEnabled = false
+    @AppStorage("appLockGrace") private var appLockGrace = 60.0
+    @State private var locked = false
+    @State private var lastUnlocked: Date?
+    @State private var backgroundedAt: Date?
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -49,6 +56,37 @@ struct AppShell: View {
                 .keyboardShortcut("k", modifiers: [.command])
                 .hidden()
         )
+        .overlay {
+            if locked {
+                lockScreen
+            }
+        }
+        .onChange(of: scenePhase) {
+            switch scenePhase {
+            case .background, .inactive:
+                if backgroundedAt == nil {
+                    backgroundedAt = Date()
+                }
+            case .active:
+                if AppLockPolicy.shouldLock(
+                    enabled: appLockEnabled,
+                    lastUnlocked: lastUnlocked,
+                    backgroundedAt: backgroundedAt,
+                    gracePeriod: appLockGrace
+                ) {
+                    locked = true
+                }
+                backgroundedAt = nil
+            @unknown default:
+                break
+            }
+        }
+        .task(id: appLockEnabled) {
+            // Launch lock: enabled + never unlocked this run.
+            if appLockEnabled, lastUnlocked == nil {
+                locked = true
+            }
+        }
         .sheet(isPresented: $showingPalette) {
             CommandPalette(
                 notes: notesModel.notes.map {
@@ -101,6 +139,33 @@ struct AppShell: View {
                 }
             }
         #endif
+    }
+}
+
+extension AppShell {
+    private var lockScreen: some View {
+        ZStack {
+            Rectangle().fill(.regularMaterial).ignoresSafeArea()
+            VStack(spacing: 14) {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 42))
+                    .foregroundStyle(.secondary)
+                Text("Notetaker is locked")
+                    .font(.title3.weight(.medium))
+                Button("Unlock") {
+                    Task { await unlock() }
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .task { await unlock() }
+    }
+
+    private func unlock() async {
+        guard await BiometricUnlock.authenticate(reason: "Unlock Notetaker") else { return }
+        lastUnlocked = Date()
+        locked = false
     }
 }
 

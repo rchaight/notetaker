@@ -8,6 +8,8 @@ struct SettingsView: View {
     @AppStorage(VaultRegistry.activeKey) private var activeVault = VaultRegistry.iCloudId
     @State private var showingVaultChooser = false
     @AppStorage("editorFontSize") private var editorFontSize = 16.0
+    @AppStorage("appLockEnabled") private var appLockEnabled = false
+    @AppStorage("appLockGrace") private var appLockGrace = 60.0
     @AppStorage("editorFontDesign") private var editorFontDesign = "system"
     @AppStorage("doclingServeURL") private var doclingServeURL = ""
     @State private var probeResult: String?
@@ -25,6 +27,20 @@ struct SettingsView: View {
                 Form {
                     Section("General") {
                         LabeledContent("Version", value: "0.1.0 (pre-alpha)")
+                    }
+                    Section("Security") {
+                        Toggle("Require unlock (Touch ID / password)", isOn: $appLockEnabled)
+                        if appLockEnabled {
+                            Picker("Require again after", selection: $appLockGrace) {
+                                Text("Immediately").tag(0.0)
+                                Text("1 minute").tag(60.0)
+                                Text("5 minutes").tag(300.0)
+                                Text("1 hour").tag(3600.0)
+                            }
+                            Text("Locks on launch and when returning to the app outside the grace window.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     Section("Editor") {
                         Picker("Font", selection: $editorFontDesign) {

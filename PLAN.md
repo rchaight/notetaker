@@ -293,7 +293,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 ### M8 — Security hardening (SecurityKit)
 **Goal:** app lock + per-note Locked Notes + honest encryption posture.
 **Steps:**
-- [ ] App lock: `LAContext` biometrics → passcode fallback, on launch + resume; grace-period setting.
+- [x] App lock: `LAContext` biometrics → passcode fallback, on launch + resume; grace-period setting.
 - [ ] Locked Notes: PBKDF2-HMAC-SHA256 → AES-GCM (CryptoKit); ciphertext-only in synced file; Keychain-wrapped derived key released by biometrics; shared-passphrase secure session; unrecoverable-passphrase warning UX.
 - [ ] Keychain for Ollama endpoint/token (`ThisDeviceOnly`).
 - [ ] ADP detection + nudge; per-note AI-tier disclosure; WKWebView HTML sanitization/JS-off/remote-block for imported HTML previews.
