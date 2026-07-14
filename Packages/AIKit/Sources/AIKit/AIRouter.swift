@@ -32,4 +32,9 @@ public struct AIRouter: Sendable {
         let provider = await activeProvider(inputTokens: NoneProvider.estimatedTokens(text))
         return try await (provider.extractActionItems(from: text), provider.name)
     }
+
+    public func parseTask(_ input: String) async throws -> AITask {
+        let provider = await activeProvider(inputTokens: NoneProvider.estimatedTokens(input))
+        return try await provider.parseTask(input)
+    }
 }

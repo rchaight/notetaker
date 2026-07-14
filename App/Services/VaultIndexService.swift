@@ -278,12 +278,12 @@ final class VaultIndexService {
     /// Quick Add: one parsed line appended to Inbox.md at the vault root.
     @discardableResult
     func quickAdd(_ input: String) async -> Bool {
-        guard let root, let indexer,
-              let result = QuickAddParser.parse(input) else { return false }
+        guard let root, let indexer else { return false }
+        guard let line = await Self.quickAddLine(for: input) else { return false }
         let inbox = root.appendingPathComponent("Inbox.md")
         let existing = await (try? store.readString(at: inbox)) ?? "# Inbox\n"
         let updated = (existing.hasSuffix("\n") ? existing : existing + "\n")
-            + result.markdownLine + "\n"
+            + line + "\n"
         do {
             try await store.writeString(updated, to: inbox)
             try indexer.index(noteId: "Inbox.md", contents: updated, modifiedAt: nil)
@@ -294,6 +294,30 @@ final class VaultIndexService {
         } catch {
             return false
         }
+    }
+
+    /// Natural-language parse for Quick Add: on-device Apple Intelligence
+    /// first (guided generation understands "report every monday 10am"),
+    /// falling back to the deterministic token parser. Inputs that already
+    /// carry explicit grammar tokens skip the model — the token parser is
+    /// exact and free.
+    static func quickAddLine(for input: String) async -> String? {
+        let hasExplicitTokens = input.contains(">") || input.contains("!p")
+            || input.contains("&every") || input.contains("&after")
+        if !hasExplicitTokens {
+            var providers: [any AIProvider] = []
+            #if canImport(FoundationModels)
+                providers.append(FoundationModelsProvider())
+            #endif
+            let router = AIRouter(providers: providers)
+            if let task = try? await router.parseTask(input) {
+                let line = task.markdownLine
+                if !line.trimmingCharacters(in: .whitespaces).isEmpty {
+                    return line
+                }
+            }
+        }
+        return QuickAddParser.parse(input)?.markdownLine
     }
 
     /// Off the hot path: chunk + embed a changed note and store vectors.
