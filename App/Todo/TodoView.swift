@@ -303,7 +303,43 @@ struct TodoView: View {
             Button("Open in Note", systemImage: "arrow.up.right.square") {
                 openNote(task.noteId, task.line)
             }
+            Button("Snooze to Tomorrow", systemImage: "moon.zzz") {
+                Task { await service.reschedule(task, due: Self.tomorrowISO()) }
+            }
+            Button("Delete Task", systemImage: "trash", role: .destructive) {
+                Task { await service.deleteTask(task) }
+            }
         }
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            Button {
+                completeWithFade(task)
+            } label: {
+                Label("Complete", systemImage: "checkmark.circle.fill")
+            }
+            .tint(.green)
+        }
+        .swipeActions(edge: .trailing) {
+            Button(role: .destructive) {
+                Task { await service.deleteTask(task) }
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+            Button {
+                Task { await service.reschedule(task, due: Self.tomorrowISO()) }
+            } label: {
+                Label("Tomorrow", systemImage: "moon.zzz")
+            }
+            .tint(.orange)
+        }
+    }
+
+    static func tomorrowISO(calendar: Calendar = .current) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = calendar.timeZone
+        formatter.dateFormat = "yyyy-MM-dd"
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+        return formatter.string(from: tomorrow)
     }
 
     @ViewBuilder private func metaLine(_ task: TaskRecord) -> some View {
