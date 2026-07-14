@@ -37,6 +37,10 @@ struct NotetakerApp: App {
             Settings {
                 SettingsView()
             }
+            MenuBarExtra("Notetaker Quick Add", systemImage: "square.and.pencil") {
+                MenuBarQuickAddView()
+            }
+            .menuBarExtraStyle(.window)
         #endif
     }
 }

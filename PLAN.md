@@ -288,7 +288,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 - [x] Logbook: ✅YYYY-MM-DD completion token on toggle + completed view grouped by day.
 - [x] Streak/karma strip (local-only, opt-in; builds on the Logbook token).
 - [x] Command palette (⌘K): quick add, jump to filter/note, switch views.
-- [ ] Menu bar quick-add (macOS MenuBarExtra + hotkey; pulled forward from M9).
+- [x] Menu bar quick-add (macOS MenuBarExtra; global hotkey stays in M9 with the other system surfaces).
 
 ### M8 — Security hardening (SecurityKit)
 **Goal:** app lock + per-note Locked Notes + honest encryption posture.
