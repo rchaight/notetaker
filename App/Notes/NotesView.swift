@@ -320,6 +320,13 @@ struct NotesView: View {
             }
         }
         .onAppear { listSelection = model.selectedID }
+        .onChange(of: model.noteText) {
+            guard let line = model.consumeJumpLine() else { return }
+            let lines = splitLines(model.noteText)
+            guard line < lines.count else { return }
+            let offset = lines.prefix(line).reduce(0) { $0 + $1.utf16.count + 1 }
+            scrollTarget = NSRange(location: offset, length: 0)
+        }
         .onChange(of: model.selectedID) {
             if sectionHighlight == nil {
                 listSelection = model.selectedID

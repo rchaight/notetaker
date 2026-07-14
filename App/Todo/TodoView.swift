@@ -7,6 +7,8 @@ import TaskEngine
 /// the exact source line in the note.
 struct TodoView: View {
     let service: VaultIndexService
+    /// Jump to the task's source note (noteId, line) — wired by AppShell.
+    var openNote: (String, Int?) -> Void = { _, _ in }
     @State private var grouped: [SmartBucket: [TaskRecord]] = [:]
     @State private var subtaskProgress: [String: (done: Int, total: Int)] = [:]
     @State private var showingQuickAdd = false
@@ -284,6 +286,8 @@ struct TodoView: View {
                 Text(task.text)
                     .font(density.textFont)
                     .strikethrough(completing)
+                    .contentShape(Rectangle())
+                    .onTapGesture(count: 2) { openNote(task.noteId, task.line) }
                 if density.showsMetaLine {
                     metaLine(task)
                 } else {
@@ -293,6 +297,11 @@ struct TodoView: View {
         }
         .padding(.vertical, density.rowPadding)
         .opacity(completing ? 0.45 : 1)
+        .contextMenu {
+            Button("Open in Note", systemImage: "arrow.up.right.square") {
+                openNote(task.noteId, task.line)
+            }
+        }
     }
 
     @ViewBuilder private func metaLine(_ task: TaskRecord) -> some View {

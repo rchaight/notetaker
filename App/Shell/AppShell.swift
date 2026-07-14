@@ -8,22 +8,26 @@ import SwiftUI
 struct AppShell: View {
     @State private var indexService = VaultIndexService()
     @State private var notesModel = NotesModel()
+    @State private var selectedTab = "notes"
 
     var body: some View {
-        TabView {
-            Tab("Notes", systemImage: "note.text") {
+        TabView(selection: $selectedTab) {
+            Tab("Notes", systemImage: "note.text", value: "notes") {
                 NotesView(indexService: indexService, model: notesModel)
             }
-            Tab("To-Do", systemImage: "checklist") {
-                TodoView(service: indexService)
+            Tab("To-Do", systemImage: "checklist", value: "todo") {
+                TodoView(service: indexService) { noteId, line in
+                    notesModel.openNote(noteId, jumpToLine: line)
+                    selectedTab = "notes"
+                }
             }
-            Tab("Projects", systemImage: "calendar.day.timeline.left") {
+            Tab("Projects", systemImage: "calendar.day.timeline.left", value: "projects") {
                 ProjectsView(service: indexService)
             }
             #if DEBUG
                 // M1 sync-verification harness; visible on every platform in
                 // debug builds only.
-                Tab("Vault", systemImage: "icloud") {
+                Tab("Vault", systemImage: "icloud", value: "vault") {
                     NavigationStack {
                         VaultDebugView()
                             .navigationTitle("Vault")

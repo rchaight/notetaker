@@ -143,6 +143,20 @@ final class NotesModel {
         openTabs.removeAll { id in !notes.contains { $0.id == id } }
     }
 
+    /// Cross-tab jump: open a note and remember the source line so the
+    /// editor can scroll to it once the text is loaded.
+    private(set) var pendingJumpLine: Int?
+
+    func openNote(_ id: String, jumpToLine line: Int?) {
+        pendingJumpLine = line
+        select(id)
+    }
+
+    func consumeJumpLine() -> Int? {
+        defer { pendingJumpLine = nil }
+        return pendingJumpLine
+    }
+
     func select(_ id: VaultItem.ID?) {
         Task { await performSelect(id) }
     }
