@@ -17,6 +17,7 @@ struct TodoView: View {
     /// the write removes them from the list.
     @State private var completingIds: Set<String> = []
     @State private var taskLabels: [String: [String]] = [:]
+    @State private var selectedTaskIds: Set<String> = []
     @AppStorage("todoDensity") private var densityRaw = "comfortable"
 
     private enum Density: String, CaseIterable {
@@ -187,12 +188,12 @@ struct TodoView: View {
     }
 
     private var taskList: some View {
-        List {
+        List(selection: $selectedTaskIds) {
             ForEach(Self.sections, id: \.0) { bucket, title, icon in
                 if let tasks = grouped[bucket], !tasks.isEmpty {
                     Section {
                         ForEach(tasks) { task in
-                            row(task)
+                            row(task).tag(task.id)
                         }
                     } header: {
                         Label(title, systemImage: icon)
@@ -208,6 +209,59 @@ struct TodoView: View {
                     systemImage: "checklist",
                     description: Text("Write - [ ] anywhere in a note and it appears here.")
                 )
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            if selectedTaskIds.count > 1 {
+                batchBar
+            }
+        }
+    }
+
+    /// Superlist-style bulk actions over the ⌘-click selection.
+    private var batchBar: some View {
+        HStack(spacing: 12) {
+            Text("\(selectedTaskIds.count) selected")
+                .font(.callout.weight(.medium))
+            Button("Complete", systemImage: "checkmark.circle") {
+                batch { await service.toggle($0) }
+            }
+            Menu("Priority") {
+                ForEach(1 ... 4, id: \.self) { level in
+                    Button("P\(level)") {
+                        batch { await service.setPriority($0, priority: level) }
+                    }
+                }
+                Button("Clear") { batch { await service.setPriority($0, priority: nil) } }
+            }
+            Menu("Due") {
+                Button("Today") {
+                    batch { await service.reschedule($0, due: Self.todayISO()) }
+                }
+                Button("Tomorrow") {
+                    batch { await service.reschedule($0, due: Self.tomorrowISO()) }
+                }
+                Button("Clear") {
+                    batch { await service.reschedule($0, due: nil) }
+                }
+            }
+            Button("Delete", systemImage: "trash", role: .destructive) {
+                batch { await service.deleteTask($0) }
+            }
+            Spacer()
+            Button("Done") { selectedTaskIds = [] }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(.bar)
+    }
+
+    private func batch(_ operation: @escaping (TaskRecord) async -> Void) {
+        let targets = allFilteredTasks.filter { selectedTaskIds.contains($0.id) }
+        selectedTaskIds = []
+        Task {
+            for task in targets {
+                await operation(task)
             }
         }
     }
@@ -336,6 +390,14 @@ struct TodoView: View {
             }
             .tint(.orange)
         }
+    }
+
+    static func todayISO(calendar: Calendar = .current) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = calendar.timeZone
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: Date())
     }
 
     static func tomorrowISO(calendar: Calendar = .current) -> String {

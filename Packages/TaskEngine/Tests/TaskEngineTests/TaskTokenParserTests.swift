@@ -139,3 +139,18 @@ struct DependencyRewriteTests {
         #expect(TaskLineRewriter.addingDependency(once, on: "build") == once)
     }
 }
+
+struct PriorityLabelRewriteTests {
+    @Test func priorityReplaceAddRemove() {
+        #expect(TaskLineRewriter.settingPriority("- [ ] t !p3 #x", to: 1) == "- [ ] t !p1 #x")
+        #expect(TaskLineRewriter.settingPriority("- [ ] t !high", to: 2) == "- [ ] t !p2")
+        #expect(TaskLineRewriter.settingPriority("- [ ] bare", to: 4) == "- [ ] bare !p4")
+        #expect(TaskLineRewriter.settingPriority("- [ ] t !p2", to: nil) == "- [ ] t")
+    }
+
+    @Test func labelAppendIsIdempotent() {
+        let once = TaskLineRewriter.addingLabel("- [ ] t >2026-08-01", label: "work")
+        #expect(once == "- [ ] t >2026-08-01 #work")
+        #expect(TaskLineRewriter.addingLabel(once, label: "work") == once)
+    }
+}

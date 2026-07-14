@@ -347,6 +347,34 @@ final class VaultIndexService {
         onNoteMutated?(task.noteId)
     }
 
+    /// Generic single-line rewrite with the full outbound-write discipline.
+    func rewriteTaskLine(_ task: TaskRecord, transform: (String) -> String) async {
+        guard let root, let indexer else { return }
+        await beforeNoteMutation?(task.noteId)
+        let url = root.appendingPathComponent(task.noteId)
+        guard let contents = try? await store.readString(at: url),
+              let line = TaskLineToggler.locate(
+                  contents: contents, anchorLine: task.line, expectedRawLine: task.rawLine
+              )
+        else { return }
+        let rewritten = transform(task.rawLine)
+        guard rewritten != task.rawLine else { return }
+        let updated = TaskLineToggler.replacingLine(contents, at: line, with: rewritten)
+        try? await store.writeString(updated, to: url)
+        try? indexer.index(noteId: task.noteId, contents: updated, modifiedAt: nil)
+        knownMTimes[task.noteId] = nil
+        tasksVersion += 1
+        onNoteMutated?(task.noteId)
+    }
+
+    func setPriority(_ task: TaskRecord, priority: Int?) async {
+        await rewriteTaskLine(task) { TaskLineRewriter.settingPriority($0, to: priority) }
+    }
+
+    func addLabel(_ task: TaskRecord, label: String) async {
+        await rewriteTaskLine(task) { TaskLineRewriter.addingLabel($0, label: label) }
+    }
+
     /// Deletes the task's source line (swipe-delete). Drift-protected like
     /// every outbound write: wrong anchor → reindex instead of destroying
     /// an unrelated line.

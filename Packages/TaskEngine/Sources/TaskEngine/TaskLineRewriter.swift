@@ -41,6 +41,34 @@ public enum TaskLineRewriter {
         return (appending(rawLine, token: "^" + slug), slug)
     }
 
+    /// The raw line with its `!priority` token replaced/added/removed.
+    public static func settingPriority(_ rawLine: String, to priority: Int?) -> String {
+        let pattern = #"(?<=^|\s)!(p[1-4]|high|medium|low)\b"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+        else { return rawLine }
+        let ns = rawLine as NSString
+        let match = regex.firstMatch(in: rawLine, range: NSRange(location: 0, length: ns.length))
+        if let match {
+            if let priority {
+                return ns.replacingCharacters(in: match.range, with: "!p\(priority)")
+            }
+            var removal = match.range
+            if removal.location > 0, ns.character(at: removal.location - 1) == 0x20 {
+                removal = NSRange(location: removal.location - 1, length: removal.length + 1)
+            }
+            return ns.replacingCharacters(in: removal, with: "")
+        }
+        guard let priority else { return rawLine }
+        return appending(rawLine, token: "!p\(priority)")
+    }
+
+    /// Appends `#label` (no-op when the label is already on the line).
+    public static func addingLabel(_ rawLine: String, label: String) -> String {
+        let parsed = TaskTokenParser.parse(String(rawLine.drop { $0 == " " || $0 == "\t" }))
+        guard !parsed.labels.contains(label) else { return rawLine }
+        return appending(rawLine, token: "#" + label)
+    }
+
     /// Appends `blockedby:^id` (no-op when already referenced).
     public static func addingDependency(_ rawLine: String, on blockId: String) -> String {
         let parsed = TaskTokenParser.parse(
