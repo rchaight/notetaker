@@ -19,6 +19,7 @@ struct TodoView: View {
     @State private var taskLabels: [String: [String]] = [:]
     @State private var selectedTaskIds: Set<String> = []
     @AppStorage("todoDensity") private var densityRaw = "comfortable"
+    @AppStorage("showStreaks") private var showStreaks = false
 
     private enum Density: String, CaseIterable {
         case compact, comfortable, relaxed
@@ -88,7 +89,13 @@ struct TodoView: View {
             .navigationTitle("To-Do")
             .toolbar {
                 ToolbarItem {
+                    if showStreaks {
+                        streakChip
+                    }
+                }
+                ToolbarItem {
                     Menu {
+                        Toggle("Show Streaks", isOn: $showStreaks)
                         Picker("Density", selection: $densityRaw) {
                             ForEach(Density.allCases, id: \.rawValue) { option in
                                 Text(option.title).tag(option.rawValue)
@@ -356,6 +363,18 @@ struct TodoView: View {
             await service.toggle(task)
             completingIds.remove(task.id)
         }
+    }
+
+    private var streakChip: some View {
+        let stats = Streaks.compute(
+            completedDays: service.completedTasks().compactMap(\.completedDay)
+        )
+        return Text("\(stats.doneToday) done today · \(stats.streakDays)-day streak")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(.quaternary.opacity(0.5), in: Capsule())
     }
 
     private func refresh() {

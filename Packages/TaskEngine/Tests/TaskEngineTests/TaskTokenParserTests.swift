@@ -167,3 +167,31 @@ struct CompletedDayTests {
         #expect(TaskTokenParser.parse("open item >today").completedDay == nil)
     }
 }
+
+struct StreakTests {
+    private let calendar = Calendar(identifier: .gregorian)
+    private func day(_ iso: String) -> Date {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = .current
+        return formatter.date(from: iso)!
+    }
+
+    @Test func countsTodayAndConsecutiveDays() {
+        let stats = Streaks.compute(
+            completedDays: ["2026-07-14", "2026-07-14", "2026-07-13", "2026-07-12", "2026-07-09"],
+            today: day("2026-07-14")
+        )
+        #expect(stats.doneToday == 2)
+        #expect(stats.streakDays == 3)
+    }
+
+    @Test func yesterdayKeepsStreakAliveButGapKillsIt() {
+        let alive = Streaks.compute(completedDays: ["2026-07-13", "2026-07-12"], today: day("2026-07-14"))
+        #expect(alive.doneToday == 0)
+        #expect(alive.streakDays == 2)
+        let dead = Streaks.compute(completedDays: ["2026-07-11"], today: day("2026-07-14"))
+        #expect(dead.streakDays == 0)
+    }
+}
