@@ -15,6 +15,8 @@ struct NotesView: View {
     let model: NotesModel
     @State private var livePreview = true
     @AppStorage("editorFocusMode") private var focusMode = false
+    @AppStorage("editorFontSize") private var editorFontSize = 16.0
+    @AppStorage("editorFontDesign") private var editorFontDesign = "system"
     @State private var searchText = ""
     @State private var semanticIds: [String] = []
     @State private var showingImporter = false
@@ -568,6 +570,9 @@ struct NotesView: View {
                 ),
                 scrollTarget: $scrollTarget,
                 command: $editorCommand,
+                theme: .default.customized(
+                    baseFontSize: CGFloat(editorFontSize), fontDesign: editorFontDesign
+                ),
                 livePreview: livePreview,
                 focusMode: focusMode,
                 imageBase: selectedNoteFolder,

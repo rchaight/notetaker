@@ -5,11 +5,13 @@ import MarkdownKit
     import AppKit
 
     public typealias PlatformFont = NSFont
+    public typealias PlatformFontDescriptor = NSFontDescriptor
     public typealias PlatformColor = NSColor
 #else
     import UIKit
 
     public typealias PlatformFont = UIFont
+    public typealias PlatformFontDescriptor = UIFontDescriptor
     public typealias PlatformColor = UIColor
 #endif
 
@@ -21,6 +23,9 @@ import MarkdownKit
 /// immutable class instances; fonts are derived on access.
 public struct MarkdownTheme: @unchecked Sendable {
     public var baseFontSize: CGFloat
+    /// "system" | "serif" | "rounded" | "mono" — applied to body AND
+    /// headings; code spans stay monospaced regardless.
+    public var fontDesign: String
     public var textColor: PlatformColor
     public var accentColor: PlatformColor
     public var codeBackground: PlatformColor
@@ -36,20 +41,53 @@ public struct MarkdownTheme: @unchecked Sendable {
 
     public init(
         baseFontSize: CGFloat,
+        fontDesign: String = "system",
         textColor: PlatformColor,
         accentColor: PlatformColor,
         codeBackground: PlatformColor,
         secondaryColor: PlatformColor
     ) {
         self.baseFontSize = baseFontSize
+        self.fontDesign = fontDesign
         self.textColor = textColor
         self.accentColor = accentColor
         self.codeBackground = codeBackground
         self.secondaryColor = secondaryColor
     }
 
+    /// A user-customized copy (Settings drives size + design).
+    public func customized(baseFontSize: CGFloat, fontDesign: String) -> MarkdownTheme {
+        var theme = self
+        theme.baseFontSize = baseFontSize
+        theme.fontDesign = fontDesign
+        return theme
+    }
+
+    private var systemDesign: PlatformFontDescriptor.SystemDesign? {
+        switch fontDesign {
+        case "serif": .serif
+        case "rounded": .rounded
+        case "mono": .monospaced
+        default: nil
+        }
+    }
+
+    func designedFont(size: CGFloat, bold: Bool = false) -> PlatformFont {
+        let base = bold
+            ? PlatformFont.boldSystemFont(ofSize: size)
+            : PlatformFont.systemFont(ofSize: size)
+        guard let design = systemDesign,
+              let descriptor = base.fontDescriptor.withDesign(design)
+        else { return base }
+        #if canImport(AppKit)
+            return PlatformFont(descriptor: descriptor, size: size) ?? base
+        #else
+            return PlatformFont(descriptor: descriptor, size: size)
+        #endif
+    }
+
     public var baseFont: PlatformFont {
-        .systemFont(ofSize: baseFontSize)
+        designedFont(size: baseFontSize)
     }
 
     public var baseAttributes: [NSAttributedString.Key: Any] {
@@ -61,7 +99,7 @@ public struct MarkdownTheme: @unchecked Sendable {
 
     public func headingFont(level: Int) -> PlatformFont {
         let scale = Self.headingScales[min(max(level, 1), 6) - 1]
-        return .boldSystemFont(ofSize: (baseFontSize * scale).rounded())
+        return designedFont(size: (baseFontSize * scale).rounded(), bold: true)
     }
 
     public var tableHeaderFont: PlatformFont {
@@ -94,7 +132,7 @@ public struct MarkdownTheme: @unchecked Sendable {
         case let .heading(level):
             [.font: headingFont(level: level)]
         case .strong:
-            [.font: PlatformFont.boldSystemFont(ofSize: baseFontSize)]
+            [.font: designedFont(size: baseFontSize, bold: true)]
         case .emphasis:
             [.font: italicFont]
         case .strikethrough:

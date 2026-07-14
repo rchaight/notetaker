@@ -108,6 +108,9 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             guard let textView = scrollView.documentView as? NSTextView else { return }
             let modeChanged = context.coordinator.livePreview != livePreview
                 || context.coordinator.focusMode != focusMode
+                || context.coordinator.theme.baseFontSize != theme.baseFontSize
+                || context.coordinator.theme.fontDesign != theme.fontDesign
+            context.coordinator.theme = theme
             context.coordinator.livePreview = livePreview
             context.coordinator.focusMode = focusMode
             context.coordinator.imageBase = imageBase
@@ -144,7 +147,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
         public final class Coordinator: NSObject, NSTextViewDelegate, @preconcurrency NSTextContentStorageDelegate,
             @preconcurrency NSTextLayoutManagerDelegate {
             let text: Binding<String>
-            let theme: MarkdownTheme
+            var theme: MarkdownTheme
             var livePreview = true
             var focusMode = false
             var imageBase: URL?
@@ -486,6 +489,9 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
         public func updateUIView(_ textView: UITextView, context: Context) {
             let modeChanged = context.coordinator.livePreview != livePreview
                 || context.coordinator.focusMode != focusMode
+                || context.coordinator.theme.baseFontSize != theme.baseFontSize
+                || context.coordinator.theme.fontDesign != theme.fontDesign
+            context.coordinator.theme = theme
             context.coordinator.livePreview = livePreview
             context.coordinator.focusMode = focusMode
             context.coordinator.imageBase = imageBase
@@ -524,7 +530,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
         public final class Coordinator: NSObject, UITextViewDelegate, UIGestureRecognizerDelegate,
             @preconcurrency NSTextContentStorageDelegate, @preconcurrency NSTextLayoutManagerDelegate {
             let text: Binding<String>
-            let theme: MarkdownTheme
+            var theme: MarkdownTheme
             var livePreview = true
             var focusMode = false
             var imageBase: URL?

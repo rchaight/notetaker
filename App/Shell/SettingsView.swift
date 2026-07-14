@@ -7,6 +7,8 @@ import SwiftUI
 struct SettingsView: View {
     @AppStorage(VaultRegistry.activeKey) private var activeVault = VaultRegistry.iCloudId
     @State private var showingVaultChooser = false
+    @AppStorage("editorFontSize") private var editorFontSize = 16.0
+    @AppStorage("editorFontDesign") private var editorFontDesign = "system"
     @AppStorage("doclingServeURL") private var doclingServeURL = ""
     @State private var probeResult: String?
     @AppStorage("fileParserEngineDir") private var engineDirOverride = ""
@@ -23,6 +25,25 @@ struct SettingsView: View {
                 Form {
                     Section("General") {
                         LabeledContent("Version", value: "0.1.0 (pre-alpha)")
+                    }
+                    Section("Editor") {
+                        Picker("Font", selection: $editorFontDesign) {
+                            Text("System").tag("system")
+                            Text("Serif").tag("serif")
+                            Text("Rounded").tag("rounded")
+                            Text("Monospaced").tag("mono")
+                        }
+                        HStack {
+                            Stepper(
+                                "Text size: \(Int(editorFontSize)) pt",
+                                value: $editorFontSize, in: 11 ... 28, step: 1
+                            )
+                            Button("Reset") { editorFontSize = 16 }
+                                .disabled(editorFontSize == 16)
+                        }
+                        Text("Applies to body text; headings scale proportionally. Code blocks stay monospaced.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                     Section("Vault location") {
                         LabeledContent(
