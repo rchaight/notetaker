@@ -462,8 +462,8 @@ struct NotesView: View {
                     .keyboardShortcut("t", modifiers: [.command, .shift])
                 formatButton("quote.opening", "Quote") { .toggleLinePrefix("> ") }
                 Divider().frame(height: 16)
-                formatButton("link", "Link (⌘K)") { .link }
-                    .keyboardShortcut("k", modifiers: [.command])
+                formatButton("link", "Link (⇧⌘K)") { .link }
+                    .keyboardShortcut("k", modifiers: [.command, .shift])
                 Divider().frame(height: 16)
                 Menu {
                     Button("Table", systemImage: "tablecells") {

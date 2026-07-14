@@ -9,6 +9,7 @@ struct AppShell: View {
     @State private var indexService = VaultIndexService()
     @State private var notesModel = NotesModel()
     @State private var selectedTab = "notes"
+    @State private var showingPalette = false
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -42,6 +43,31 @@ struct AppShell: View {
         #else
         .tabViewStyle(.sidebarAdaptable)
         #endif
+        .background(
+            // Invisible global hotkey for the palette.
+            Button("") { showingPalette = true }
+                .keyboardShortcut("k", modifiers: [.command])
+                .hidden()
+        )
+        .sheet(isPresented: $showingPalette) {
+            CommandPalette(
+                notes: notesModel.notes.map {
+                    ($0.id, URL(fileURLWithPath: $0.relativePath)
+                        .deletingPathExtension().lastPathComponent)
+                },
+                onOpenNote: { id in
+                    notesModel.openNote(id, jumpToLine: nil)
+                    selectedTab = "notes"
+                },
+                onSwitchTab: { selectedTab = $0 },
+                onQuickAdd: { text in Task { await indexService.quickAdd(text) } },
+                onDailyNote: {
+                    notesModel.openDailyNote()
+                    selectedTab = "notes"
+                },
+                isPresented: $showingPalette
+            )
+        }
         .task {
             indexService.onNoteMutated = { [weak notesModel = notesModel] noteId in
                 notesModel?.reloadIfDisplayed(noteId: noteId)
