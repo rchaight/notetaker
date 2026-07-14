@@ -167,13 +167,18 @@ struct TodoView: View {
         case .list:
             taskList
         case .board:
-            TaskBoardView(grouped: grouped, subtaskProgress: subtaskProgress) { task in
-                Task { await service.toggle(task) }
-            }
+            TaskBoardView(
+                grouped: grouped,
+                subtaskProgress: subtaskProgress,
+                onComplete: { task in Task { await service.toggle(task) } },
+                onReschedule: { task, due in Task { await service.reschedule(task, due: due) } }
+            )
         case .agenda:
-            TaskAgendaView(tasks: allFilteredTasks) { task in
-                Task { await service.toggle(task) }
-            }
+            TaskAgendaView(
+                tasks: allFilteredTasks,
+                onComplete: { task in Task { await service.toggle(task) } },
+                onReschedule: { task, due in Task { await service.reschedule(task, due: due) } }
+            )
         case .matrix:
             TaskMatrixView(tasks: allFilteredTasks) { task in
                 Task { await service.toggle(task) }

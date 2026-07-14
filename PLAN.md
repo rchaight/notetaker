@@ -282,7 +282,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 - [x] Priority/label color chips consistent across List/Board/Agenda/Matrix (+ per-label colors).
 - [x] "Set due date" + "delete line" write mutations (shared engine for the next two).
 - [x] Swipe actions (iOS): complete / snooze-to-tomorrow / delete.
-- [ ] Drag-to-reschedule cards across date sections (Agenda/Board).
+- [x] Drag-to-reschedule cards across date sections (Agenda/Board).
 - [ ] Multi-select + batch edit (priority/label/date/complete).
 - [ ] AI-powered Quick Add via existing FoundationModels provider (offline fallback = current parser).
 - [ ] Logbook: ✅YYYY-MM-DD completion token on toggle + completed view grouped by day.

@@ -7,10 +7,36 @@ struct TaskBoardView: View {
     let grouped: [SmartBucket: [TaskRecord]]
     let subtaskProgress: [String: (done: Int, total: Int)]
     let onComplete: (TaskRecord) -> Void
+    /// Drop-to-reschedule: nil ISO day clears the due date (Inbox).
+    var onReschedule: (TaskRecord, String?) -> Void = { _, _ in }
 
     private static let columns: [(SmartBucket, String)] = [
         (.overdue, "Overdue"), (.today, "Today"), (.upcoming, "Upcoming"), (.inbox, "Inbox"),
     ]
+
+    /// The due date a card acquires when dropped on a column. Overdue is
+    /// not a target (nil tuple = reject the drop).
+    static func dropDue(for bucket: SmartBucket, calendar: Calendar = .current) -> String?? {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = calendar.timeZone
+        formatter.dateFormat = "yyyy-MM-dd"
+        switch bucket {
+        case .today:
+            return .some(formatter.string(from: Date()))
+        case .upcoming:
+            let tomorrow = calendar.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+            return .some(formatter.string(from: tomorrow))
+        case .inbox:
+            return .some(nil)
+        case .overdue:
+            return nil
+        }
+    }
+
+    private func allTasks() -> [TaskRecord] {
+        grouped.values.flatMap(\.self)
+    }
 
     var body: some View {
         ScrollView(.horizontal) {
@@ -22,6 +48,7 @@ struct TaskBoardView: View {
                             .foregroundStyle(bucket == .overdue ? .red : .secondary)
                         ForEach(grouped[bucket] ?? []) { task in
                             TaskCard(task: task, progress: subtaskProgress[task.id], onComplete: onComplete)
+                                .draggable(task.id)
                         }
                         if (grouped[bucket] ?? []).isEmpty {
                             Text("—")
@@ -32,6 +59,18 @@ struct TaskBoardView: View {
                     .frame(width: 230, alignment: .topLeading)
                     .padding(10)
                     .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
+                    .dropDestination(for: String.self) { ids, _ in
+                        guard case let .some(due) = Self.dropDue(for: bucket) else { return false }
+                        let tasks = allTasks()
+                        var accepted = false
+                        for id in ids {
+                            if let task = tasks.first(where: { $0.id == id }) {
+                                onReschedule(task, due)
+                                accepted = true
+                            }
+                        }
+                        return accepted
+                    }
                 }
             }
             .padding(12)
@@ -43,6 +82,7 @@ struct TaskBoardView: View {
 struct TaskAgendaView: View {
     let tasks: [TaskRecord]
     let onComplete: (TaskRecord) -> Void
+    var onReschedule: (TaskRecord, String?) -> Void = { _, _ in }
 
     private var byDate: [(String, [TaskRecord])] {
         let dated = Dictionary(grouping: tasks.filter { $0.dueDate != nil }) { $0.dueDate! }
@@ -56,11 +96,24 @@ struct TaskAgendaView: View {
 
     var body: some View {
         List {
-            ForEach(byDate, id: \.0) { date, tasks in
+            ForEach(byDate, id: \.0) { date, sectionTasks in
                 Section(date) {
-                    ForEach(tasks) { task in
+                    ForEach(sectionTasks) { task in
                         AgendaRow(task: task, onComplete: onComplete)
+                            .draggable(task.id)
                     }
+                }
+                .dropDestination(for: String.self) { ids, _ in
+                    // "No date" section clears the due date.
+                    let due: String? = date == "No date" ? nil : date
+                    var accepted = false
+                    for id in ids {
+                        if let task = self.tasks.first(where: { $0.id == id }) {
+                            onReschedule(task, due)
+                            accepted = true
+                        }
+                    }
+                    return accepted
                 }
             }
         }
