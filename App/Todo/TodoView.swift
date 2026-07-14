@@ -14,6 +14,30 @@ struct TodoView: View {
     /// Things-style calm completion: rows strike + fade for a beat before
     /// the write removes them from the list.
     @State private var completingIds: Set<String> = []
+    @AppStorage("todoDensity") private var densityRaw = "comfortable"
+
+    private enum Density: String, CaseIterable {
+        case compact, comfortable, relaxed
+
+        var title: String { rawValue.capitalized }
+        var rowPadding: CGFloat {
+            switch self {
+            case .compact: 0
+            case .comfortable: 4
+            case .relaxed: 9
+            }
+        }
+
+        var textFont: Font {
+            self == .compact ? .callout : .body
+        }
+
+        var showsMetaLine: Bool { self != .compact }
+    }
+
+    private var density: Density {
+        Density(rawValue: densityRaw) ?? .comfortable
+    }
     @State private var filterText = ""
     @State private var viewMode: ViewMode = .list
 
@@ -58,6 +82,18 @@ struct TodoView: View {
             }
             .navigationTitle("To-Do")
             .toolbar {
+                ToolbarItem {
+                    Menu {
+                        Picker("Density", selection: $densityRaw) {
+                            ForEach(Density.allCases, id: \.rawValue) { option in
+                                Text(option.title).tag(option.rawValue)
+                            }
+                        }
+                    } label: {
+                        Label("Density", systemImage: "rectangle.arrowtriangle.2.inward")
+                    }
+                    .help("Row density")
+                }
                 ToolbarItem {
                     Button("New Task", systemImage: "plus") {
                         showingQuickAdd = true
@@ -246,7 +282,20 @@ struct TodoView: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(task.text)
+                    .font(density.textFont)
                     .strikethrough(completing)
+                if density.showsMetaLine {
+                    metaLine(task)
+                } else {
+                    EmptyView()
+                }
+            }
+        }
+        .padding(.vertical, density.rowPadding)
+        .opacity(completing ? 0.45 : 1)
+    }
+
+    @ViewBuilder private func metaLine(_ task: TaskRecord) -> some View {
                 HStack(spacing: 8) {
                     if let due = task.dueDate {
                         Label(due, systemImage: "calendar")
@@ -268,9 +317,6 @@ struct TodoView: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            }
-        }
-        .opacity(completing ? 0.45 : 1)
     }
 
     private func noteName(_ noteId: String) -> String {
