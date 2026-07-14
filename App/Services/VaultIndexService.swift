@@ -347,6 +347,29 @@ final class VaultIndexService {
         onNoteMutated?(task.noteId)
     }
 
+    /// Deletes the task's source line (swipe-delete). Drift-protected like
+    /// every outbound write: wrong anchor → reindex instead of destroying
+    /// an unrelated line.
+    func deleteTask(_ task: TaskRecord) async {
+        guard let root, let indexer else { return }
+        await beforeNoteMutation?(task.noteId)
+        let url = root.appendingPathComponent(task.noteId)
+        guard let contents = try? await store.readString(at: url) else { return }
+        guard let line = TaskLineToggler.locate(
+            contents: contents, anchorLine: task.line, expectedRawLine: task.rawLine
+        ) else {
+            try? indexer.index(noteId: task.noteId, contents: contents, modifiedAt: nil)
+            tasksVersion += 1
+            return
+        }
+        let updated = TaskLineToggler.removingLine(contents, at: line)
+        try? await store.writeString(updated, to: url)
+        try? indexer.index(noteId: task.noteId, contents: updated, modifiedAt: nil)
+        knownMTimes[task.noteId] = nil
+        tasksVersion += 1
+        onNoteMutated?(task.noteId)
+    }
+
     /// "Blocked by": gives `target` a ^block-id when needed and appends
     /// blockedby:^id to `dependent`. Both lines live in the same note; one
     /// read→rewrite→write pass keeps it atomic.

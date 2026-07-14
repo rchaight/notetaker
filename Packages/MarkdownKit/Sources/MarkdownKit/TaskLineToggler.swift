@@ -36,6 +36,14 @@ public enum TaskLineToggler {
     }
 
     /// Replaces one whole line, preserving every other byte.
+    /// Contents with `line` removed entirely (the line and its newline).
+    public static func removingLine(_ contents: String, at line: Int) -> String {
+        var lines = splitLines(contents)
+        guard line >= 0, line < lines.count else { return contents }
+        lines.remove(at: line)
+        return lines.joined(separator: "\n")
+    }
+
     public static func replacingLine(_ contents: String, at line: Int, with newLine: String) -> String {
         var lines = splitLines(contents)
         guard line >= 0, line < lines.count else { return contents }

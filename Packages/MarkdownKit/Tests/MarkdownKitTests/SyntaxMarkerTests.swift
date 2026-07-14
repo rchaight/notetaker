@@ -150,3 +150,18 @@ struct TemplateExpansionTests {
         #expect(out == "# Weekly Review\nCreated 2026-07-12 at 09:05 (2026-07-12 09:05)\n{{unknown}}\n")
     }
 }
+
+struct LineRemovalTests {
+    @Test func removesLineAndItsNewline() {
+        let text = "a\n- [ ] gone\nb\n"
+        #expect(TaskLineToggler.removingLine(text, at: 1) == "a\nb\n")
+        #expect(TaskLineToggler.removingLine("only\n", at: 0) == "")
+        #expect(TaskLineToggler.removingLine(text, at: 99) == text)
+    }
+
+    @Test func crlfLinesSurviveNeighborRemoval() {
+        let text = "keep\r\n- [ ] gone\r\nalso\r\n"
+        let result = TaskLineToggler.removingLine(text, at: 1)
+        #expect(result == "keep\r\nalso\r\n")
+    }
+}
