@@ -16,12 +16,27 @@ public enum TaskLineToggler {
     public static func toggle(
         contents: String,
         anchorLine: Int,
-        expectedRawLine: String
+        expectedRawLine: String,
+        completionDay: String? = nil
     ) -> Result? {
         var lines = splitLines(contents)
         guard let target = locate(in: lines, anchorLine: anchorLine, expectedRawLine: expectedRawLine)
         else { return nil }
-        guard let (flipped, nowChecked) = flipCheckbox(in: lines[target]) else { return nil }
+        guard let (base, nowChecked) = flipCheckbox(in: lines[target]) else { return nil }
+        var flipped = base
+        // Logbook token: checking writes ✅day into the line (completion
+        // history lives in the FILE, rebuildable like everything else);
+        // unchecking removes it.
+        if let completionDay, nowChecked {
+            let trailing = String(flipped.reversed().prefix { $0 == " " || $0 == "\r" }.reversed())
+            flipped = String(flipped.dropLast(trailing.count)) + " ✅" + completionDay + trailing
+        } else if !nowChecked {
+            flipped = flipped.replacingOccurrences(
+                of: " ?✅[0-9]{4}-[0-9]{2}-[0-9]{2}",
+                with: "",
+                options: .regularExpression
+            )
+        }
         lines[target] = flipped
         return Result(contents: lines.joined(separator: "\n"), line: target, nowChecked: nowChecked)
     }

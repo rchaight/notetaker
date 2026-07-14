@@ -50,6 +50,7 @@ struct TodoView: View {
         case board = "Board"
         case agenda = "Agenda"
         case matrix = "Matrix"
+        case log = "Log"
     }
 
     @AppStorage("savedTaskFilters") private var savedFiltersJSON = "[]"
@@ -184,6 +185,8 @@ struct TodoView: View {
             TaskMatrixView(tasks: allFilteredTasks) { task in
                 Task { await service.toggle(task) }
             }
+        case .log:
+            logbook
         }
     }
 
@@ -262,6 +265,48 @@ struct TodoView: View {
         Task {
             for task in targets {
                 await operation(task)
+            }
+        }
+    }
+
+    /// Things-style Logbook: completed tasks grouped by day, newest first.
+    /// Unchecking here reopens the task (and strips its ✅ token).
+    private var logbook: some View {
+        let completed = service.completedTasks()
+        let byDay = Dictionary(grouping: completed) { $0.completedDay ?? "Unknown" }
+            .sorted { $0.key > $1.key }
+        return List {
+            ForEach(byDay, id: \.0) { day, tasks in
+                Section(day) {
+                    ForEach(tasks) { task in
+                        HStack(spacing: 10) {
+                            Button {
+                                Task { await service.toggle(task) }
+                            } label: {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(.green)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Reopen")
+                            Text(task.text)
+                                .strikethrough()
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text(noteName(task.noteId))
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+            }
+        }
+        .overlay {
+            if completed.isEmpty {
+                ContentUnavailableView(
+                    "Nothing Logged Yet",
+                    systemImage: "checkmark.circle",
+                    description: Text("Completed tasks appear here, grouped by day.")
+                )
             }
         }
     }

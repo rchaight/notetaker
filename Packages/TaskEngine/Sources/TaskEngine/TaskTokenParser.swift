@@ -19,6 +19,8 @@ public struct ParsedTaskMetadata: Equatable, Sendable {
     public let blockId: String?
     /// `blockedby:^id` / `depends:^id` — block ids this task waits on.
     public let dependsOn: [String]
+    /// `✅2026-07-14` — the day the task was completed (Logbook token).
+    public let completedDay: String?
 
     public init(
         cleanText: String,
@@ -28,7 +30,8 @@ public struct ParsedTaskMetadata: Equatable, Sendable {
         labels: [String],
         recurrence: Recurrence? = nil,
         blockId: String? = nil,
-        dependsOn: [String] = []
+        dependsOn: [String] = [],
+        completedDay: String? = nil
     ) {
         self.cleanText = cleanText
         self.dueDate = dueDate
@@ -38,6 +41,7 @@ public struct ParsedTaskMetadata: Equatable, Sendable {
         self.recurrence = recurrence
         self.blockId = blockId
         self.dependsOn = dependsOn
+        self.completedDay = completedDay
     }
 }
 
@@ -61,14 +65,29 @@ public enum TaskTokenParser {
         let labels = tagTokens(in: working)
         let blockId = extractBlockId(&working)
         let dependsOn = extractDependencies(&working)
+        let completedDay = extractCompletedDay(&working)
         let clean = working
             .replacingOccurrences(of: #"\s{2,}"#, with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespaces)
         return ParsedTaskMetadata(
             cleanText: clean, dueDate: dueDate, startDate: startDate,
             priority: priority, labels: labels, recurrence: recurrence,
-            blockId: blockId, dependsOn: dependsOn
+            blockId: blockId, dependsOn: dependsOn, completedDay: completedDay
         )
+    }
+
+    private static let completedRegex = try? NSRegularExpression(
+        pattern: "(?<=^|\\s)✅([0-9]{4}-[0-9]{2}-[0-9]{2})\\b"
+    )
+
+    private static func extractCompletedDay(_ text: inout String) -> String? {
+        guard let regex = completedRegex else { return nil }
+        let ns = text as NSString
+        guard let match = regex.firstMatch(in: text, range: NSRange(location: 0, length: ns.length))
+        else { return nil }
+        let day = ns.substring(with: match.range(at: 1))
+        text = ns.replacingCharacters(in: match.range, with: "")
+        return day
     }
 
     // MARK: - Dependencies

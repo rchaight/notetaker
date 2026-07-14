@@ -67,12 +67,14 @@ public struct TaskRecord: Codable, Equatable, Sendable, Identifiable, FetchableR
     public var blockId: String?
     /// blockedby:/depends: references, space-joined (dependency graph input).
     public var dependsOn: String?
+    /// ✅token day the task was completed (Logbook).
+    public var completedDay: String?
 
     public init(
         id: String, noteId: String, line: Int, text: String, rawLine: String,
         checked: Bool, dueDate: String? = nil, startDate: String? = nil,
         priority: Int? = nil, recurrence: String? = nil, parentId: String? = nil,
-        blockId: String? = nil, dependsOn: String? = nil
+        blockId: String? = nil, dependsOn: String? = nil, completedDay: String? = nil
     ) {
         self.id = id
         self.noteId = noteId
@@ -87,6 +89,7 @@ public struct TaskRecord: Codable, Equatable, Sendable, Identifiable, FetchableR
         self.parentId = parentId
         self.blockId = blockId
         self.dependsOn = dependsOn
+        self.completedDay = completedDay
     }
 }
 

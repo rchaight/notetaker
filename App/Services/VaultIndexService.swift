@@ -509,6 +509,10 @@ final class VaultIndexService {
         (try? database?.favoriteNoteIds()) ?? []
     }
 
+    func completedTasks() -> [TaskRecord] {
+        (try? database?.completedTasks()) ?? []
+    }
+
     func pinnedNoteIds() -> [String] {
         (try? database?.pinnedNoteIds()) ?? []
     }
@@ -605,7 +609,8 @@ final class VaultIndexService {
             }
         } else {
             TaskLineToggler.toggle(
-                contents: contents, anchorLine: task.line, expectedRawLine: task.rawLine
+                contents: contents, anchorLine: task.line, expectedRawLine: task.rawLine,
+                completionDay: TodoView.todayISO()
             )?.contents
         }
 

@@ -285,7 +285,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 - [x] Drag-to-reschedule cards across date sections (Agenda/Board).
 - [x] Multi-select + batch edit (priority/label/date/complete).
 - [x] AI-powered Quick Add via existing FoundationModels provider (offline fallback = current parser).
-- [ ] Logbook: ✅YYYY-MM-DD completion token on toggle + completed view grouped by day.
+- [x] Logbook: ✅YYYY-MM-DD completion token on toggle + completed view grouped by day.
 - [ ] Streak/karma strip (local-only, opt-in; builds on the Logbook token).
 - [ ] Command palette (⌘K): quick add, jump to filter/note, switch views.
 - [ ] Menu bar quick-add (macOS MenuBarExtra + hotkey; pulled forward from M9).

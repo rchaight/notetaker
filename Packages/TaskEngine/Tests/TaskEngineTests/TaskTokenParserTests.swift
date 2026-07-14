@@ -154,3 +154,16 @@ struct PriorityLabelRewriteTests {
         #expect(TaskLineRewriter.addingLabel(once, label: "work") == once)
     }
 }
+
+struct CompletedDayTests {
+    @Test func completedTokenParsesAndCleans() {
+        let parsed = TaskTokenParser.parse("write report ✅2026-07-14 #work")
+        #expect(parsed.completedDay == "2026-07-14")
+        #expect(parsed.cleanText == "write report #work")
+        #expect(parsed.labels == ["work"])
+    }
+
+    @Test func plainTaskHasNoCompletedDay() {
+        #expect(TaskTokenParser.parse("open item >today").completedDay == nil)
+    }
+}
