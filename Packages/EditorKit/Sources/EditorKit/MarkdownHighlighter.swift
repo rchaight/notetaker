@@ -67,6 +67,16 @@ public enum MarkdownHighlighter {
         }
         // Marker hiding comes last so its .clear color survives focus dim.
         if let visible = hideMarkersOutside {
+            // Frontmatter is metadata, not prose: collapse the whole block
+            // off-cursor (it also stops reading as markdown — its closing
+            // "---" was rendering as a divider). Cursor inside reveals it.
+            let frontmatterLength = MarkdownDocument(source: text).bodyUTF16Offset
+            if frontmatterLength > 0 {
+                let block = NSRange(location: 0, length: min(frontmatterLength, fullRange.length))
+                if NSIntersectionRange(block, visible).length == 0 {
+                    storage.addAttributes(theme.hiddenMarkerAttributes, range: block)
+                }
+            }
             // Tables: the drawn grid carries the content while the cursor is
             // elsewhere; raw pipes come back the moment the cursor enters.
             for item in styled

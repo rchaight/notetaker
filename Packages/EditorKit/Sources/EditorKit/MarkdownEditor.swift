@@ -12,6 +12,10 @@ import TaskEngine
 @MainActor
 func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
     var ranges = SyntaxMarkers.markerRanges(in: text, styled: styled)
+    let frontmatterLength = MarkdownDocument(source: text).bodyUTF16Offset
+    if frontmatterLength > 0 {
+        ranges.append(NSRange(location: 0, length: frontmatterLength))
+    }
     for item in styled {
         switch item.kind {
         case .table, .thematicBreak:
@@ -156,6 +160,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             var codeRegions: [CodeCardRegions.Region] = []
             var tableRegions: [TableGrid.Region] = []
             var revealRanges: [NSRange] = []
+            var frontmatterLength = 0
             var lastCommandID: UUID?
             private var lastCursorLine: NSRange?
             private var pendingRestyle: Task<Void, Never>?
@@ -182,6 +187,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                 codeRegions = CodeCardRegions.regions(in: textView.string, styled: styled)
                 tableRegions = TableGrid.regions(in: textView.string, styled: styled)
                 revealRanges = markdownRevealRanges(in: textView.string, styled: styled)
+                frontmatterLength = MarkdownDocument(source: textView.string).bodyUTF16Offset
             }
 
             private func scheduleRestyle(_ textView: NSTextView) {
@@ -328,6 +334,13 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                         from: contentManager.documentRange.location, to: elementRange.endLocation
                     )
                     let paragraphRange = NSRange(location: start, length: max(end - start, 0))
+                    // Frontmatter lines never get decorated fragments (its
+                    // "---" fences are not thematic breaks).
+                    if start < frontmatterLength {
+                        return NSTextLayoutFragment(
+                            textElement: textElement, range: textElement.elementRange
+                        )
+                    }
                     if let table = tableRegions.first(where: {
                         NSIntersectionRange($0.range, paragraphRange).length > 0
                     }), let cursorLine = lastCursorLine,
@@ -539,6 +552,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             var codeRegions: [CodeCardRegions.Region] = []
             var tableRegions: [TableGrid.Region] = []
             var revealRanges: [NSRange] = []
+            var frontmatterLength = 0
             var lastCommandID: UUID?
             private var lastCursorLine: NSRange?
             private var pendingRestyle: Task<Void, Never>?
@@ -564,6 +578,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                 codeRegions = CodeCardRegions.regions(in: textView.text ?? "", styled: styled)
                 tableRegions = TableGrid.regions(in: textView.text ?? "", styled: styled)
                 revealRanges = markdownRevealRanges(in: textView.text ?? "", styled: styled)
+                frontmatterLength = MarkdownDocument(source: textView.text ?? "").bodyUTF16Offset
             }
 
             private func scheduleRestyle(_ textView: UITextView) {
@@ -638,6 +653,13 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                         from: contentManager.documentRange.location, to: elementRange.endLocation
                     )
                     let paragraphRange = NSRange(location: start, length: max(end - start, 0))
+                    // Frontmatter lines never get decorated fragments (its
+                    // "---" fences are not thematic breaks).
+                    if start < frontmatterLength {
+                        return NSTextLayoutFragment(
+                            textElement: textElement, range: textElement.elementRange
+                        )
+                    }
                     if let table = tableRegions.first(where: {
                         NSIntersectionRange($0.range, paragraphRange).length > 0
                     }), let cursorLine = lastCursorLine,

@@ -491,3 +491,22 @@ struct AutocompleteTests {
         #expect(links == ["Project Plan]]"])
     }
 }
+
+@MainActor struct FrontmatterHidingTests {
+    @Test func frontmatterCollapsesOffCursorRevealsOnCursor() {
+        let text = "---\nfavorite: true\n---\n# Body\ntext\n"
+        let storage = NSTextStorage(string: text)
+        let bodyStart = (text as NSString).range(of: "# Body").location
+        MarkdownHighlighter.highlight(
+            storage, hideMarkersOutside: NSRange(location: bodyStart, length: 6)
+        )
+        let font = storage.attribute(.font, at: 0, effectiveRange: nil) as? PlatformFont
+        #expect((font?.pointSize ?? 10) < 1, "frontmatter must collapse off-cursor")
+
+        MarkdownHighlighter.highlight(
+            storage, hideMarkersOutside: NSRange(location: 0, length: 4)
+        )
+        let revealed = storage.attribute(.font, at: 0, effectiveRange: nil) as? PlatformFont
+        #expect((revealed?.pointSize ?? 0) > 1, "cursor inside reveals the block")
+    }
+}
