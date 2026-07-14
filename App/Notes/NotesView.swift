@@ -2,6 +2,7 @@ import AIKit
 import ConversionKit
 import EditorKit
 import MarkdownKit
+import SecurityKit
 import SwiftUI
 import UniformTypeIdentifiers
 import VaultKit
@@ -706,7 +707,7 @@ struct NotesView: View {
             #if canImport(FoundationModels)
                 providers.append(FoundationModelsProvider())
             #endif
-            if let urlString = UserDefaults.standard.string(forKey: "ollamaURL"),
+            if let urlString = KeychainStore.read(account: "ollamaURL"),
                let url = ServerURL.normalize(urlString) {
                 let model = UserDefaults.standard.string(forKey: "ollamaModel") ?? "qwen3"
                 providers.append(OllamaProvider(baseURL: url, model: model.isEmpty ? "qwen3" : model))

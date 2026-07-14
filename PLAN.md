@@ -295,7 +295,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 **Steps:**
 - [x] App lock: `LAContext` biometrics → passcode fallback, on launch + resume; grace-period setting.
 - [x] Locked Notes: PBKDF2-HMAC-SHA256 → AES-GCM; ciphertext-only in synced file; in-memory session keys (quit relocks); unrecoverable-passphrase warning UX. *(Keychain biometric key-wrap deferred — session model first; logged.)*
-- [ ] Keychain for Ollama endpoint/token (`ThisDeviceOnly`).
+- [x] Keychain for Ollama endpoint/token (`ThisDeviceOnly`).
 - [ ] ADP detection + nudge; per-note AI-tier disclosure; WKWebView HTML sanitization/JS-off/remote-block for imported HTML previews.
 - [ ] Verify App Sandbox + Hardened Runtime with zero exceptions across app + extensions + XPC helper.
 **Done:** app requires Face ID on launch; a locked note stores only ciphertext in iCloud (verify in Finder) and opens with biometrics; forgetting a per-note passphrase is clearly flagged as permanent; notarization dry-run passes with no runtime-exception smells.

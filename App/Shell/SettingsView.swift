@@ -1,5 +1,6 @@
 import AIKit
 import ConversionKit
+import SecurityKit
 import SwiftUI
 
 /// App settings; sections fill in as their milestones land (vault location,
@@ -16,7 +17,11 @@ struct SettingsView: View {
     @AppStorage("fileParserEngineDir") private var engineDirOverride = ""
     @AppStorage("fileParserOCR") private var engineOCR = true
     @AppStorage("fileParserTables") private var engineTables = true
-    @AppStorage("ollamaURL") private var ollamaURL = ""
+    // Keychain-backed (ThisDeviceOnly): endpoint config is homelab
+    // topology — it shouldn't sync or sit in plaintext defaults.
+    @State private var ollamaURL = KeychainStore.migrateFromDefaults(
+        key: "ollamaURL", account: "ollamaURL"
+    )
     @AppStorage("ollamaModel") private var ollamaModel = ""
     @State private var ollamaModels: [String] = []
     @State private var ollamaProbe: String?
@@ -142,6 +147,9 @@ struct SettingsView: View {
                     }
                     Section("AI — Ollama (homelab)") {
                         TextField("Ollama server URL", text: $ollamaURL, prompt: Text("http://homelab:11434"))
+                            .onChange(of: ollamaURL) {
+                                KeychainStore.save(ollamaURL, account: "ollamaURL")
+                            }
                             .autocorrectionDisabled()
                         HStack {
                             Button("Test Connection") {
