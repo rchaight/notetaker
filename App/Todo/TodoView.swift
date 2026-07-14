@@ -11,6 +11,9 @@ struct TodoView: View {
     @State private var subtaskProgress: [String: (done: Int, total: Int)] = [:]
     @State private var showingQuickAdd = false
     @State private var quickAddText = ""
+    /// Things-style calm completion: rows strike + fade for a beat before
+    /// the write removes them from the list.
+    @State private var completingIds: Set<String> = []
     @State private var filterText = ""
     @State private var viewMode: ViewMode = .list
 
@@ -198,6 +201,20 @@ struct TodoView: View {
         Task { await service.quickAdd(input) }
     }
 
+    /// Strike + fade in place (~0.4s), then write the toggle; the reindex
+    /// removes the row with a standard list animation.
+    private func completeWithFade(_ task: TaskRecord) {
+        guard !completingIds.contains(task.id) else { return }
+        withAnimation(.easeOut(duration: 0.15)) {
+            _ = completingIds.insert(task.id)
+        }
+        Task {
+            try? await Task.sleep(for: .milliseconds(400))
+            await service.toggle(task)
+            completingIds.remove(task.id)
+        }
+    }
+
     private func refresh() {
         let filter = TaskFilter.parse(filterText)
         let labels = filter.isEmpty ? [:] : service.taskLabels()
@@ -214,19 +231,22 @@ struct TodoView: View {
     }
 
     private func row(_ task: TaskRecord) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
+        let completing = completingIds.contains(task.id)
+        return HStack(alignment: .firstTextBaseline, spacing: 10) {
             Button {
-                Task { await service.toggle(task) }
+                completeWithFade(task)
             } label: {
-                Image(systemName: "circle")
+                Image(systemName: completing ? "checkmark.circle.fill" : "circle")
                     .font(.title3)
-                    .foregroundStyle(priorityColor(task.priority))
+                    .foregroundStyle(completing ? Color.secondary : priorityColor(task.priority))
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Complete task")
+            .disabled(completing)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(task.text)
+                    .strikethrough(completing)
                 HStack(spacing: 8) {
                     if let due = task.dueDate {
                         Label(due, systemImage: "calendar")
@@ -250,6 +270,7 @@ struct TodoView: View {
                 .foregroundStyle(.secondary)
             }
         }
+        .opacity(completing ? 0.45 : 1)
     }
 
     private func noteName(_ noteId: String) -> String {

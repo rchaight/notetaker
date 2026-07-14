@@ -276,7 +276,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 **Effort:** M7a ~1.5 weeks; M7b ~3–4 weeks (or ~1 week if licensing Ganttis).
 
 ### M7.5 — To-Do UX upgrades (user-selected 2026-07-12, all 12 research items; after M7)
-- [ ] Completion fade: strike + ~0.4s fade before leaving the list.
+- [x] Completion fade: strike + ~0.4s fade before leaving the list.
 - [ ] Row density setting (Compact/Comfortable/Relaxed), persisted.
 - [ ] Jump-to-note from any task row.
 - [ ] Priority/label color chips consistent across List/Board/Agenda/Matrix (+ per-label colors).
