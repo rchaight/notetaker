@@ -39,6 +39,11 @@ struct NotesView: View {
     @State private var showInspector = false
     @State private var scrollTarget: NSRange?
     @State private var editorCommand: EditorCommandRequest?
+    @State private var showingLockSheet = false
+    @State private var showingUnlockSheet = false
+    @State private var lockPassphrase = ""
+    @State private var lockConfirm = ""
+    @State private var lockError: String?
     /// List selection for VAULT rows only; decoupled from model.selectedID
     /// so a click in Favorites/Recents highlights THAT row instead.
     @State private var listSelection: String?
@@ -177,6 +182,7 @@ struct NotesView: View {
             semanticIds = await indexService.semanticSearchNoteIds(searchText)
         }
         .onDisappear { Task { await model.flushSave() } }
+        .sheet(isPresented: $showingLockSheet) { lockSheet }
     }
 
     @ViewBuilder private var sidebar: some View {
@@ -569,7 +575,21 @@ struct NotesView: View {
     }
 
     @ViewBuilder private var editorPane: some View {
-        if true {
+        if model.lockedPlaceholder {
+            ContentUnavailableView {
+                Label("Locked Note", systemImage: "lock.doc")
+            } description: {
+                Text("This note is encrypted. Its contents sync as ciphertext only.")
+            } actions: {
+                Button("Unlock…") {
+                    lockPassphrase = ""
+                    lockError = nil
+                    showingUnlockSheet = true
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .sheet(isPresented: $showingUnlockSheet) { unlockSheet }
+        } else if true {
             MarkdownEditor(
                 text: Binding(
                     get: { model.noteText },
@@ -613,6 +633,24 @@ struct NotesView: View {
                         Label("AI", systemImage: "sparkles")
                     }
                     .disabled(aiStatus?.hasSuffix("…") == true)
+                    if model.selectedID != nil, !model.lockedPlaceholder {
+                        Button(
+                            model.selectedIsLockable ? "Remove Lock" : "Lock Note…",
+                            systemImage: model.selectedIsLockable ? "lock.open" : "lock"
+                        ) {
+                            if model.selectedIsLockable {
+                                Task { await model.removeLockFromSelected() }
+                            } else {
+                                lockPassphrase = ""
+                                lockConfirm = ""
+                                lockError = nil
+                                showingLockSheet = true
+                            }
+                        }
+                        .help(model.selectedIsLockable
+                            ? "Decrypt this note back to plain markdown"
+                            : "Encrypt this note with a passphrase (unrecoverable if forgotten)")
+                    }
                     if let id = model.selectedID {
                         let isProject = indexService.isProject(id)
                         Button(
@@ -1014,6 +1052,77 @@ struct NotesView: View {
 
     private var wordCount: Int {
         model.noteText.split(whereSeparator: \.isWhitespace).count
+    }
+
+    private var lockSheet: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Lock This Note", systemImage: "lock")
+                .font(.headline)
+            SecureField("Passphrase", text: $lockPassphrase)
+            SecureField("Confirm passphrase", text: $lockConfirm)
+            Text("⚠️ There is NO recovery. If you forget this passphrase, the note's contents are permanently lost — Apple and Notetaker cannot decrypt it.")
+                .font(.caption)
+                .foregroundStyle(.orange)
+            if let lockError {
+                Text(lockError).font(.caption).foregroundStyle(.red)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) { showingLockSheet = false }
+                Button("Encrypt Note") {
+                    guard lockPassphrase.count >= 6 else {
+                        lockError = "Use at least 6 characters."
+                        return
+                    }
+                    guard lockPassphrase == lockConfirm else {
+                        lockError = "Passphrases don't match."
+                        return
+                    }
+                    Task {
+                        if await model.lockSelected(passphrase: lockPassphrase) {
+                            showingLockSheet = false
+                        } else {
+                            lockError = "Encryption failed."
+                        }
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .textFieldStyle(.roundedBorder)
+        .padding(20)
+        .frame(width: 420)
+    }
+
+    private var unlockSheet: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Unlock Note", systemImage: "lock.open")
+                .font(.headline)
+            SecureField("Passphrase", text: $lockPassphrase)
+                .onSubmit { attemptUnlock() }
+            if let lockError {
+                Text(lockError).font(.caption).foregroundStyle(.red)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) { showingUnlockSheet = false }
+                Button("Unlock") { attemptUnlock() }
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .textFieldStyle(.roundedBorder)
+        .padding(20)
+        .frame(width: 380)
+    }
+
+    private func attemptUnlock() {
+        Task {
+            if await model.unlockSelected(passphrase: lockPassphrase) {
+                showingUnlockSheet = false
+            } else {
+                lockError = "Wrong passphrase."
+            }
+        }
     }
 
     private var statsChip: String {

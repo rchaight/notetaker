@@ -50,11 +50,14 @@ public struct NoteIndexer: Sendable {
             projectDue: project?.dueDay
         )
 
+        // Locked notes: ciphertext must never reach the scanners or FTS —
+        // index the title only so search still finds the note by name.
+        let isLocked = flags["locked"] == "true"
         // Line numbers must be in FILE coordinates (outbound writes edit the
         // file), so scan the full contents, not just the body.
-        let scanned = NoteScanner.tasks(in: contents)
-        let links = NoteScanner.wikilinkTargets(in: document.body)
-        let tags = Set(NoteScanner.tags(in: document.body))
+        let scanned = isLocked ? [] : NoteScanner.tasks(in: contents)
+        let links = isLocked ? [] : NoteScanner.wikilinkTargets(in: document.body)
+        let tags = isLocked ? [] : Set(NoteScanner.tags(in: document.body))
 
         try database.queue.write { db in
             try note.save(db)
@@ -99,7 +102,9 @@ public struct NoteIndexer: Sendable {
                 try NoteTagRecord(noteId: noteId, tag: tag).save(db)
             }
         }
-        try database.updateFullText(noteId: noteId, title: title, body: document.body)
+        try database.updateFullText(
+            noteId: noteId, title: title, body: isLocked ? "" : document.body
+        )
         return true
     }
 

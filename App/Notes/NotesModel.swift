@@ -1,5 +1,7 @@
+import CryptoKit
 import Foundation
 import MarkdownKit
+import SecurityKit
 import Observation
 import VaultKit
 
@@ -27,6 +29,12 @@ final class NotesModel {
     var noteText = ""
 
     private(set) var root: URL?
+    /// Unlocked locked-notes this session: noteId → (key, envelope params).
+    /// In memory only; quitting relocks everything.
+    private var unlockedKeys: [String: SymmetricKey] = [:]
+    /// The locked note currently displayed as a placeholder (drives UI).
+    private(set) var lockedPlaceholder = false
+
     /// Recently opened notes, newest first (device-local UI state).
     private(set) var recents: [String] =
         UserDefaults.standard.stringArray(forKey: "recentNotes") ?? []
@@ -183,12 +191,84 @@ final class NotesModel {
             try? store.startDownloading(item.url)
             let contents = try await store.readString(at: item.url)
             loadedURL = item.url
-            noteText = contents
+            let document = MarkdownDocument(source: contents)
+            if let envelope = LockedNoteFile.parse(
+                frontmatterValues: document.frontmatter?.values ?? [:], body: document.body
+            ) {
+                if let key = unlockedKeys[id],
+                   let plain = try? NoteCrypto.decrypt(envelope.ciphertext, key: key) {
+                    noteText = plain
+                    lockedPlaceholder = false
+                } else {
+                    noteText = ""
+                    lockedPlaceholder = true
+                }
+            } else {
+                noteText = contents
+                lockedPlaceholder = false
+            }
             dirty = false
         } catch {
             loadedURL = nil
             noteText = ""
+            lockedPlaceholder = false
         }
+    }
+
+    /// Attempts to unlock the selected locked note with a passphrase.
+    func unlockSelected(passphrase: String) async -> Bool {
+        guard let url = loadedURL, let id = selectedID else { return false }
+        guard let contents = try? await store.readString(at: url) else { return false }
+        let document = MarkdownDocument(source: contents)
+        guard let envelope = LockedNoteFile.parse(
+            frontmatterValues: document.frontmatter?.values ?? [:], body: document.body
+        ) else { return false }
+        guard let key = try? NoteCrypto.deriveKey(
+            passphrase: passphrase, salt: envelope.salt, rounds: envelope.rounds
+        ), let plain = try? NoteCrypto.decrypt(envelope.ciphertext, key: key)
+        else { return false }
+        unlockedKeys[id] = key
+        noteText = plain
+        lockedPlaceholder = false
+        dirty = false
+        return true
+    }
+
+    /// Encrypts the current note with a new passphrase and rewrites the
+    /// file as ciphertext. UNRECOVERABLE if the passphrase is forgotten.
+    func lockSelected(passphrase: String) async -> Bool {
+        guard let url = loadedURL, let id = selectedID, !passphrase.isEmpty else { return false }
+        await flushSave(allowRename: false)
+        let salt = NoteCrypto.makeSalt()
+        guard let key = try? NoteCrypto.deriveKey(passphrase: passphrase, salt: salt),
+              let sealed = try? NoteCrypto.encrypt(noteText, key: key)
+        else { return false }
+        let rendered = LockedNoteFile.render(
+            title: id, salt: salt, rounds: NoteCrypto.defaultRounds, ciphertext: sealed
+        )
+        do {
+            try await store.writeString(rendered, to: url)
+            unlockedKeys[id] = key
+            dirty = false
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// Decrypts back to a plain note (requires it to be unlocked already).
+    func removeLockFromSelected() async {
+        guard let url = loadedURL, let id = selectedID, unlockedKeys[id] != nil else { return }
+        do {
+            try await store.writeString(noteText, to: url)
+            unlockedKeys[id] = nil
+            dirty = false
+        } catch {}
+    }
+
+    /// Whether the current note is a locked note (locked or unlocked state).
+    var selectedIsLockable: Bool {
+        selectedID.map { unlockedKeys[$0] != nil } ?? false || lockedPlaceholder
     }
 
     /// An external mutation (to-do toggle, quick add) rewrote a note file.
@@ -222,6 +302,21 @@ final class NotesModel {
         saveTask?.cancel()
         guard dirty, let url = loadedURL else { return }
         do {
+            // Unlocked locked-notes re-encrypt on every save: plaintext
+            // only ever exists in memory.
+            if let id = selectedID, let key = unlockedKeys[id] {
+                guard let contents = try? await store.readString(at: url) else { return }
+                let document = MarkdownDocument(source: contents)
+                guard let envelope = LockedNoteFile.parse(
+                    frontmatterValues: document.frontmatter?.values ?? [:], body: document.body
+                ), let sealed = try? NoteCrypto.encrypt(noteText, key: key) else { return }
+                let rendered = LockedNoteFile.render(
+                    title: id, salt: envelope.salt, rounds: envelope.rounds, ciphertext: sealed
+                )
+                try await store.writeString(rendered, to: url)
+                dirty = false
+                return
+            }
             try await store.writeString(noteText, to: url)
             dirty = false
             if allowRename {
