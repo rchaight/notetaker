@@ -7,6 +7,8 @@ import TaskEngine
 /// the exact source line in the note.
 struct TodoView: View {
     let service: VaultIndexService
+    /// Ribbon signal: each increment opens the Quick Add sheet.
+    var quickAddSignal = 0
     /// Jump to the task's source note (noteId, line) — wired by AppShell.
     var openNote: (String, Int?) -> Void = { _, _ in }
     @State private var grouped: [SmartBucket: [TaskRecord]] = [:]
@@ -78,17 +80,12 @@ struct TodoView: View {
     ]
 
     var body: some View {
-        NavigationStack {
+        NavigationSplitView {
+            sidebar
+                .navigationSplitViewColumnWidth(min: 170, ideal: 210, max: 300)
+                .navigationTitle("To-Do")
+        } detail: {
             VStack(spacing: 0) {
-                Picker("View", selection: $viewMode) {
-                    ForEach(ViewMode.allCases, id: \.self) { mode in
-                        Text(mode.rawValue).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .padding(.horizontal, 12)
-                .padding(.top, 6)
                 filterBar
                 currentView
             }
@@ -123,6 +120,9 @@ struct TodoView: View {
         }
         .sheet(isPresented: $showingQuickAdd) {
             quickAddSheet
+        }
+        .onChange(of: quickAddSignal) {
+            showingQuickAdd = true
         }
         .task {
             await service.start()
@@ -175,6 +175,46 @@ struct TodoView: View {
 
     private var allFilteredTasks: [TaskRecord] {
         grouped.values.flatMap(\.self)
+    }
+
+    /// Mirrors the Notes/Projects layout: view modes + saved filters.
+    private var sidebar: some View {
+        List {
+            Section("Views") {
+                ForEach(ViewMode.allCases, id: \.self) { mode in
+                    Label(mode.rawValue, systemImage: Self.modeIcon(mode))
+                        .contentShape(Rectangle())
+                        .listRowBackground(
+                            viewMode == mode ? Color.accentColor.opacity(0.18) : Color.clear
+                        )
+                        .onTapGesture { viewMode = mode }
+                }
+            }
+            if !savedFilters.isEmpty {
+                Section("Saved Filters") {
+                    ForEach(savedFilters, id: \.self) { saved in
+                        Label(saved, systemImage: "line.3.horizontal.decrease")
+                            .contentShape(Rectangle())
+                            .listRowBackground(
+                                filterText == saved ? Color.accentColor.opacity(0.18) : Color.clear
+                            )
+                            .onTapGesture {
+                                filterText = filterText == saved ? "" : saved
+                            }
+                    }
+                }
+            }
+        }
+    }
+
+    private static func modeIcon(_ mode: ViewMode) -> String {
+        switch mode {
+        case .list: "list.bullet"
+        case .board: "rectangle.split.3x1"
+        case .agenda: "calendar"
+        case .matrix: "square.grid.2x2"
+        case .log: "checkmark.circle"
+        }
     }
 
     @ViewBuilder private var currentView: some View {

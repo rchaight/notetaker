@@ -6,6 +6,8 @@ import SwiftUI
 /// over them — status, dates, and auto-% complete from their inline todos.
 struct ProjectsView: View {
     let service: VaultIndexService
+    /// Ribbon signal: each increment opens the New Project prompt.
+    var newProjectSignal = 0
     @State private var projects: [NoteRecord] = []
     @State private var progress: [String: (done: Int, total: Int)] = [:]
     @State private var selectedId: String?
@@ -28,6 +30,10 @@ struct ProjectsView: View {
                     }
                     .help("Create a project note (a regular .md note with project frontmatter)")
                 }
+            }
+            .onChange(of: newProjectSignal) {
+                newProjectName = ""
+                showingNewProject = true
             }
             .alert("New Project", isPresented: $showingNewProject) {
                 TextField("Project name", text: $newProjectName)

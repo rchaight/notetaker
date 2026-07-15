@@ -53,6 +53,7 @@ struct NotesView: View {
     /// list owns the highlight.
     @State private var sectionHighlight: String?
     @State private var expandedFolders: Set<String> = []
+    @AppStorage("noteSortOrder") private var noteSortOrder = "name"
 
     var body: some View {
         NavigationSplitView {
@@ -65,11 +66,6 @@ struct NotesView: View {
                             model.createNote()
                         }
                         .keyboardShortcut("n", modifiers: [.command])
-                        Button("Import Document", systemImage: "square.and.arrow.down") {
-                            showingImporter = true
-                        }
-                        .keyboardShortcut("i", modifiers: [.command, .shift])
-                        .help("Convert a PDF, image, RTF, HTML, or text file to a markdown note (⇧⌘I)")
                         Button("New Folder", systemImage: "folder.badge.plus") {
                             newFolderParent = ""
                             showingNewFolder = true
@@ -224,11 +220,63 @@ struct NotesView: View {
                     TextField("Search all notes", text: $searchText)
                         .textFieldStyle(.roundedBorder)
                         .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
+                        .padding(.top, 6)
                 #endif
+                sidebarActionBar
                 noteList
             }
         }
+    }
+
+    /// Compact icon strip over the note list (user-requested, Obsidian-ish):
+    /// new note · import document · add files/folders · sort · collapse.
+    private var sidebarActionBar: some View {
+        HStack(spacing: 4) {
+            actionIcon("square.and.pencil", "New note (⌘N)") {
+                model.createNote()
+            }
+            actionIcon("square.and.arrow.down", "Import a document (convert to markdown)") {
+                showingImporter = true
+            }
+            actionIcon("folder.badge.plus", "Add existing notes/folders to the vault") {
+                showingVaultImporter = true
+            }
+            Spacer()
+            Menu {
+                Picker("Sort", selection: $noteSortOrder) {
+                    Label("Name", systemImage: "textformat").tag("name")
+                    Label("Recently modified", systemImage: "clock").tag("modified")
+                }
+            } label: {
+                Image(systemName: "arrow.up.arrow.down")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .menuIndicator(.hidden)
+            .buttonStyle(.plain)
+            .help("Sort order")
+            actionIcon("rectangle.compress.vertical", "Collapse all folders") {
+                expandedFolders.removeAll()
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+    }
+
+    private func actionIcon(
+        _ icon: String, _ help: String, action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
     }
 
     private var noteList: some View {
@@ -376,38 +424,23 @@ struct NotesView: View {
         }
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 2) {
-                HStack(spacing: 14) {
-                    Button {
-                        showingImporter = true
-                    } label: {
-                        Label("Import Document…", systemImage: "square.and.arrow.down")
-                            .font(.callout)
+                EmptyView()
+                    .fileImporter(
+                        isPresented: $showingVaultImporter,
+                        allowedContentTypes: [
+                            .folder, .plainText,
+                            UTType(filenameExtension: "md") ?? .plainText,
+                            UTType(filenameExtension: "markdown") ?? .plainText,
+                        ],
+                        allowsMultipleSelection: true
+                    ) { outcome in
+                        guard case let .success(urls) = outcome else { return }
+                        Task {
+                            importStatus = await model.importIntoVault(urls: urls)
+                            try? await Task.sleep(for: .seconds(4))
+                            importStatus = nil
+                        }
                     }
-                    Button {
-                        showingVaultImporter = true
-                    } label: {
-                        Label("Add to Vault…", systemImage: "folder.badge.plus")
-                            .font(.callout)
-                    }
-                }
-                .buttonStyle(.borderless)
-                .padding(.vertical, 4)
-                .fileImporter(
-                    isPresented: $showingVaultImporter,
-                    allowedContentTypes: [
-                        .folder, .plainText,
-                        UTType(filenameExtension: "md") ?? .plainText,
-                        UTType(filenameExtension: "markdown") ?? .plainText,
-                    ],
-                    allowsMultipleSelection: true
-                ) { outcome in
-                    guard case let .success(urls) = outcome else { return }
-                    Task {
-                        importStatus = await model.importIntoVault(urls: urls)
-                        try? await Task.sleep(for: .seconds(4))
-                        importStatus = nil
-                    }
-                }
                 if let importStatus {
                     Text(importStatus)
                         .font(.caption)
@@ -1060,7 +1093,14 @@ struct NotesView: View {
             let ids = Set(indexService.tagNoteIds(selectedTag))
             return model.notes.filter { ids.contains($0.id) }
         }
-        guard !searchText.trimmingCharacters(in: .whitespaces).isEmpty else { return model.notes }
+        guard !searchText.trimmingCharacters(in: .whitespaces).isEmpty else {
+            if noteSortOrder == "modified" {
+                return model.notes.sorted {
+                    ($0.modificationDate ?? .distantPast) > ($1.modificationDate ?? .distantPast)
+                }
+            }
+            return model.notes
+        }
         let ranked = indexService.searchNoteIds(searchText)
         let merged = ranked + semanticIds.filter { !ranked.contains($0) }
         let byId = Dictionary(uniqueKeysWithValues: model.notes.map { ($0.id, $0) })
