@@ -4,6 +4,7 @@ import Foundation
 import IndexKit
 import MarkdownKit
 import Observation
+import SecurityKit
 import TaskEngine
 import VaultKit
 import WidgetKit
@@ -581,6 +582,70 @@ final class VaultIndexService {
         knownMTimes[noteId] = nil
         tasksVersion += 1
         onNoteMutated?(noteId)
+    }
+
+    /// Renames #from → #to in every note carrying the EXACT tag (nested
+    /// children like #from/x are untouched — the boundary guard excludes
+    /// them). Merge = rename onto an existing tag.
+    func renameTag(from: String, to: String) async {
+        guard let root, let indexer, let database, from != to, !to.isEmpty else { return }
+        let pattern = "(?<=^|\\s)#" + NSRegularExpression.escapedPattern(for: from) + "(?![\\w/-])"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return }
+        let ids = (try? database.noteIds(withTag: from)) ?? []
+        let replacement = "#" + NSRegularExpression.escapedTemplate(for: to)
+        for id in ids {
+            await beforeNoteMutation?(id)
+            let url = root.appendingPathComponent(id)
+            guard let contents = try? await store.readString(at: url) else { continue }
+            let range = NSRange(location: 0, length: (contents as NSString).length)
+            let updated = regex.stringByReplacingMatches(
+                in: contents, range: range, withTemplate: replacement
+            )
+            guard updated != contents else { continue }
+            try? await store.writeString(updated, to: url)
+            try? indexer.index(noteId: id, contents: updated, modifiedAt: nil)
+            knownMTimes[id] = nil
+            onNoteMutated?(id)
+        }
+        tasksVersion += 1
+    }
+
+    /// Strips #tag (exact) from every note carrying it.
+    func deleteTag(_ tag: String) async {
+        guard let root, let indexer, let database else { return }
+        let pattern = " ?#" + NSRegularExpression.escapedPattern(for: tag) + "(?![\\w/-])"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return }
+        let ids = (try? database.noteIds(withTag: tag)) ?? []
+        for id in ids {
+            await beforeNoteMutation?(id)
+            let url = root.appendingPathComponent(id)
+            guard let contents = try? await store.readString(at: url) else { continue }
+            let range = NSRange(location: 0, length: (contents as NSString).length)
+            let updated = regex.stringByReplacingMatches(in: contents, range: range, withTemplate: "")
+            guard updated != contents else { continue }
+            try? await store.writeString(updated, to: url)
+            try? indexer.index(noteId: id, contents: updated, modifiedAt: nil)
+            knownMTimes[id] = nil
+            onNoteMutated?(id)
+        }
+        tasksVersion += 1
+    }
+
+    /// Merge suggestions: heuristics always; Ollama's semantic layer when
+    /// configured (validated — never trusted to name real tags).
+    func suggestTagMerges() async -> [TagMerge] {
+        let tags = noteTags()
+        guard !tags.isEmpty else { return [] }
+        if let urlString = KeychainStore.read(account: "ollamaURL"),
+           let url = ServerURL.normalize(urlString) {
+            let model = UserDefaults.standard.string(forKey: "ollamaModel") ?? "qwen3"
+            let provider = OllamaProvider(baseURL: url, model: model.isEmpty ? "qwen3" : model)
+            if await provider.isAvailable(),
+               let merges = try? await provider.suggestTagMerges(tags: tags) {
+                return merges
+            }
+        }
+        return TagCuration.heuristicMerges(tags: tags)
     }
 
     func noteTags() -> [(tag: String, count: Int)] {

@@ -520,3 +520,16 @@ struct AutocompleteTests {
         #expect((revealed?.pointSize ?? 0) > 1, "cursor inside reveals the block")
     }
 }
+
+struct SubstringCompletionTests {
+    @Test func newTagOffersSubstringNearMisses() {
+        let out = AutocompleteContext.completionStrings(
+            query: "notes", partialLength: 5,
+            candidates: ["meeting-notes", "notes-archive", "budget"],
+            substringMatch: true
+        )
+        #expect(out.contains("meeting-notes"))
+        #expect(out.contains { $0.hasSuffix("-archive") || $0 == "notes-archive" })
+        #expect(!out.contains("budget"))
+    }
+}

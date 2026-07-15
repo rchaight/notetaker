@@ -65,13 +65,27 @@ public enum AutocompleteContext {
     /// word is just "al"), so candidates are trimmed to the partial start.
     /// `suffix` closes the token ("]]" for wikilinks).
     public static func completionStrings(
-        query: String, partialLength: Int, candidates: [String], appending suffix: String = ""
+        query: String, partialLength: Int, candidates: [String],
+        appending suffix: String = "", substringMatch: Bool = false
     ) -> [String] {
         let lowered = query.lowercased()
         let drop = max(query.count - partialLength, 0)
-        return candidates
-            .filter { lowered.isEmpty || $0.lowercased().hasPrefix(lowered) }
+        let prefixed = candidates.filter { lowered.isEmpty || $0.lowercased().hasPrefix(lowered) }
+        // Near-miss surfacing: a NEW tag being typed should show existing
+        // tags containing the text ("notes" → "meeting-notes"), reducing
+        // accidental duplicates. Substring hits can't splice into the
+        // partial word, so they only apply when the whole query is fresh.
+        let extras = substringMatch && drop == 0
+            ? candidates.filter {
+                !prefixed.contains($0) && $0.lowercased().contains(lowered) && !lowered.isEmpty
+            }
+            : []
+        return (prefixed + extras)
             .filter { $0.lowercased() != lowered }
-            .map { String($0.dropFirst(drop)) + suffix }
+            .map { candidate in
+                prefixed.contains(candidate)
+                    ? String(candidate.dropFirst(drop)) + suffix
+                    : candidate + suffix
+            }
     }
 }

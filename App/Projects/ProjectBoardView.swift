@@ -78,6 +78,7 @@ struct ProjectBoardView: View {
                         .foregroundStyle(task.checked ? Color.secondary : tint)
                 }
                 .buttonStyle(.plain)
+                .help(task.checked ? "Reopen task" : "Complete task")
                 Text(task.text)
                     .strikethrough(task.checked)
                     .font(.callout)

@@ -248,7 +248,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                 case .tag:
                     AutocompleteContext.completionStrings(
                         query: match.query, partialLength: charRange.length,
-                        candidates: tagCandidates
+                        candidates: tagCandidates, substringMatch: true
                     )
                 case .wikilink:
                     AutocompleteContext.completionStrings(

@@ -451,6 +451,7 @@ struct TodoView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Complete task")
+            .help("Complete task")
             .disabled(completing)
 
             VStack(alignment: .leading, spacing: 3) {

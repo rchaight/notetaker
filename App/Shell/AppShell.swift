@@ -235,6 +235,7 @@ struct AppShell: View {
                             )
                     }
                     .buttonStyle(.plain)
+                    .help("Switch to \(tab.title)")
                 }
                 Spacer()
             }

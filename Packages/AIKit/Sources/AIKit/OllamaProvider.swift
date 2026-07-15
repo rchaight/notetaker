@@ -114,6 +114,42 @@ public struct OllamaProvider: AIProvider {
 
     // MARK: - Plumbing
 
+    public func suggestTagMerges(tags: [(tag: String, count: Int)]) async throws -> [TagMerge] {
+        let heuristic = TagCuration.heuristicMerges(tags: tags)
+        let inventory = tags.map { "\($0.tag) (\($0.count))" }.joined(separator: ", ")
+        let schema: [String: Any] = [
+            "type": "object",
+            "properties": [
+                "merges": [
+                    "type": "array",
+                    "items": [
+                        "type": "object",
+                        "properties": [
+                            "from": ["type": "array", "items": ["type": "string"]],
+                            "into": ["type": "string"],
+                            "reason": ["type": "string"],
+                        ],
+                        "required": ["from", "into", "reason"],
+                    ],
+                ],
+            ],
+            "required": ["merges"],
+        ]
+        let raw = try await chat(
+            system: "You consolidate note tags. Suggest merging semantically duplicate or near-duplicate tags into the most-used variant. Only reference tags from the provided list. Fewer, higher-confidence suggestions beat many speculative ones.",
+            user: "Tags with usage counts: \(inventory)",
+            schema: schema
+        )
+        struct Response: Codable {
+            let merges: [TagMerge]
+        }
+        let ai = (try? JSONDecoder().decode(Response.self, from: Data(raw.utf8)))?.merges ?? []
+        // Model output is UNTRUSTED: validate, then union with heuristics.
+        let validated = TagCuration.validated(ai, against: tags)
+        let heuristicIds = Set(heuristic.map(\.id))
+        return heuristic + validated.filter { !heuristicIds.contains($0.id) }
+    }
+
     private func chat(system: String, user: String, schema: [String: Any]?) async throws -> String {
         var request = URLRequest(url: baseURL.appendingPathComponent("api/chat"))
         request.httpMethod = "POST"

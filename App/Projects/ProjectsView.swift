@@ -181,6 +181,7 @@ struct ProjectDetailView: View {
                                 .foregroundStyle(task.checked ? Color.secondary : Color.accentColor)
                         }
                         .buttonStyle(.plain)
+                        .help(task.checked ? "Reopen task" : "Complete task")
                         Text(task.text)
                             .strikethrough(task.checked)
                             .foregroundStyle(task.checked ? .secondary : .primary)

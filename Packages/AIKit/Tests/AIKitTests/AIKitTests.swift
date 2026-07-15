@@ -257,3 +257,32 @@ struct AppleEmbeddingLiveTests {
         #expect(related > unrelated, "curriculum topics must outrank car maintenance (\(related) vs \(unrelated))")
     }
 }
+
+struct TagCurationTests {
+    @Test func detectsCasePluralAndSeparatorVariants() {
+        let merges = TagCuration.heuristicMerges(tags: [
+            ("project", 10), ("Projects", 2), ("meeting-notes", 5),
+            ("meeting_notes", 1), ("budget", 3),
+        ])
+        #expect(merges.contains { $0.from == ["Projects"] && $0.into == "project" })
+        #expect(merges.contains { $0.from == ["meeting_notes"] && $0.into == "meeting-notes" })
+        #expect(!merges.contains { $0.into == "budget" || $0.from.contains("budget") })
+    }
+
+    @Test func higherCountWins() {
+        let merges = TagCuration.heuristicMerges(tags: [("Work", 1), ("work", 9)])
+        #expect(merges == [TagMerge(from: ["Work"], into: "work", reason: "case variant")])
+    }
+
+    @Test func validationDropsHallucinatedTags() {
+        let tags: [(String, Int)] = [("real", 2), ("also", 1)]
+        let merges = [
+            TagMerge(from: ["ghost"], into: "real", reason: "x"),
+            TagMerge(from: ["also"], into: "imaginary", reason: "x"),
+            TagMerge(from: ["also", "ghost"], into: "real", reason: "x"),
+            TagMerge(from: ["real"], into: "real", reason: "self"),
+        ]
+        let valid = TagCuration.validated(merges, against: tags)
+        #expect(valid == [TagMerge(from: ["also"], into: "real", reason: "x")])
+    }
+}

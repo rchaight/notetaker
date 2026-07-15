@@ -47,6 +47,12 @@ public enum AIProviderError: Error, Equatable, Sendable {
 /// One AI backend. Private/on-device by default: FoundationModels → Ollama
 /// (homelab) → None (deterministic) — the app must stay fully usable when
 /// every model is missing.
+public extension AIProvider {
+    func suggestTagMerges(tags: [(tag: String, count: Int)]) async throws -> [TagMerge] {
+        TagCuration.heuristicMerges(tags: tags)
+    }
+}
+
 public protocol AIProvider: Sendable {
     var name: String { get }
     /// Rough input-token ceiling; nil = unbounded. The router skips
@@ -56,4 +62,6 @@ public protocol AIProvider: Sendable {
     func summarize(_ text: String) async throws -> String
     func extractActionItems(from text: String) async throws -> [AITask]
     func parseTask(_ input: String) async throws -> AITask
+    /// Tag-consolidation suggestions. Default: deterministic heuristics.
+    func suggestTagMerges(tags: [(tag: String, count: Int)]) async throws -> [TagMerge]
 }

@@ -57,6 +57,10 @@ struct NotesView: View {
     @State private var tagsExpanded = false
     @State private var showingTagBrowser = false
     @State private var tagSearch = ""
+    @State private var tagRenameTarget: String?
+    @State private var tagRenameText = ""
+    @State private var mergeSuggestions: [TagMerge] = []
+    @State private var suggestingMerges = false
 
     var body: some View {
         NavigationSplitView {
@@ -381,7 +385,7 @@ struct NotesView: View {
                             ForEach(topTags, id: \.tag) { entry in
                                 tagChipRow(entry.tag, count: entry.count)
                             }
-                            if allTags.count > topTags.count {
+                            if true {
                                 Button {
                                     tagSearch = ""
                                     showingTagBrowser = true
@@ -630,6 +634,7 @@ struct NotesView: View {
                         }
                         .buttonStyle(.plain)
                         .opacity(0.6)
+                        .help("Close tab")
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
@@ -847,10 +852,61 @@ struct NotesView: View {
 
     private var tagBrowser: some View {
         VStack(spacing: 0) {
-            TextField("Filter tags…", text: $tagSearch)
-                .textFieldStyle(.plain)
-                .font(.title3)
-                .padding(12)
+            HStack {
+                TextField("Filter tags…", text: $tagSearch)
+                    .textFieldStyle(.plain)
+                    .font(.title3)
+                Button {
+                    suggestingMerges = true
+                    Task {
+                        mergeSuggestions = await indexService.suggestTagMerges()
+                        suggestingMerges = false
+                    }
+                } label: {
+                    if suggestingMerges {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Label("Suggest Merges", systemImage: "wand.and.stars")
+                    }
+                }
+                .help("Find duplicate-ish tags to fold together (heuristics + your local Ollama when configured)")
+                .disabled(suggestingMerges)
+            }
+            .padding(12)
+            if !mergeSuggestions.isEmpty {
+                Divider()
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(mergeSuggestions) { merge in
+                        HStack {
+                            Text("#\(merge.from.joined(separator: ", #")) → #\(merge.into)")
+                                .font(.callout)
+                            Text(merge.reason)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button("Apply") {
+                                let suggestion = merge
+                                mergeSuggestions.removeAll { $0.id == suggestion.id }
+                                Task {
+                                    for source in suggestion.from {
+                                        await indexService.renameTag(
+                                            from: source, to: suggestion.into
+                                        )
+                                    }
+                                    allTags = indexService.noteTags()
+                                }
+                            }
+                            .controlSize(.small)
+                            Button("Dismiss") {
+                                mergeSuggestions.removeAll { $0.id == merge.id }
+                            }
+                            .controlSize(.small)
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+            }
             Divider()
             List {
                 ForEach(
@@ -874,11 +930,64 @@ struct NotesView: View {
                         selectedTag = entry.tag
                         showingTagBrowser = false
                     }
+                    .contextMenu {
+                        Button("Rename…", systemImage: "pencil") {
+                            tagRenameText = entry.tag
+                            tagRenameTarget = entry.tag
+                        }
+                        Menu("Merge Into") {
+                            ForEach(
+                                allTags.filter { $0.tag != entry.tag }.map(\.tag).sorted(),
+                                id: \.self
+                            ) { other in
+                                Button("#" + other) {
+                                    Task {
+                                        await indexService.renameTag(from: entry.tag, to: other)
+                                        allTags = indexService.noteTags()
+                                    }
+                                }
+                            }
+                        }
+                        Button("Remove Tag Everywhere", systemImage: "trash", role: .destructive) {
+                            Task {
+                                await indexService.deleteTag(entry.tag)
+                                allTags = indexService.noteTags()
+                            }
+                        }
+                    }
                 }
             }
             .listStyle(.plain)
         }
-        .frame(minWidth: 380, minHeight: 380)
+        .frame(minWidth: 440, minHeight: 420)
+        .alert(
+            "Rename Tag",
+            isPresented: Binding(
+                get: { tagRenameTarget != nil },
+                set: {
+                    if !$0 {
+                        tagRenameTarget = nil
+                    }
+                }
+            )
+        ) {
+            TextField("New tag name", text: $tagRenameText)
+            Button("Rename") {
+                if let target = tagRenameTarget {
+                    let newName = tagRenameText
+                        .trimmingCharacters(in: .whitespaces)
+                        .replacingOccurrences(of: "#", with: "")
+                    Task {
+                        await indexService.renameTag(from: target, to: newName)
+                        allTags = indexService.noteTags()
+                    }
+                }
+                tagRenameTarget = nil
+            }
+            Button("Cancel", role: .cancel) { tagRenameTarget = nil }
+        } message: {
+            Text("Rewrites #\(tagRenameTarget ?? "") in every note that carries it.")
+        }
     }
 
     /// One node per distinct tag path component; counts include nested tags.
