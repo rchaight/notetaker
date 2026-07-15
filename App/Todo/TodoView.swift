@@ -88,38 +88,22 @@ struct TodoView: View {
                 .navigationSplitViewColumnWidth(min: 170, ideal: 210, max: 300)
                 .navigationTitle("To-Do")
         } detail: {
-            VStack(spacing: 0) {
-                filterBar
-                currentView
-            }
-            .navigationTitle("To-Do")
-            .toolbar {
-                ToolbarItem {
-                    if showStreaks {
-                        streakChip
-                    }
-                }
-                ToolbarItem {
-                    Menu {
-                        Toggle("Show Streaks", isOn: $showStreaks)
-                        Picker("Density", selection: $densityRaw) {
-                            ForEach(Density.allCases, id: \.rawValue) { option in
-                                Text(option.title).tag(option.rawValue)
-                            }
+            currentView
+                .navigationTitle("To-Do")
+                .toolbar {
+                    ToolbarItem {
+                        if showStreaks {
+                            streakChip
                         }
-                    } label: {
-                        Label("Density", systemImage: "rectangle.arrowtriangle.2.inward")
                     }
-                    .help("Row density")
-                }
-                ToolbarItem {
-                    Button("New Task", systemImage: "plus") {
-                        showingQuickAdd = true
+                    ToolbarItem {
+                        Button("New Task", systemImage: "plus") {
+                            showingQuickAdd = true
+                        }
+                        .keyboardShortcut("n", modifiers: [.command, .shift])
+                        .help("Quick Add (⇧⌘N) — e.g. \"email dean tomorrow p1 #admin\"")
                     }
-                    .keyboardShortcut("n", modifiers: [.command, .shift])
-                    .help("Quick Add (⇧⌘N) — e.g. \"email dean tomorrow p1 #admin\"")
                 }
-            }
         }
         .sheet(isPresented: $showingQuickAdd) {
             quickAddSheet
@@ -180,8 +164,69 @@ struct TodoView: View {
         grouped.values.flatMap(\.self)
     }
 
-    /// Mirrors the Notes/Projects layout: view modes + saved filters.
+    /// Mirrors the Notes sidebar: filter field on top, compact icon strip
+    /// (positions match Notes — new to-do where new note sits), then lists.
     private var sidebar: some View {
+        VStack(spacing: 0) {
+            filterBar
+                .padding(.top, 2)
+            sidebarActionBar
+            sidebarLists
+        }
+    }
+
+    private var sidebarActionBar: some View {
+        HStack(spacing: 4) {
+            actionIcon("square.and.pencil", "New to-do (⇧⌘N)") {
+                showingQuickAdd = true
+            }
+            actionIcon("text.badge.plus", "Save current filter") {
+                let trimmed = filterText.trimmingCharacters(in: .whitespaces)
+                if !trimmed.isEmpty, !savedFilters.contains(trimmed) {
+                    setSavedFilters(savedFilters + [trimmed])
+                }
+            }
+            actionIcon("checkmark.circle", "Open the Logbook") {
+                viewModeRaw = ViewMode.log.rawValue
+            }
+            Spacer()
+            Menu {
+                Toggle("Show Streaks", isOn: $showStreaks)
+                Picker("Density", selection: $densityRaw) {
+                    ForEach(Density.allCases, id: \.rawValue) { option in
+                        Text(option.title).tag(option.rawValue)
+                    }
+                }
+            } label: {
+                Image(systemName: "rectangle.arrowtriangle.2.inward")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .menuIndicator(.hidden)
+            .buttonStyle(.plain)
+            .help("Density & streaks")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+    }
+
+    private func actionIcon(
+        _ icon: String, _ help: String, action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+
+    private var sidebarLists: some View {
         List {
             Section("Views") {
                 ForEach(ViewMode.allCases, id: \.self) { mode in
