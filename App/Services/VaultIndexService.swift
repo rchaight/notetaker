@@ -557,6 +557,42 @@ final class VaultIndexService {
         return id
     }
 
+    /// Moves a task's line into another note (assign to project). The raw
+    /// line moves verbatim — tokens, ^id, and therefore CloudKit extras all
+    /// follow. Drift-protected on the source side.
+    func moveTask(_ task: TaskRecord, toNote destinationId: String) async -> Bool {
+        guard let root, let indexer, task.noteId != destinationId else { return false }
+        await beforeNoteMutation?(task.noteId)
+        let sourceURL = root.appendingPathComponent(task.noteId)
+        let destinationURL = root.appendingPathComponent(destinationId)
+        guard let source = try? await store.readString(at: sourceURL),
+              let line = TaskLineToggler.locate(
+                  contents: source, anchorLine: task.line, expectedRawLine: task.rawLine
+              ),
+              let destination = try? await store.readString(at: destinationURL)
+        else { return false }
+        // Destination first: if it fails, the task is still in its source.
+        let movedLine = task.rawLine.hasSuffix("\r")
+            ? String(task.rawLine.dropLast()) : task.rawLine
+        let appended = (destination.hasSuffix("\n") ? destination : destination + "\n")
+            + movedLine + "\n"
+        do {
+            try await store.writeString(appended, to: destinationURL)
+            let trimmed = TaskLineToggler.removingLine(source, at: line)
+            try await store.writeString(trimmed, to: sourceURL)
+            try indexer.index(noteId: destinationId, contents: appended, modifiedAt: nil)
+            try indexer.index(noteId: task.noteId, contents: trimmed, modifiedAt: nil)
+            knownMTimes[task.noteId] = nil
+            knownMTimes[destinationId] = nil
+            tasksVersion += 1
+            onNoteMutated?(task.noteId)
+            onNoteMutated?(destinationId)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     /// Appends a task line to a note (project detail's add-task field).
     /// Input goes through the ONE quick-add grammar.
     func addTask(to noteId: String, input: String) async -> Bool {

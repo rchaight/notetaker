@@ -132,6 +132,40 @@ struct TaskDetailView: View {
                     }
                 }
                 GridRow {
+                    Label("Project", systemImage: "calendar.day.timeline.left")
+                        .foregroundStyle(.secondary)
+                    Menu {
+                        ForEach(
+                            service.projects().filter { $0.id != task.noteId }, id: \.id
+                        ) { project in
+                            Button(project.title) {
+                                Task {
+                                    if await service.moveTask(task, toNote: project.id) {
+                                        dismiss()
+                                    }
+                                }
+                            }
+                        }
+                        if task.noteId != "Inbox.md" {
+                            Divider()
+                            Button("Inbox") {
+                                Task {
+                                    if await service.moveTask(task, toNote: "Inbox.md") {
+                                        dismiss()
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        Text(
+                            service.projects().first { $0.id == task.noteId }?.title
+                                ?? "Move to…"
+                        )
+                    }
+                    .menuIndicator(.visible)
+                    .fixedSize()
+                }
+                GridRow {
                     Label("Note", systemImage: "note.text")
                         .foregroundStyle(.secondary)
                     Button {

@@ -16,6 +16,7 @@ struct TodoView: View {
     @State private var subtaskProgress: [String: (done: Int, total: Int)] = [:]
     @State private var showingQuickAdd = false
     @State private var quickAddText = ""
+    @State private var quickAddDestination = "Inbox.md"
     /// Things-style calm completion: rows strike + fade for a beat before
     /// the write removes them from the list.
     @State private var completingIds: Set<String> = []
@@ -473,6 +474,12 @@ struct TodoView: View {
             TextField("email dean tomorrow p1 #admin", text: $quickAddText)
                 .textFieldStyle(.roundedBorder)
                 .onSubmit { submitQuickAdd() }
+            Picker("Add to", selection: $quickAddDestination) {
+                Text("Inbox").tag("Inbox.md")
+                ForEach(service.projects(), id: \.id) { project in
+                    Text(project.title).tag(project.id)
+                }
+            }
             Text("Natural dates work (tomorrow, friday, jul 20) — or tokens: >date  !p1–p4  #label  &every 3 days")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -494,9 +501,16 @@ struct TodoView: View {
 
     private func submitQuickAdd() {
         let input = quickAddText
+        let destination = quickAddDestination
         showingQuickAdd = false
         quickAddText = ""
-        Task { await service.quickAdd(input) }
+        Task {
+            if destination == "Inbox.md" {
+                await service.quickAdd(input)
+            } else {
+                _ = await service.addTask(to: destination, input: input)
+            }
+        }
     }
 
     /// Strike + fade in place (~0.4s), then write the toggle; the reindex
@@ -607,6 +621,19 @@ struct TodoView: View {
             }
             Button("Open in Note", systemImage: "arrow.up.right.square") {
                 openNote(task.noteId, task.line)
+            }
+            Menu("Move to Project") {
+                ForEach(service.projects().filter { $0.id != task.noteId }, id: \.id) { project in
+                    Button(project.title) {
+                        Task { _ = await service.moveTask(task, toNote: project.id) }
+                    }
+                }
+                Divider()
+                if task.noteId != "Inbox.md" {
+                    Button("Inbox") {
+                        Task { _ = await service.moveTask(task, toNote: "Inbox.md") }
+                    }
+                }
             }
             Button("Snooze to Tomorrow", systemImage: "moon.zzz") {
                 Task { await service.reschedule(task, due: Self.tomorrowISO()) }
