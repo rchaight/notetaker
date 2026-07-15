@@ -209,7 +209,11 @@ struct AppShell: View {
     }
 
     private var projectsTab: some View {
-        ProjectsView(service: indexService, newProjectSignal: newProjectSignal)
+        ProjectsView(
+            service: indexService,
+            extrasStore: extrasStore,
+            newProjectSignal: newProjectSignal
+        )
     }
 
     #if DEBUG

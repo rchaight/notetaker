@@ -557,6 +557,27 @@ final class VaultIndexService {
         return id
     }
 
+    /// Appends a task line to a note (project detail's add-task field).
+    /// Input goes through the ONE quick-add grammar.
+    func addTask(to noteId: String, input: String) async -> Bool {
+        guard let root, let indexer,
+              let line = await Self.quickAddLine(for: input) else { return false }
+        await beforeNoteMutation?(noteId)
+        let url = root.appendingPathComponent(noteId)
+        guard let contents = try? await store.readString(at: url) else { return false }
+        let updated = (contents.hasSuffix("\n") ? contents : contents + "\n") + line + "\n"
+        do {
+            try await store.writeString(updated, to: url)
+            try indexer.index(noteId: noteId, contents: updated, modifiedAt: nil)
+            knownMTimes[noteId] = nil
+            tasksVersion += 1
+            onNoteMutated?(noteId)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     /// Manual full rescan (Vault tab toolbar).
     func rescan() async {
         await reindexFromDisk()

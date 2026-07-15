@@ -6,6 +6,7 @@ import SwiftUI
 /// over them — status, dates, and auto-% complete from their inline todos.
 struct ProjectsView: View {
     let service: VaultIndexService
+    var extrasStore = TaskExtrasStore()
     /// Ribbon signal: each increment opens the New Project prompt.
     var newProjectSignal = 0
     @State private var projects: [NoteRecord] = []
@@ -60,7 +61,9 @@ struct ProjectsView: View {
             }
         } detail: {
             if let project = projects.first(where: { $0.id == selectedId }) {
-                ProjectDetailView(service: service, project: project)
+                ProjectDetailView(
+                    service: service, extrasStore: extrasStore, project: project
+                )
             } else {
                 ContentUnavailableView(
                     "Select a Project", systemImage: "calendar.day.timeline.left", description: nil
@@ -123,9 +126,13 @@ struct ProjectsView: View {
 /// everywhere else; the timeline view arrives with M7a.
 struct ProjectDetailView: View {
     let service: VaultIndexService
+    var extrasStore = TaskExtrasStore()
     let project: NoteRecord
     @State private var tasks: [TaskRecord] = []
     @State private var mode: Mode = .tasks
+    @State private var newTaskText = ""
+    @State private var detailTaskId: String?
+    @Environment(\.openWindow) private var openWindow
 
     enum Mode: String, CaseIterable, Identifiable {
         case tasks = "Tasks"
@@ -162,6 +169,29 @@ struct ProjectDetailView: View {
         .task(id: "\(project.id)-\(service.tasksVersion)") {
             tasks = service.tasks(inNote: project.id)
         }
+        .sheet(
+            isPresented: Binding(
+                get: { detailTaskId != nil },
+                set: {
+                    if !$0 {
+                        detailTaskId = nil
+                    }
+                }
+            )
+        ) {
+            if let id = detailTaskId {
+                TaskDetailView(service: service, extrasStore: extrasStore, taskId: id)
+            }
+        }
+    }
+
+    /// Same detail surface as the To-Do tab: window on macOS, sheet on iOS.
+    private func openDetail(_ task: TaskRecord) {
+        #if os(macOS)
+            openWindow(id: "task-detail", value: task.id)
+        #else
+            detailTaskId = task.id
+        #endif
     }
 
     private var taskList: some View {
@@ -172,6 +202,21 @@ struct ProjectDetailView: View {
                 LabeledContent("Due", value: project.projectDue ?? "—")
             }
             Section("Tasks") {
+                HStack(spacing: 8) {
+                    Image(systemName: "plus.circle")
+                        .foregroundStyle(Color.accentColor)
+                    TextField(
+                        "Add a task — \"design review friday p2 #api\"",
+                        text: $newTaskText
+                    )
+                    .textFieldStyle(.plain)
+                    .onSubmit {
+                        let input = newTaskText.trimmingCharacters(in: .whitespaces)
+                        guard !input.isEmpty else { return }
+                        newTaskText = ""
+                        Task { _ = await service.addTask(to: project.id, input: input) }
+                    }
+                }
                 ForEach(tasks) { task in
                     HStack(spacing: 8) {
                         Button {
@@ -185,6 +230,9 @@ struct ProjectDetailView: View {
                         Text(task.text)
                             .strikethrough(task.checked)
                             .foregroundStyle(task.checked ? .secondary : .primary)
+                            .contentShape(Rectangle())
+                            .onTapGesture { openDetail(task) }
+                            .help("Open task details")
                         Spacer()
                         if task.dependsOn != nil {
                             Image(systemName: "link")
