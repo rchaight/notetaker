@@ -21,6 +21,8 @@ public struct ParsedTaskMetadata: Equatable, Sendable {
     public let dependsOn: [String]
     /// `✅2026-07-14` — the day the task was completed (Logbook token).
     public let completedDay: String?
+    /// `@name` — who owns the task (projects aggregate these).
+    public let assignee: String?
 
     public init(
         cleanText: String,
@@ -31,7 +33,8 @@ public struct ParsedTaskMetadata: Equatable, Sendable {
         recurrence: Recurrence? = nil,
         blockId: String? = nil,
         dependsOn: [String] = [],
-        completedDay: String? = nil
+        completedDay: String? = nil,
+        assignee: String? = nil
     ) {
         self.cleanText = cleanText
         self.dueDate = dueDate
@@ -42,6 +45,7 @@ public struct ParsedTaskMetadata: Equatable, Sendable {
         self.blockId = blockId
         self.dependsOn = dependsOn
         self.completedDay = completedDay
+        self.assignee = assignee
     }
 }
 
@@ -66,14 +70,31 @@ public enum TaskTokenParser {
         let blockId = extractBlockId(&working)
         let dependsOn = extractDependencies(&working)
         let completedDay = extractCompletedDay(&working)
+        let assignee = extractAssignee(&working)
         let clean = working
             .replacingOccurrences(of: #"\s{2,}"#, with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespaces)
         return ParsedTaskMetadata(
             cleanText: clean, dueDate: dueDate, startDate: startDate,
             priority: priority, labels: labels, recurrence: recurrence,
-            blockId: blockId, dependsOn: dependsOn, completedDay: completedDay
+            blockId: blockId, dependsOn: dependsOn, completedDay: completedDay,
+            assignee: assignee
         )
+    }
+
+    /// `@name` at a word boundary; e-mail-style "a@b" never matches.
+    private static let assigneeRegex = try? NSRegularExpression(
+        pattern: "(?<=^|\\s)@([A-Za-z0-9_.-]+)"
+    )
+
+    private static func extractAssignee(_ text: inout String) -> String? {
+        guard let regex = assigneeRegex else { return nil }
+        let ns = text as NSString
+        guard let match = regex.firstMatch(in: text, range: NSRange(location: 0, length: ns.length))
+        else { return nil }
+        let name = ns.substring(with: match.range(at: 1))
+        text = ns.replacingCharacters(in: match.range, with: "")
+        return name
     }
 
     private static let completedRegex = try? NSRegularExpression(

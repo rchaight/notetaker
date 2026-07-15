@@ -213,3 +213,33 @@ struct ReplacingTextTests {
         #expect(TaskLineRewriter.replacingText("just prose", with: "x") == "just prose")
     }
 }
+
+struct AssigneeTests {
+    @Test func assigneeParsesAndCleans() {
+        let parsed = TaskTokenParser.parse("review draft @robert >2026-07-20")
+        #expect(parsed.assignee == "robert")
+        #expect(parsed.cleanText == "review draft")
+        #expect(parsed.dueDate == "2026-07-20")
+    }
+
+    @Test func emailsNeverMatch() {
+        let parsed = TaskTokenParser.parse("email dean@school.edu about it")
+        #expect(parsed.assignee == nil)
+        #expect(parsed.cleanText == "email dean@school.edu about it")
+    }
+
+    @Test func setRemoveAndRebuildKeepAssignee() {
+        let set = TaskLineRewriter.settingAssignee("- [ ] task !p1", to: "sam")
+        #expect(set == "- [ ] task !p1 @sam")
+        #expect(TaskLineRewriter.settingAssignee(set, to: nil) == "- [ ] task !p1")
+        let rebuilt = TaskLineRewriter.replacingText(set, with: "renamed task")
+        #expect(rebuilt == "- [ ] renamed task !p1 @sam")
+    }
+
+    @Test func labelRemoval() {
+        #expect(TaskLineRewriter.removingLabel("- [ ] x #milestone >2026-08-01", label: "milestone")
+            == "- [ ] x >2026-08-01")
+        #expect(TaskLineRewriter.removingLabel("- [ ] x #milestones", label: "milestone")
+            == "- [ ] x #milestones")
+    }
+}

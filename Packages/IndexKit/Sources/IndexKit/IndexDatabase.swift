@@ -7,7 +7,7 @@ import GRDB
 /// the caller trigger a full rescan.
 public final class IndexDatabase: Sendable {
     /// Bump when the schema changes; mismatch wipes and rebuilds.
-    public static let schemaVersion = 12
+    public static let schemaVersion = 13
 
     public let queue: DatabaseQueue
 
@@ -77,6 +77,7 @@ public final class IndexDatabase: Sendable {
                 t.column("blockId", .text)
                 t.column("dependsOn", .text)
                 t.column("completedDay", .text).indexed()
+                t.column("assignee", .text)
             }
             try db.create(table: TaskLabelRecord.databaseTableName) { t in
                 t.column("taskId", .text).notNull().indexed()

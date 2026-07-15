@@ -80,6 +80,9 @@ public enum TaskLineRewriter {
             tokens.append("^" + blockId)
         }
         tokens += parsed.dependsOn.map { "blockedby:^" + $0 }
+        if let assignee = parsed.assignee {
+            tokens.append("@" + assignee)
+        }
         if let completed = parsed.completedDay {
             tokens.append("✅" + completed)
         }
@@ -108,6 +111,36 @@ public enum TaskLineRewriter {
         }
         guard let priority else { return rawLine }
         return appending(rawLine, token: "!p\(priority)")
+    }
+
+    /// The raw line with its `@assignee` token replaced/added/removed.
+    public static func settingAssignee(_ rawLine: String, to assignee: String?) -> String {
+        let pattern = "(?<=^|\\s)@[A-Za-z0-9_.-]+"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return rawLine }
+        let ns = rawLine as NSString
+        let match = regex.firstMatch(in: rawLine, range: NSRange(location: 0, length: ns.length))
+        if let match {
+            if let assignee {
+                return ns.replacingCharacters(in: match.range, with: "@" + assignee)
+            }
+            var removal = match.range
+            if removal.location > 0, ns.character(at: removal.location - 1) == 0x20 {
+                removal = NSRange(location: removal.location - 1, length: removal.length + 1)
+            }
+            return ns.replacingCharacters(in: removal, with: "")
+        }
+        guard let assignee else { return rawLine }
+        return appending(rawLine, token: "@" + assignee)
+    }
+
+    /// Removes `#label` from the line (milestone toggle off).
+    public static func removingLabel(_ rawLine: String, label: String) -> String {
+        let pattern = " ?#" + NSRegularExpression.escapedPattern(for: label) + "(?![\\w/-])"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return rawLine }
+        let ns = rawLine as NSString
+        return regex.stringByReplacingMatches(
+            in: rawLine, range: NSRange(location: 0, length: ns.length), withTemplate: ""
+        )
     }
 
     /// Appends `#label` (no-op when the label is already on the line).
