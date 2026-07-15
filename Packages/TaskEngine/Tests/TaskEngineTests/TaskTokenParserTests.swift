@@ -195,3 +195,21 @@ struct StreakTests {
         #expect(dead.streakDays == 0)
     }
 }
+
+struct ReplacingTextTests {
+    @Test func preservesTokensAroundNewTitle() {
+        let line = "- [ ] call >2026-07-20 the dean !p2 #admin ^t-ab12"
+        let out = TaskLineRewriter.replacingText(line, with: "email the dean #admin")
+        #expect(out == "- [ ] email the dean #admin >2026-07-20 !p2 ^t-ab12")
+    }
+
+    @Test func checkedStateIndentAndCompletionSurvive() {
+        let line = "  - [x] done thing ✅2026-07-14\r"
+        let out = TaskLineRewriter.replacingText(line, with: "renamed thing")
+        #expect(out == "  - [x] renamed thing ✅2026-07-14\r")
+    }
+
+    @Test func nonTaskLineUntouched() {
+        #expect(TaskLineRewriter.replacingText("just prose", with: "x") == "just prose")
+    }
+}

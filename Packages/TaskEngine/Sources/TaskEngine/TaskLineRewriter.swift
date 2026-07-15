@@ -45,6 +45,50 @@ public enum TaskLineRewriter {
         return (appending(rawLine, token: "^" + slug), slug)
     }
 
+    /// The raw line rebuilt around a NEW task text, preserving every token
+    /// (due/start/priority/recurrence/^id/dependencies/✅completion) and the
+    /// checkbox prefix. Weekday-style dates canonicalize to ISO — the parse
+    /// is the only reliable way to separate text from tokens, since tokens
+    /// may sit anywhere inside the original text.
+    public static func replacingText(_ rawLine: String, with newText: String) -> String {
+        let pattern = #"^(\s*(?:[-*+]|[0-9]+[.)])\s+\[( |x|X)\]\s+)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(
+                  in: rawLine, range: NSRange(location: 0, length: (rawLine as NSString).length)
+              )
+        else { return rawLine }
+        let ns = rawLine as NSString
+        let prefix = ns.substring(with: match.range(at: 1))
+        let trailing = String(rawLine.reversed().prefix { $0 == "\r" }.reversed())
+        let body = ns.substring(from: match.range.length)
+        let parsed = TaskTokenParser.parse(body)
+
+        var tokens: [String] = []
+        if let due = parsed.dueDate {
+            tokens.append(">" + due)
+        }
+        if let start = parsed.startDate {
+            tokens.append("~" + start)
+        }
+        if let priority = parsed.priority {
+            tokens.append("!p\(priority)")
+        }
+        if let recurrence = parsed.recurrence {
+            tokens.append(recurrence.rawToken)
+        }
+        if let blockId = parsed.blockId {
+            tokens.append("^" + blockId)
+        }
+        tokens += parsed.dependsOn.map { "blockedby:^" + $0 }
+        if let completed = parsed.completedDay {
+            tokens.append("✅" + completed)
+        }
+
+        let cleanTitle = newText.trimmingCharacters(in: .whitespaces)
+        let suffix = tokens.isEmpty ? "" : " " + tokens.joined(separator: " ")
+        return prefix + cleanTitle + suffix + trailing
+    }
+
     /// The raw line with its `!priority` token replaced/added/removed.
     public static func settingPriority(_ rawLine: String, to priority: Int?) -> String {
         let pattern = #"(?<=^|\s)!(p[1-4]|high|medium|low)\b"#

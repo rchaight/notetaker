@@ -18,6 +18,7 @@ struct TaskDetailView: View {
     @State private var extras = TaskExtrasStore.Extras()
     @State private var extrasKey: String?
     @State private var saveState: String?
+    @FocusState private var titleFocused: Bool
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -34,6 +35,11 @@ struct TaskDetailView: View {
         }
         .frame(minWidth: 440, idealWidth: 520, minHeight: 420)
         .task(id: "\(taskId)-\(service.tasksVersion)") { await load() }
+        .onDisappear {
+            if let task {
+                commitTitle(task)
+            }
+        }
     }
 
     private func load() async {
@@ -67,7 +73,13 @@ struct TaskDetailView: View {
                 TextField("Task", text: $titleText, axis: .vertical)
                     .font(.title3)
                     .textFieldStyle(.plain)
+                    .focused($titleFocused)
                     .onSubmit { commitTitle(task) }
+                    .onChange(of: titleFocused) {
+                        if !titleFocused {
+                            commitTitle(task)
+                        }
+                    }
             }
 
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
@@ -176,7 +188,7 @@ struct TaskDetailView: View {
         guard !newTitle.isEmpty, newTitle != task.text else { return }
         Task {
             await service.rewriteTaskLine(task) { line in
-                line.replacingOccurrences(of: task.text, with: newTitle)
+                TaskLineRewriter.replacingText(line, with: newTitle)
             }
         }
     }
