@@ -10,6 +10,10 @@ struct NotetakerApp: App {
         // for proper state restoration at release (M10).
         Self.purgeSavedWindowState()
         VaultSmoke.runIfRequested()
+        #if os(macOS)
+            // System-wide quick capture (⌃⌥⌘N), registered once at launch.
+            Task { @MainActor in GlobalHotkey.register() }
+        #endif
     }
 
     private static func purgeSavedWindowState() {

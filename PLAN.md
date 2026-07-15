@@ -306,7 +306,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 **Steps:**
 - [x] One `AppIntent` family ("Add Task"/"Create Note") → Siri, Spotlight actions, Shortcuts. *(AppEntity/IndexedEntity + CoreSpotlight deferred with the deep-link work; FTS5 stays primary search.)*
 - [ ] Home/Lock Screen interactive widgets: "Today's Tasks" (check off inline via `AppIntent`), "Quick Note"; macOS desktop widgets.
-- [ ] Control Center "New Task" `ControlWidget`; macOS `MenuBarExtra` + registered global hotkey → quick-capture into a Markdown inbox note.
+- [x] macOS `MenuBarExtra` (M7.5) + global hotkey ⌃⌥⌘N → floating quick-capture panel into Inbox.md. *(Control Center ControlWidget rides with the widget-extension pass.)*
 - [ ] Handoff/state restoration via `NSUserActivity`; `[[wikilink]]` autocomplete, nested tags, backlinks panel (linked vs unlinked), lightweight graph view, section deep-links, template files with frontmatter placeholders.
 - [ ] (Optional) Apple Watch complication: today's open-todo count.
 **Done:** "Hey Siri, add a task to Notetaker" works; a Lock Screen widget checks off a task; the global hotkey captures a note; Spotlight surfaces notes semantically.

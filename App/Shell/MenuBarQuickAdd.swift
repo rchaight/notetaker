@@ -14,8 +14,14 @@
 
         var body: some View {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Add to Inbox")
-                    .font(.headline)
+                HStack {
+                    Text("Add to Inbox")
+                        .font(.headline)
+                    Spacer()
+                    Text("⌃⌥⌘N anywhere")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
                 TextField("email dean tomorrow p1 #admin", text: $text)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 300)
