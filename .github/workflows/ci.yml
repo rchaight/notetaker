@@ -43,6 +43,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install SwiftFormat
-        run: brew install swiftformat
+        # Pinned to the version developers run locally — brew-latest on the
+        # runner drifted ahead and flagged rules local lint never saw.
+        run: |
+          curl -fsSL -o /tmp/swiftformat.zip https://github.com/nicklockwood/SwiftFormat/releases/download/0.62.1/swiftformat.zip
+          unzip -o /tmp/swiftformat.zip -d /tmp/sf
+          sudo install -m 755 "$(find /tmp/sf -name swiftformat -type f | head -1)" /usr/local/bin/swiftformat
+          swiftformat --version
       - name: Lint formatting
         run: swiftformat --lint .

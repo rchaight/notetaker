@@ -126,7 +126,7 @@
 
         // MARK: - Process plumbing
 
-        struct ProcessOutput: Sendable {
+        struct ProcessOutput {
             let stdout: String
             let stderr: String
         }

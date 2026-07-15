@@ -71,7 +71,7 @@ struct StyleRangeTests {
         let all = MarkdownStyler.styleRanges(in: body)
         #expect(all.contains { $0.kind == .taskCheckbox(checked: false) })
         #expect(all.contains { $0.kind == .taskCheckbox(checked: true) })
-        #expect(all.filter { $0.kind == .listItem }.count == 2)
+        #expect(all.count(where: { $0.kind == .listItem }) == 2)
     }
 
     @Test func fencedCodeBlockWithLanguage() {
