@@ -34,37 +34,16 @@
         private func submit() {
             let input = text.trimmingCharacters(in: .whitespaces)
             guard !input.isEmpty else { return }
-            guard let root = Self.vaultRoot() else {
-                status = "Vault unavailable"
-                return
-            }
-            guard let line = QuickAddParser.parse(input)?.markdownLine else {
-                status = "Couldn't parse task"
-                return
-            }
             Task {
-                let inbox = root.appendingPathComponent("Inbox.md")
-                let existing = await (try? store.readString(at: inbox)) ?? "# Inbox\n"
-                let updated = (existing.hasSuffix("\n") ? existing : existing + "\n") + line + "\n"
-                do {
-                    try await store.writeString(updated, to: inbox)
+                if await HeadlessVaultWriter.addTask(input) {
                     status = "Added ✓"
                     text = ""
                     try? await Task.sleep(for: .seconds(1))
                     status = nil
-                } catch {
-                    status = "Write failed"
+                } else {
+                    status = "Couldn't add (vault or parse failed)"
                 }
             }
-        }
-
-        /// Same resolution order as the app: custom folder vault, then the
-        /// iCloud container's deterministic path.
-        static func vaultRoot() -> URL? {
-            VaultRegistry.activeCustomRoot()
-                ?? UbiquityContainer.wellKnownDocumentsURL(
-                    containerIdentifier: "iCloud.com.rchaight.notetaker"
-                )
         }
     }
 #endif

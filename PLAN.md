@@ -304,7 +304,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 ### M9 — Platform surfaces & integrations (AppIntentsKit + Widgets)
 **Goal:** highest-ROI system integration, built on App Intents 2.0 (SiriKit deprecated).
 **Steps:**
-- [ ] One `AppIntent` family ("Add Task"/"Create Note") + `AppEntity` for notes/todos → feeds Siri, Spotlight, Shortcuts, Control Center simultaneously. `IndexedEntity` + CoreSpotlight (capped, deduped subset — FTS5 stays primary search).
+- [x] One `AppIntent` family ("Add Task"/"Create Note") → Siri, Spotlight actions, Shortcuts. *(AppEntity/IndexedEntity + CoreSpotlight deferred with the deep-link work; FTS5 stays primary search.)*
 - [ ] Home/Lock Screen interactive widgets: "Today's Tasks" (check off inline via `AppIntent`), "Quick Note"; macOS desktop widgets.
 - [ ] Control Center "New Task" `ControlWidget`; macOS `MenuBarExtra` + registered global hotkey → quick-capture into a Markdown inbox note.
 - [ ] Handoff/state restoration via `NSUserActivity`; `[[wikilink]]` autocomplete, nested tags, backlinks panel (linked vs unlinked), lightweight graph view, section deep-links, template files with frontmatter placeholders.

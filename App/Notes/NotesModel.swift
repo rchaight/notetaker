@@ -374,7 +374,7 @@ final class NotesModel {
     }
 
     /// Filesystem- and sync-safe file name from a heading.
-    static func sanitizeFileName(_ title: String) -> String {
+    nonisolated static func sanitizeFileName(_ title: String) -> String {
         String(
             title.map { "/\\:?%*|\"<>".contains($0) ? "-" : $0 }
         )
