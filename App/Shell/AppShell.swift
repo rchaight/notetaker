@@ -28,6 +28,7 @@ struct AppShell: View {
         ("notes", "Notes", "note.text"),
         ("todo", "To-Do", "checklist"),
         ("projects", "Projects", "calendar.day.timeline.left"),
+        ("tags", "Tags", "number"),
         ("vault", "Vault", "icloud"),
     ]
 
@@ -154,6 +155,9 @@ struct AppShell: View {
                 Tab("Projects", systemImage: "calendar.day.timeline.left", value: "projects") {
                     projectsTab
                 }
+                Tab("Tags", systemImage: "number", value: "tags") {
+                    tagsTab
+                }
                 #if DEBUG
                     Tab("Vault", systemImage: "icloud", value: "vault") {
                         vaultTab
@@ -164,24 +168,27 @@ struct AppShell: View {
         #endif
     }
 
-    /// All views stay mounted; switching is opacity-only — no recreation,
-    /// no animation, no highlight bounce.
-    private var mountedViews: some View {
-        ZStack {
-            notesTab
-                .opacity(selectedTab == "notes" ? 1 : 0)
-                .allowsHitTesting(selectedTab == "notes")
-            todoTab
-                .opacity(selectedTab == "todo" ? 1 : 0)
-                .allowsHitTesting(selectedTab == "todo")
-            projectsTab
-                .opacity(selectedTab == "projects" ? 1 : 0)
-                .allowsHitTesting(selectedTab == "projects")
-            #if DEBUG
-                vaultTab
-                    .opacity(selectedTab == "vault" ? 1 : 0)
-                    .allowsHitTesting(selectedTab == "vault")
-            #endif
+    /// Plain switch: exactly ONE view in the hierarchy. Mounting all tabs
+    /// at once kept every tab's TOOLBAR registered with the window, and
+    /// the union of toolbar rows drove the window's minimum size past the
+    /// screen (user-reported unresizable). Shared models carry the state
+    /// that must survive switches; volatile view prefs live in AppStorage.
+    @ViewBuilder private var mountedViews: some View {
+        switch selectedTab {
+        case "todo": todoTab
+        case "projects": projectsTab
+        case "tags": tagsTab
+        #if DEBUG
+            case "vault": vaultTab
+        #endif
+        default: notesTab
+        }
+    }
+
+    private var tagsTab: some View {
+        TagsView(service: indexService, model: notesModel) { id in
+            notesModel.openNote(id, jumpToLine: nil)
+            selectedTab = "notes"
         }
     }
 

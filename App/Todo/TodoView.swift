@@ -52,7 +52,10 @@ struct TodoView: View {
     }
 
     @State private var filterText = ""
-    @State private var viewMode: ViewMode = .list
+    @AppStorage("todoViewMode") private var viewModeRaw = ViewMode.list.rawValue
+    private var viewMode: ViewMode {
+        ViewMode(rawValue: viewModeRaw) ?? .list
+    }
 
     enum ViewMode: String, CaseIterable {
         case list = "List"
@@ -187,7 +190,7 @@ struct TodoView: View {
                         .listRowBackground(
                             viewMode == mode ? Color.accentColor.opacity(0.18) : Color.clear
                         )
-                        .onTapGesture { viewMode = mode }
+                        .onTapGesture { viewModeRaw = mode.rawValue }
                 }
             }
             if !savedFilters.isEmpty {

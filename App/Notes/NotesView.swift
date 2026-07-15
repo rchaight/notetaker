@@ -55,12 +55,6 @@ struct NotesView: View {
     @State private var expandedFolders: Set<String> = []
     @AppStorage("noteSortOrder") private var noteSortOrder = "name"
     @State private var tagsExpanded = false
-    @State private var showingTagBrowser = false
-    @State private var tagSearch = ""
-    @State private var tagRenameTarget: String?
-    @State private var tagRenameText = ""
-    @State private var mergeSuggestions: [TagMerge] = []
-    @State private var suggestingMerges = false
 
     var body: some View {
         NavigationSplitView {
@@ -188,7 +182,6 @@ struct NotesView: View {
         }
         .onDisappear { Task { await model.flushSave() } }
         .sheet(isPresented: $showingLockSheet) { lockSheet }
-        .sheet(isPresented: $showingTagBrowser) { tagBrowser }
         .sheet(isPresented: $showingGraph) {
             GraphView(
                 notes: model.notes.map { ($0.id, noteTitle($0)) },
@@ -385,20 +378,9 @@ struct NotesView: View {
                             ForEach(topTags, id: \.tag) { entry in
                                 tagChipRow(entry.tag, count: entry.count)
                             }
-                            if true {
-                                Button {
-                                    tagSearch = ""
-                                    showingTagBrowser = true
-                                } label: {
-                                    Label(
-                                        "All Tags (\(allTags.count))…",
-                                        systemImage: "magnifyingglass"
-                                    )
-                                    .font(.callout)
-                                    .foregroundStyle(.secondary)
-                                }
-                                .buttonStyle(.plain)
-                            }
+                            Text("Manage all \(allTags.count) tags in the Tags tab")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
                         } label: {
                             Label("Tags", systemImage: "number")
                                 .selectionDisabled(true)
@@ -847,146 +829,6 @@ struct NotesView: View {
         .selectionDisabled(true)
         .onTapGesture {
             selectedTag = selectedTag == tag ? nil : tag
-        }
-    }
-
-    private var tagBrowser: some View {
-        VStack(spacing: 0) {
-            HStack {
-                TextField("Filter tags…", text: $tagSearch)
-                    .textFieldStyle(.plain)
-                    .font(.title3)
-                Button {
-                    suggestingMerges = true
-                    Task {
-                        mergeSuggestions = await indexService.suggestTagMerges()
-                        suggestingMerges = false
-                    }
-                } label: {
-                    if suggestingMerges {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Label("Suggest Merges", systemImage: "wand.and.stars")
-                    }
-                }
-                .help("Find duplicate-ish tags to fold together (heuristics + your local Ollama when configured)")
-                .disabled(suggestingMerges)
-            }
-            .padding(12)
-            if !mergeSuggestions.isEmpty {
-                Divider()
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(mergeSuggestions) { merge in
-                        HStack {
-                            Text("#\(merge.from.joined(separator: ", #")) → #\(merge.into)")
-                                .font(.callout)
-                            Text(merge.reason)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Button("Apply") {
-                                let suggestion = merge
-                                mergeSuggestions.removeAll { $0.id == suggestion.id }
-                                Task {
-                                    for source in suggestion.from {
-                                        await indexService.renameTag(
-                                            from: source, to: suggestion.into
-                                        )
-                                    }
-                                    allTags = indexService.noteTags()
-                                }
-                            }
-                            .controlSize(.small)
-                            Button("Dismiss") {
-                                mergeSuggestions.removeAll { $0.id == merge.id }
-                            }
-                            .controlSize(.small)
-                        }
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
-            }
-            Divider()
-            List {
-                ForEach(
-                    allTags
-                        .filter {
-                            tagSearch.isEmpty
-                                || $0.tag.localizedCaseInsensitiveContains(tagSearch)
-                        }
-                        .sorted { $0.count > $1.count },
-                    id: \.tag
-                ) { entry in
-                    HStack {
-                        Label(entry.tag, systemImage: "number")
-                        Spacer()
-                        Text("\(entry.count) note\(entry.count == 1 ? "" : "s")")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        selectedTag = entry.tag
-                        showingTagBrowser = false
-                    }
-                    .contextMenu {
-                        Button("Rename…", systemImage: "pencil") {
-                            tagRenameText = entry.tag
-                            tagRenameTarget = entry.tag
-                        }
-                        Menu("Merge Into") {
-                            ForEach(
-                                allTags.filter { $0.tag != entry.tag }.map(\.tag).sorted(),
-                                id: \.self
-                            ) { other in
-                                Button("#" + other) {
-                                    Task {
-                                        await indexService.renameTag(from: entry.tag, to: other)
-                                        allTags = indexService.noteTags()
-                                    }
-                                }
-                            }
-                        }
-                        Button("Remove Tag Everywhere", systemImage: "trash", role: .destructive) {
-                            Task {
-                                await indexService.deleteTag(entry.tag)
-                                allTags = indexService.noteTags()
-                            }
-                        }
-                    }
-                }
-            }
-            .listStyle(.plain)
-        }
-        .frame(minWidth: 440, minHeight: 420)
-        .alert(
-            "Rename Tag",
-            isPresented: Binding(
-                get: { tagRenameTarget != nil },
-                set: {
-                    if !$0 {
-                        tagRenameTarget = nil
-                    }
-                }
-            )
-        ) {
-            TextField("New tag name", text: $tagRenameText)
-            Button("Rename") {
-                if let target = tagRenameTarget {
-                    let newName = tagRenameText
-                        .trimmingCharacters(in: .whitespaces)
-                        .replacingOccurrences(of: "#", with: "")
-                    Task {
-                        await indexService.renameTag(from: target, to: newName)
-                        allTags = indexService.noteTags()
-                    }
-                }
-                tagRenameTarget = nil
-            }
-            Button("Cancel", role: .cancel) { tagRenameTarget = nil }
-        } message: {
-            Text("Rewrites #\(tagRenameTarget ?? "") in every note that carries it.")
         }
     }
 
