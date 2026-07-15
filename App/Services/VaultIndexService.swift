@@ -538,6 +538,25 @@ final class VaultIndexService {
         projects().contains { $0.id == noteId }
     }
 
+    /// Guarantees the task line carries a durable ^id (the CloudKit link
+    /// key) and returns it. Existing ids are reused; assignment is lazy —
+    /// only tasks with extended data ever gain one.
+    func ensureStableId(_ task: TaskRecord) async -> String? {
+        if let existing = task.blockId {
+            return existing
+        }
+        // Slug from the text plus entropy: ids must survive text edits AND
+        // never collide within the note.
+        let suffix = String(UUID().uuidString.prefix(4)).lowercased()
+        let (_, id) = TaskLineRewriter.ensuringBlockId(
+            task.rawLine, preferred: "t-" + suffix
+        )
+        await rewriteTaskLine(task) { line in
+            TaskLineRewriter.ensuringBlockId(line, preferred: "t-" + suffix).line
+        }
+        return id
+    }
+
     /// Manual full rescan (Vault tab toolbar).
     func rescan() async {
         await reindexFromDisk()

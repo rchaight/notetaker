@@ -2,6 +2,12 @@ import SwiftUI
 
 @main
 struct NotetakerApp: App {
+    // Owned here so EVERY scene (main window, task-detail windows) shares
+    // the same instances.
+    @State private var indexService = VaultIndexService()
+    @State private var notesModel = NotesModel()
+    @State private var extrasStore = TaskExtrasStore()
+
     init() {
         // Dev builds change toolbars between installs; restoring a stale
         // saved toolbar plist crashes SwiftUI's NSToolbar bridge on the
@@ -33,9 +39,28 @@ struct NotetakerApp: App {
         WindowGroup {
             // .id: switching vaults rebuilds the shell (fresh model + index
             // service rooted in the new vault).
-            AppShell().id(activeVault)
+            AppShell(
+                indexService: indexService,
+                notesModel: notesModel,
+                extrasStore: extrasStore
+            )
+            .id(activeVault)
         }
         .defaultSize(width: 1150, height: 720)
+
+        WindowGroup("Task", id: "task-detail", for: String.self) { $taskId in
+            if let taskId {
+                TaskDetailView(
+                    service: indexService,
+                    extrasStore: extrasStore,
+                    taskId: taskId
+                ) { noteId, line in
+                    notesModel.openNote(noteId, jumpToLine: line)
+                }
+            }
+        }
+        .defaultSize(width: 520, height: 480)
+        .windowResizability(.contentSize)
 
         #if os(macOS)
             Settings {

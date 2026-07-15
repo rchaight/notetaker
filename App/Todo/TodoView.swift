@@ -7,6 +7,7 @@ import TaskEngine
 /// the exact source line in the note.
 struct TodoView: View {
     let service: VaultIndexService
+    var extrasStore = TaskExtrasStore()
     /// Ribbon signal: each increment opens the Quick Add sheet.
     var quickAddSignal = 0
     /// Jump to the task's source note (noteId, line) — wired by AppShell.
@@ -20,6 +21,8 @@ struct TodoView: View {
     @State private var completingIds: Set<String> = []
     @State private var taskLabels: [String: [String]] = [:]
     @State private var selectedTaskIds: Set<String> = []
+    @State private var detailTaskId: String?
+    @Environment(\.openWindow) private var openWindow
     @AppStorage("todoDensity") private var densityRaw = "comfortable"
     @AppStorage("showStreaks") private var showStreaks = false
 
@@ -118,6 +121,22 @@ struct TodoView: View {
         }
         .onChange(of: quickAddSignal) {
             showingQuickAdd = true
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { detailTaskId != nil },
+                set: {
+                    if !$0 {
+                        detailTaskId = nil
+                    }
+                }
+            )
+        ) {
+            if let id = detailTaskId {
+                TaskDetailView(
+                    service: service, extrasStore: extrasStore, taskId: id, openNote: openNote
+                )
+            }
         }
         .task {
             await service.start()
@@ -455,6 +474,15 @@ struct TodoView: View {
 
     /// Strike + fade in place (~0.4s), then write the toggle; the reindex
     /// removes the row with a standard list animation.
+    /// macOS: dedicated window (user request, Todoist-style); iOS: sheet.
+    private func openDetail(_ task: TaskRecord) {
+        #if os(macOS)
+            openWindow(id: "task-detail", value: task.id)
+        #else
+            detailTaskId = task.id
+        #endif
+    }
+
     private func completeWithFade(_ task: TaskRecord) {
         guard !completingIds.contains(task.id) else { return }
         withAnimation(.easeOut(duration: 0.15)) {
@@ -515,7 +543,8 @@ struct TodoView: View {
                     .font(density.textFont)
                     .strikethrough(completing)
                     .contentShape(Rectangle())
-                    .onTapGesture(count: 2) { openNote(task.noteId, task.line) }
+                    .onTapGesture { openDetail(task) }
+                    .help("Open task details")
                 if density.showsMetaLine {
                     metaLine(task)
                 }
@@ -524,6 +553,9 @@ struct TodoView: View {
         .padding(.vertical, density.rowPadding)
         .opacity(completing ? 0.45 : 1)
         .contextMenu {
+            Button("Open Details", systemImage: "rectangle.expand.vertical") {
+                openDetail(task)
+            }
             Button("Open in Note", systemImage: "arrow.up.right.square") {
                 openNote(task.noteId, task.line)
             }

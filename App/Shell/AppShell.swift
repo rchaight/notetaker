@@ -10,8 +10,9 @@ import SwiftUI
 /// switching with no view recreation replaces it). iOS keeps the
 /// adaptive TabView.
 struct AppShell: View {
-    @State private var indexService = VaultIndexService()
-    @State private var notesModel = NotesModel()
+    let indexService: VaultIndexService
+    let notesModel: NotesModel
+    let extrasStore: TaskExtrasStore
     @State private var selectedTab = "notes"
     @State private var showingPalette = false
     /// Ribbon → tab signals: incrementing pops the matching sheet.
@@ -197,7 +198,11 @@ struct AppShell: View {
     }
 
     private var todoTab: some View {
-        TodoView(service: indexService, quickAddSignal: quickAddSignal) { noteId, line in
+        TodoView(
+            service: indexService,
+            extrasStore: extrasStore,
+            quickAddSignal: quickAddSignal
+        ) { noteId, line in
             notesModel.openNote(noteId, jumpToLine: line)
             selectedTab = "notes"
         }
@@ -340,5 +345,9 @@ extension AppShell {
 }
 
 #Preview {
-    AppShell()
+    AppShell(
+        indexService: VaultIndexService(),
+        notesModel: NotesModel(),
+        extrasStore: TaskExtrasStore()
+    )
 }

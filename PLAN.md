@@ -319,6 +319,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 - [x] Tag system rethink: task labels excluded from note tags (they live in To-Do); sidebar shows a collapsed top-10; searchable All Tags browser for the tail.
 - [x] Tag Manager: rename/merge/delete tags across the vault; merge suggestions (heuristics + local Ollama, validated); substring autocomplete surfaces near-miss tags before duplicates are born; tooltips swept across all icon buttons.
 - [ ] Settings menu buildout: organized panes, all knobs discoverable.
+- [x] To-Do extended data: private CloudKit database (TaskExtras records) joined by lazily-assigned durable ^ids; Todoist-style task-detail window (title/due/priority edit the markdown line; description/link live in CloudKit).
 - [ ] Per-surface sweep with user: Notes, editor, To-Do, Projects, Vault, import/AI.
 
 ### M10 — Release / distribution
