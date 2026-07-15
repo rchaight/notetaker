@@ -7,7 +7,7 @@ import GRDB
 /// the caller trigger a full rescan.
 public final class IndexDatabase: Sendable {
     /// Bump when the schema changes; mismatch wipes and rebuilds.
-    public static let schemaVersion = 11
+    public static let schemaVersion = 12
 
     public let queue: DatabaseQueue
 

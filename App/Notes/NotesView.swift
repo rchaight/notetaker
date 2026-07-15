@@ -54,6 +54,9 @@ struct NotesView: View {
     @State private var sectionHighlight: String?
     @State private var expandedFolders: Set<String> = []
     @AppStorage("noteSortOrder") private var noteSortOrder = "name"
+    @State private var tagsExpanded = false
+    @State private var showingTagBrowser = false
+    @State private var tagSearch = ""
 
     var body: some View {
         NavigationSplitView {
@@ -181,6 +184,7 @@ struct NotesView: View {
         }
         .onDisappear { Task { await model.flushSave() } }
         .sheet(isPresented: $showingLockSheet) { lockSheet }
+        .sheet(isPresented: $showingTagBrowser) { tagBrowser }
         .sheet(isPresented: $showingGraph) {
             GraphView(
                 notes: model.notes.map { ($0.id, noteTitle($0)) },
@@ -372,9 +376,28 @@ struct NotesView: View {
                     }
                 }
                 if !allTags.isEmpty {
-                    Section("Tags") {
-                        ForEach(topLevelTagNodes, id: \.path) { node in
-                            tagRow(node)
+                    Section {
+                        DisclosureGroup(isExpanded: $tagsExpanded) {
+                            ForEach(topTags, id: \.tag) { entry in
+                                tagChipRow(entry.tag, count: entry.count)
+                            }
+                            if allTags.count > topTags.count {
+                                Button {
+                                    tagSearch = ""
+                                    showingTagBrowser = true
+                                } label: {
+                                    Label(
+                                        "All Tags (\(allTags.count))…",
+                                        systemImage: "magnifyingglass"
+                                    )
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        } label: {
+                            Label("Tags", systemImage: "number")
+                                .selectionDisabled(true)
                         }
                     }
                 }
@@ -796,6 +819,66 @@ struct NotesView: View {
             try? await Task.sleep(for: .seconds(3))
             aiStatus = nil
         }
+    }
+
+    /// The 10 most-used tags — the sidebar shows only these; the browser
+    /// sheet carries the long tail (a full dump was unwieldy, user-reported).
+    private var topTags: [(tag: String, count: Int)] {
+        Array(allTags.sorted { $0.count > $1.count }.prefix(10))
+    }
+
+    private func tagChipRow(_ tag: String, count: Int) -> some View {
+        HStack {
+            Label(tag, systemImage: "number")
+            Spacer()
+            Text("\(count)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .contentShape(Rectangle())
+        .listRowBackground(
+            selectedTag == tag ? Color.accentColor.opacity(0.18) : Color.clear
+        )
+        .selectionDisabled(true)
+        .onTapGesture {
+            selectedTag = selectedTag == tag ? nil : tag
+        }
+    }
+
+    private var tagBrowser: some View {
+        VStack(spacing: 0) {
+            TextField("Filter tags…", text: $tagSearch)
+                .textFieldStyle(.plain)
+                .font(.title3)
+                .padding(12)
+            Divider()
+            List {
+                ForEach(
+                    allTags
+                        .filter {
+                            tagSearch.isEmpty
+                                || $0.tag.localizedCaseInsensitiveContains(tagSearch)
+                        }
+                        .sorted { $0.count > $1.count },
+                    id: \.tag
+                ) { entry in
+                    HStack {
+                        Label(entry.tag, systemImage: "number")
+                        Spacer()
+                        Text("\(entry.count) note\(entry.count == 1 ? "" : "s")")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        selectedTag = entry.tag
+                        showingTagBrowser = false
+                    }
+                }
+            }
+            .listStyle(.plain)
+        }
+        .frame(minWidth: 380, minHeight: 380)
     }
 
     /// One node per distinct tag path component; counts include nested tags.

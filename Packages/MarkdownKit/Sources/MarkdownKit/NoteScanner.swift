@@ -83,6 +83,19 @@ public enum NoteScanner {
     }
 
     /// #tag and #nested/tag tokens, deduped, without the leading '#'.
+    /// Tags for the NOTE (topics): hashtags on task lines are task labels
+    /// with their own surface — including them buries real topics in
+    /// per-task noise (user-reported).
+    public static func noteTags(in text: String) -> [String] {
+        guard let task = taskRegex else { return tags(in: text) }
+        let proseLines = splitLines(text).filter { line in
+            let stripped = strippingCarriageReturn(line)
+            let range = NSRange(location: 0, length: (stripped as NSString).length)
+            return task.firstMatch(in: stripped, range: range) == nil
+        }
+        return tags(in: proseLines.joined(separator: "\n"))
+    }
+
     public static func tags(in text: String) -> [String] {
         guard let regex = tagRegex else { return [] }
         let ns = text as NSString

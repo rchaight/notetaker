@@ -206,3 +206,18 @@ struct CompletionTokenToggleTests {
         #expect(unchecked.contents == "- [ ] task one\n")
     }
 }
+
+struct NoteTagScopeTests {
+    @Test func taskLabelsAreNotNoteTags() {
+        let text = """
+        # Meeting
+        Discussing #project/roadmap today.
+        - [ ] follow up with legal #admin !p1
+        - [x] send notes #admin ✅2026-07-15
+        Also relevant: #budget
+        """
+        #expect(NoteScanner.noteTags(in: text).sorted() == ["budget", "project/roadmap"])
+        // The general scanner still sees everything (task indexing uses it).
+        #expect(NoteScanner.tags(in: text).contains("admin"))
+    }
+}

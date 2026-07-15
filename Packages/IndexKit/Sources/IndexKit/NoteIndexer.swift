@@ -57,7 +57,7 @@ public struct NoteIndexer: Sendable {
         // file), so scan the full contents, not just the body.
         let scanned = isLocked ? [] : NoteScanner.tasks(in: contents)
         let links = isLocked ? [] : NoteScanner.wikilinkTargets(in: document.body)
-        let tags = isLocked ? [] : Set(NoteScanner.tags(in: document.body))
+        let tags = isLocked ? [] : Set(NoteScanner.noteTags(in: document.body))
 
         try database.queue.write { db in
             try note.save(db)
