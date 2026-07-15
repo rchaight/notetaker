@@ -307,6 +307,15 @@ public extension IndexDatabase {
         }
     }
 
+    /// Every wikilink edge in the vault: (source noteId, target TITLE).
+    func allOutLinks() throws -> [(from: String, toTitle: String)] {
+        try queue.read { db in
+            try Row.fetchAll(db, sql: "SELECT noteId, targetTitle FROM outLink").map {
+                ($0["noteId"] as String, $0["targetTitle"] as String)
+            }
+        }
+    }
+
     func pinnedNoteIds() throws -> [String] {
         try queue.read { db in
             try String.fetchAll(db, sql: "SELECT id FROM note WHERE pinned ORDER BY title")

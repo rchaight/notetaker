@@ -40,6 +40,7 @@ struct NotesView: View {
     @State private var showInspector = false
     @State private var scrollTarget: NSRange?
     @State private var editorCommand: EditorCommandRequest?
+    @State private var showingGraph = false
     @State private var showingLockSheet = false
     @State private var showingUnlockSheet = false
     @State private var lockPassphrase = ""
@@ -184,6 +185,25 @@ struct NotesView: View {
         }
         .onDisappear { Task { await model.flushSave() } }
         .sheet(isPresented: $showingLockSheet) { lockSheet }
+        .sheet(isPresented: $showingGraph) {
+            GraphView(
+                notes: model.notes.map { ($0.id, noteTitle($0)) },
+                links: indexService.allOutLinks()
+            ) { id in
+                model.openNote(id, jumpToLine: nil)
+            }
+        }
+        // Handoff: the open note is continuable on another device.
+        .userActivity("com.rchaight.notetaker.note", isActive: model.selectedID != nil) { activity in
+            activity.title = selectedTitle
+            activity.userInfo = ["noteId": model.selectedID ?? ""]
+            activity.isEligibleForHandoff = true
+        }
+        .onContinueUserActivity("com.rchaight.notetaker.note") { activity in
+            if let id = activity.userInfo?["noteId"] as? String, !id.isEmpty {
+                model.openNote(id, jumpToLine: nil)
+            }
+        }
     }
 
     @ViewBuilder private var sidebar: some View {
@@ -666,6 +686,10 @@ struct NotesView: View {
                             ? "This note is a project — click to remove the project flag"
                             : "Turn this note into a project (adds project: true frontmatter)")
                     }
+                    Button("Graph", systemImage: "point.3.connected.trianglepath.dotted") {
+                        showingGraph = true
+                    }
+                    .help("Link graph of your vault")
                     Button("Info", systemImage: "sidebar.right") {
                         showInspector.toggle()
                     }

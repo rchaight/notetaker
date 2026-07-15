@@ -549,6 +549,10 @@ final class VaultIndexService {
         (try? database?.noteIds(withTag: tag)) ?? []
     }
 
+    func allOutLinks() -> [(from: String, toTitle: String)] {
+        (try? database?.allOutLinks()) ?? []
+    }
+
     func backlinks(toTitle title: String) -> [String] {
         guard let database else { return [] }
         return (try? database.backlinks(toTitle: title)) ?? []
