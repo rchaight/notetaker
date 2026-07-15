@@ -34,8 +34,13 @@ public struct ScheduledTask: Equatable, Sendable, Identifiable {
     public let start: Int
     public let end: Int
     public let slack: Int
-    public var isCritical: Bool { slack == 0 }
-    public var duration: Int { end - start + 1 }
+    public var isCritical: Bool {
+        slack == 0
+    }
+
+    public var duration: Int {
+        end - start + 1
+    }
 
     public init(id: String, node: TaskNode, start: Int, end: Int, slack: Int) {
         self.id = id
@@ -74,7 +79,9 @@ public enum ProjectSchedule {
             order.append(id)
             for dependent in dependents[id] ?? [] {
                 incoming[dependent]! -= 1
-                if incoming[dependent] == 0 { queue.append(dependent) }
+                if incoming[dependent] == 0 {
+                    queue.append(dependent)
+                }
             }
         }
         guard order.count == nodes.count else { return nil }

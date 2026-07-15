@@ -17,8 +17,8 @@ struct SettingsView: View {
     @AppStorage("fileParserEngineDir") private var engineDirOverride = ""
     @AppStorage("fileParserOCR") private var engineOCR = true
     @AppStorage("fileParserTables") private var engineTables = true
-    // Keychain-backed (ThisDeviceOnly): endpoint config is homelab
-    // topology — it shouldn't sync or sit in plaintext defaults.
+    /// Keychain-backed (ThisDeviceOnly): endpoint config is homelab
+    /// topology — it shouldn't sync or sit in plaintext defaults.
     @State private var ollamaURL = KeychainStore.migrateFromDefaults(
         key: "ollamaURL", account: "ollamaURL"
     )
@@ -37,9 +37,11 @@ struct SettingsView: View {
                         // ADP status has no public query API — nudge only.
                         VStack(alignment: .leading, spacing: 4) {
                             Text("iCloud encryption")
-                            Text("Your vault syncs through iCloud Drive. For end-to-end encryption of iCloud data, enable Advanced Data Protection in System Settings › Apple Account › iCloud. Individually locked notes are end-to-end encrypted by Notetaker regardless.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            Text(
+                                "Your vault syncs through iCloud Drive. For end-to-end encryption of iCloud data, enable Advanced Data Protection in System Settings › Apple Account › iCloud. Individually locked notes are end-to-end encrypted by Notetaker regardless."
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                         }
                         Divider()
                         Toggle("Require unlock (Touch ID / password)", isOn: $appLockEnabled)
@@ -154,9 +156,11 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                     }
                     Section("AI — Ollama (homelab)") {
-                        Text("AI runs on-device (Apple Intelligence) when available; Ollama is your own hardware. Every AI-generated block in a note is stamped with the provider that produced it. Nothing is sent to third-party clouds.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        Text(
+                            "AI runs on-device (Apple Intelligence) when available; Ollama is your own hardware. Every AI-generated block in a note is stamped with the provider that produced it. Nothing is sent to third-party clouds."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                         TextField("Ollama server URL", text: $ollamaURL, prompt: Text("http://homelab:11434"))
                             .onChange(of: ollamaURL) {
                                 KeychainStore.save(ollamaURL, account: "ollamaURL")

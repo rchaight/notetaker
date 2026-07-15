@@ -1,8 +1,8 @@
 import CryptoKit
 import Foundation
 import MarkdownKit
-import SecurityKit
 import Observation
+import SecurityKit
 import VaultKit
 
 /// Drives the Notes tab: live vault listing, note selection, load, and
@@ -176,7 +176,9 @@ final class NotesModel {
             // Insert-only: reordering existing entries makes the Recents
             // section shuffle under the cursor mid-click (user report).
             recents.insert(id, at: 0)
-            if recents.count > 8 { recents.removeLast(recents.count - 8) }
+            if recents.count > 8 {
+                recents.removeLast(recents.count - 8)
+            }
             UserDefaults.standard.set(recents, forKey: "recentNotes")
         }
         if let id, !openTabs.contains(id) {
@@ -387,7 +389,11 @@ final class NotesModel {
     func attachImage(from source: URL) async -> String? {
         guard let root else { return nil }
         let scoped = source.startAccessingSecurityScopedResource()
-        defer { if scoped { source.stopAccessingSecurityScopedResource() } }
+        defer {
+            if scoped {
+                source.stopAccessingSecurityScopedResource()
+            }
+        }
         let attachments = root.appendingPathComponent("Attachments", isDirectory: true)
         try? await store.createFolder(at: attachments)
         let base = source.deletingPathExtension().lastPathComponent
@@ -449,7 +455,7 @@ final class NotesModel {
         guard let root else { return "Vault not ready" }
         var copied = 0
         var skipped = 0
-        let noteExtensions: Set<String> = ["md", "markdown", "txt"]
+        let noteExtensions: Set = ["md", "markdown", "txt"]
         let existing = Set(notes.map(\.relativePath))
 
         func uniqueRelative(_ desired: String) -> String {
@@ -469,7 +475,11 @@ final class NotesModel {
 
         for url in urls {
             let scoped = url.startAccessingSecurityScopedResource()
-            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            defer {
+                if scoped {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
             var isDirectory: ObjCBool = false
             FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
             if isDirectory.boolValue {

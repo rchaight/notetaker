@@ -37,12 +37,24 @@ public enum ListGlyphSubstitution {
         // Trailing padding is hair-thin: the glyph hugs its text (the To-Do
         // tab's bubble look), while the lead keeps the "- " indent slot.
         let tail = "\u{200A}\u{200A}"
-        if let swapped = swap("- [ ]", with: pad + pad + "○" + tail) { return swapped }
-        if let swapped = swap("- [x]", with: pad + pad + "●" + tail) { return swapped }
-        if let swapped = swap("- [X]", with: pad + pad + "●" + tail) { return swapped }
-        if let swapped = swap("- ", with: "•" + pad) { return swapped }
-        if let swapped = swap("* ", with: "•" + pad) { return swapped }
-        if let swapped = swap("+ ", with: "•" + pad) { return swapped }
+        if let swapped = swap("- [ ]", with: pad + pad + "○" + tail) {
+            return swapped
+        }
+        if let swapped = swap("- [x]", with: pad + pad + "●" + tail) {
+            return swapped
+        }
+        if let swapped = swap("- [X]", with: pad + pad + "●" + tail) {
+            return swapped
+        }
+        if let swapped = swap("- ", with: "•" + pad) {
+            return swapped
+        }
+        if let swapped = swap("* ", with: "•" + pad) {
+            return swapped
+        }
+        if let swapped = swap("+ ", with: "•" + pad) {
+            return swapped
+        }
         _ = ns
         return nil
     }

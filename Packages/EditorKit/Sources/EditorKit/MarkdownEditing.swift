@@ -213,7 +213,9 @@ public extension MarkdownEditing {
         guard selection.location != NSNotFound, NSMaxRange(selection) <= ns.length else { return nil }
         let lineRange = ns.paragraphRange(for: NSRange(location: selection.location, length: 0))
         var line = ns.substring(with: lineRange)
-        if line.hasSuffix("\n") { line.removeLast() }
+        if line.hasSuffix("\n") {
+            line.removeLast()
+        }
 
         guard let item = parseListPrefix(line) else { return nil }
 
@@ -251,8 +253,12 @@ public extension MarkdownEditing {
         let updated = lines.map { line -> String in
             guard parseListPrefix(line) != nil else { return line }
             if outdent {
-                if line.hasPrefix("  ") { return String(line.dropFirst(2)) }
-                if line.hasPrefix("\t") { return String(line.dropFirst(1)) }
+                if line.hasPrefix("  ") {
+                    return String(line.dropFirst(2))
+                }
+                if line.hasPrefix("\t") {
+                    return String(line.dropFirst(1))
+                }
                 return line
             }
             return "  " + line

@@ -55,16 +55,18 @@ final class VaultIndexService {
                 // Custom folder vault: local observers, per-vault index.
                 resolved = custom
                 isLocalFallback = true
-            } else { do {
-                resolved = try await UbiquityContainer.documentsURL()
-            } catch {
-                let local = try FileManager.default
-                    .url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-                    .appendingPathComponent("LocalVault", isDirectory: true)
-                try FileManager.default.createDirectory(at: local, withIntermediateDirectories: true)
-                isLocalFallback = true
-                resolved = local
-            } }
+            } else {
+                do {
+                    resolved = try await UbiquityContainer.documentsURL()
+                } catch {
+                    let local = try FileManager.default
+                        .url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+                        .appendingPathComponent("LocalVault", isDirectory: true)
+                    try FileManager.default.createDirectory(at: local, withIntermediateDirectories: true)
+                    isLocalFallback = true
+                    resolved = local
+                }
+            }
             root = resolved
 
             let indexDir = try FileManager.default
@@ -350,9 +352,9 @@ final class VaultIndexService {
                   contents: contents, anchorLine: task.line, expectedRawLine: task.rawLine
               )
         else {
-            try? indexer.index(
+            try? await indexer.index(
                 noteId: task.noteId,
-                contents: (try? await store.readString(at: url)) ?? "",
+                contents: (try? store.readString(at: url)) ?? "",
                 modifiedAt: nil
             )
             tasksVersion += 1

@@ -21,7 +21,9 @@ struct ProjectTimelineView: View {
         case day = "Day"
         case week = "Week"
         case month = "Month"
-        var id: String { rawValue }
+        var id: String {
+            rawValue
+        }
 
         var visibleSeconds: TimeInterval {
             switch self {
@@ -192,8 +194,12 @@ struct ProjectTimelineView: View {
     }
 
     private func barColor(_ bar: ScheduledTask) -> Color {
-        if bar.node.checked { return .green.opacity(0.55) }
-        if bar.isCritical { return .orange }
+        if bar.node.checked {
+            return .green.opacity(0.55)
+        }
+        if bar.isCritical {
+            return .orange
+        }
         return .accentColor
     }
 

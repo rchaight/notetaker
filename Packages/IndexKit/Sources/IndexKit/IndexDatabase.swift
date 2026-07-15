@@ -256,7 +256,7 @@ public extension IndexDatabase {
     }
 
     /// Wipes every row (schema intact) — the "delete index, re-scan" path.
-    public func projects() throws -> [NoteRecord] {
+    func projects() throws -> [NoteRecord] {
         try queue.read { db in
             try NoteRecord.filter(Column("isProject") == true)
                 .order(Column("projectDue").ascNullsLast, Column("title"))
@@ -265,7 +265,7 @@ public extension IndexDatabase {
     }
 
     /// Checked/total inline todos per note — drives auto-% complete.
-    public func noteTaskProgress() throws -> [String: (done: Int, total: Int)] {
+    func noteTaskProgress() throws -> [String: (done: Int, total: Int)] {
         try queue.read { db in
             let rows = try Row.fetchAll(db, sql: """
             SELECT noteId, SUM(checked) AS done, COUNT(*) AS total
@@ -281,7 +281,7 @@ public extension IndexDatabase {
 
     /// Every task (open and done, all nesting levels) in one note, in file
     /// order — the project detail view shows the full picture.
-    public func tasks(inNote noteId: String) throws -> [TaskRecord] {
+    func tasks(inNote noteId: String) throws -> [TaskRecord] {
         try queue.read { db in
             try TaskRecord.filter(Column("noteId") == noteId)
                 .order(Column("line"))
@@ -289,14 +289,14 @@ public extension IndexDatabase {
         }
     }
 
-    public func favoriteNoteIds() throws -> [String] {
+    func favoriteNoteIds() throws -> [String] {
         try queue.read { db in
             try String.fetchAll(db, sql: "SELECT id FROM note WHERE favorite ORDER BY title")
         }
     }
 
     /// Completed tasks with a logged day, newest day first (Logbook).
-    public func completedTasks(limit: Int = 500) throws -> [TaskRecord] {
+    func completedTasks(limit: Int = 500) throws -> [TaskRecord] {
         try queue.read { db in
             try TaskRecord
                 .filter(Column("checked") == true)
@@ -307,13 +307,13 @@ public extension IndexDatabase {
         }
     }
 
-    public func pinnedNoteIds() throws -> [String] {
+    func pinnedNoteIds() throws -> [String] {
         try queue.read { db in
             try String.fetchAll(db, sql: "SELECT id FROM note WHERE pinned ORDER BY title")
         }
     }
 
-    public func bookmarkedNoteIds() throws -> [String] {
+    func bookmarkedNoteIds() throws -> [String] {
         try queue.read { db in
             try String.fetchAll(db, sql: "SELECT id FROM note WHERE bookmarked ORDER BY title")
         }
@@ -322,7 +322,7 @@ public extension IndexDatabase {
     /// Every distinct note tag with how many notes carry it. Nested tags
     /// ("project/alpha") count toward themselves only; the UI aggregates
     /// ancestors from the components.
-    public func tagsWithCounts() throws -> [(tag: String, count: Int)] {
+    func tagsWithCounts() throws -> [(tag: String, count: Int)] {
         try queue.read { db in
             try Row.fetchAll(db, sql: """
             SELECT tag, COUNT(DISTINCT noteId) AS notes
@@ -333,7 +333,7 @@ public extension IndexDatabase {
 
     /// Notes carrying `tag` or any nested tag under it ("project" matches
     /// "project" and "project/alpha").
-    public func noteIds(withTag tag: String) throws -> [String] {
+    func noteIds(withTag tag: String) throws -> [String] {
         try queue.read { db in
             try String.fetchAll(db, sql: """
             SELECT DISTINCT noteId FROM noteTag

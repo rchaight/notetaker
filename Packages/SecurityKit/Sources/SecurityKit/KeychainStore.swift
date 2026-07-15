@@ -40,7 +40,9 @@ public enum KeychainStore {
 
     /// One-time migration: moves a UserDefaults value into the Keychain.
     public static func migrateFromDefaults(key: String, account: String) -> String {
-        if let existing = read(account: account) { return existing }
+        if let existing = read(account: account) {
+            return existing
+        }
         let legacy = UserDefaults.standard.string(forKey: key) ?? ""
         if !legacy.isEmpty, save(legacy, account: account) {
             UserDefaults.standard.removeObject(forKey: key)

@@ -71,15 +71,21 @@ public final class ImageLayoutFragment: NSTextLayoutFragment {
 }
 
 public enum ImageThumbnails {
-    // NSCache is documented thread-safe; the checker can't see that.
+    /// NSCache is documented thread-safe; the checker can't see that.
     private nonisolated(unsafe) static let cache = NSCache<NSURL, PlatformImage>()
 
     /// Local-file resolution only: absolute paths, file: URLs, or paths
     /// relative to the note's folder. http(s) returns nil by design.
     public static func resolveLocalURL(_ source: String, base: URL?) -> URL? {
-        if source.hasPrefix("http://") || source.hasPrefix("https://") { return nil }
-        if source.hasPrefix("file://") { return URL(string: source) }
-        if source.hasPrefix("/") { return URL(fileURLWithPath: source) }
+        if source.hasPrefix("http://") || source.hasPrefix("https://") {
+            return nil
+        }
+        if source.hasPrefix("file://") {
+            return URL(string: source)
+        }
+        if source.hasPrefix("/") {
+            return URL(fileURLWithPath: source)
+        }
         guard let base else { return nil }
         // appendingPathComponent, not fileURLWithPath(relativeTo:) — the
         // latter probes the filesystem for directory-ness and drops the
@@ -90,7 +96,9 @@ public enum ImageThumbnails {
     }
 
     static func image(at url: URL) -> PlatformImage? {
-        if let hit = cache.object(forKey: url as NSURL) { return hit }
+        if let hit = cache.object(forKey: url as NSURL) {
+            return hit
+        }
         guard url.isFileURL, FileManager.default.fileExists(atPath: url.path),
               let image = PlatformImage(contentsOfFile: url.path) else { return nil }
         cache.setObject(image, forKey: url as NSURL)

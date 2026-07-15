@@ -125,7 +125,9 @@ struct ProjectDetailView: View {
         case tasks = "Tasks"
         case timeline = "Timeline"
         case board = "Board"
-        var id: String { rawValue }
+        var id: String {
+            rawValue
+        }
     }
 
     var body: some View {

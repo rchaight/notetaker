@@ -24,7 +24,10 @@ struct TodoView: View {
     private enum Density: String, CaseIterable {
         case compact, comfortable, relaxed
 
-        var title: String { rawValue.capitalized }
+        var title: String {
+            rawValue.capitalized
+        }
+
         var rowPadding: CGFloat {
             switch self {
             case .compact: 0
@@ -37,12 +40,15 @@ struct TodoView: View {
             self == .compact ? .callout : .body
         }
 
-        var showsMetaLine: Bool { self != .compact }
+        var showsMetaLine: Bool {
+            self != .compact
+        }
     }
 
     private var density: Density {
         Density(rawValue: densityRaw) ?? .comfortable
     }
+
     @State private var filterText = ""
     @State private var viewMode: ViewMode = .list
 
@@ -415,8 +421,6 @@ struct TodoView: View {
                     .onTapGesture(count: 2) { openNote(task.noteId, task.line) }
                 if density.showsMetaLine {
                     metaLine(task)
-                } else {
-                    EmptyView()
                 }
             }
         }
@@ -473,25 +477,25 @@ struct TodoView: View {
         return formatter.string(from: tomorrow)
     }
 
-    @ViewBuilder private func metaLine(_ task: TaskRecord) -> some View {
-                HStack(spacing: 8) {
-                    if let due = task.dueDate {
-                        Label(due, systemImage: "calendar")
-                    }
-                    if let start = task.startDate {
-                        Label("from \(start)", systemImage: "hourglass")
-                    }
-                    PriorityChip(priority: task.priority)
-                    LabelChips(labels: taskLabels[task.id] ?? [])
-                    if let progress = subtaskProgress[task.id] {
-                        Label("\(progress.done)/\(progress.total)", systemImage: "checklist")
-                            .foregroundStyle(progress.done == progress.total ? .green : .secondary)
-                    }
-                    Text(noteName(task.noteId))
-                        .lineLimit(1)
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
+    private func metaLine(_ task: TaskRecord) -> some View {
+        HStack(spacing: 8) {
+            if let due = task.dueDate {
+                Label(due, systemImage: "calendar")
+            }
+            if let start = task.startDate {
+                Label("from \(start)", systemImage: "hourglass")
+            }
+            PriorityChip(priority: task.priority)
+            LabelChips(labels: taskLabels[task.id] ?? [])
+            if let progress = subtaskProgress[task.id] {
+                Label("\(progress.done)/\(progress.total)", systemImage: "checklist")
+                    .foregroundStyle(progress.done == progress.total ? .green : .secondary)
+            }
+            Text(noteName(task.noteId))
+                .lineLimit(1)
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
     }
 
     private func noteName(_ noteId: String) -> String {

@@ -46,7 +46,9 @@ struct CommandPalette: View {
             results.append(Command(id: "note-\(note.id)", title: note.title, icon: "note.text") {
                 onOpenNote(note.id)
             })
-            if results.count > 12 { break }
+            if results.count > 12 {
+                break
+            }
         }
         return results
     }

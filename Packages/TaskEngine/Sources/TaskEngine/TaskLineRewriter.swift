@@ -33,11 +33,15 @@ public enum TaskLineRewriter {
         var slug = slugSource.lowercased()
             .map { $0.isLetter || $0.isNumber ? $0 : "-" }
             .reduce(into: "") { partial, ch in
-                if ch != "-" || partial.last != "-" { partial.append(ch) }
+                if ch != "-" || partial.last != "-" {
+                    partial.append(ch)
+                }
             }
             .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
         slug = String(slug.prefix(24))
-        if slug.isEmpty { slug = "task" }
+        if slug.isEmpty {
+            slug = "task"
+        }
         return (appending(rawLine, token: "^" + slug), slug)
     }
 

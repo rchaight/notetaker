@@ -1,9 +1,9 @@
 #if canImport(AppKit)
     import AppKit
 #endif
-import MarkdownKit
 @testable import EditorKit
 import Foundation
+import MarkdownKit
 import Testing
 
 struct MarkdownEditingTests {
@@ -114,7 +114,8 @@ struct ListTypingTests {
     }
 
     @Test func returnOnPlainLineIsDefault() {
-        #expect(MarkdownEditing.newlineContinuation(in: "plain text", selection: NSRange(location: 5, length: 0)) == nil)
+        #expect(MarkdownEditing
+            .newlineContinuation(in: "plain text", selection: NSRange(location: 5, length: 0)) == nil)
     }
 
     @Test func nestedItemKeepsIndentOnContinue() throws {
@@ -172,7 +173,11 @@ struct GlyphSubstitutionTests {
 
     @Test func attributesSurviveSwap() throws {
         let source = NSMutableAttributedString(string: "- [ ] task")
-        source.addAttribute(.link, value: URL(string: "notetaker-task://toggle/2")!, range: NSRange(location: 2, length: 3))
+        try source.addAttribute(
+            .link,
+            value: #require(URL(string: "notetaker-task://toggle/2")),
+            range: NSRange(location: 2, length: 3)
+        )
         let swapped = try #require(ListGlyphSubstitution.substituted(paragraph: source))
         let link = swapped.attribute(.link, at: 2, effectiveRange: nil)
         #expect(link != nil, "checkbox click-through must survive substitution")
@@ -191,16 +196,16 @@ struct GlyphSubstitutionTests {
 }
 
 @MainActor struct ThemeTokenTests {
-    @Test func surfaceTokensResolveDistinctAppearances() {
+    @Test func surfaceTokensResolveDistinctAppearances() throws {
         let theme = MarkdownTheme.default
         #if canImport(AppKit)
             var light = NSColor.white, dark = NSColor.white
-            NSAppearance(named: .aqua)!.performAsCurrentDrawingAppearance {
+            try #require(NSAppearance(named: .aqua)?.performAsCurrentDrawingAppearance {
                 light = theme.editorBackground.usingColorSpace(.sRGB) ?? .white
-            }
-            NSAppearance(named: .darkAqua)!.performAsCurrentDrawingAppearance {
+            })
+            try #require(NSAppearance(named: .darkAqua)?.performAsCurrentDrawingAppearance {
                 dark = theme.editorBackground.usingColorSpace(.sRGB) ?? .white
-            }
+            })
             #expect(light != dark, "editor surface must adapt to appearance")
             #expect(dark.brightnessComponent > 0.02, "dark surface must stay off pure black")
         #endif
@@ -221,8 +226,13 @@ struct GlyphSubstitutionTests {
         MarkdownHighlighter.highlight(storage, theme: theme, dimOutside: focus)
         let dim = theme.focusDimColor
         #expect(storage.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? PlatformColor == dim)
-        #expect(storage.attribute(.foregroundColor, at: focus.location, effectiveRange: nil) as? PlatformColor == theme.textColor)
-        #expect(storage.attribute(.foregroundColor, at: focus.location + focus.length + 2, effectiveRange: nil) as? PlatformColor == dim)
+        #expect(storage.attribute(.foregroundColor, at: focus.location, effectiveRange: nil) as? PlatformColor == theme
+            .textColor)
+        #expect(storage.attribute(
+            .foregroundColor,
+            at: focus.location + focus.length + 2,
+            effectiveRange: nil
+        ) as? PlatformColor == dim)
     }
 
     @Test func hiddenMarkersStayClearUnderDim() {

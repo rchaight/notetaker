@@ -79,7 +79,9 @@ public enum BlockquoteDetection {
         for character in paragraph {
             if character == " " {
                 spaces += 1
-                if spaces > 3 { return false }
+                if spaces > 3 {
+                    return false
+                }
             } else {
                 return character == ">"
             }

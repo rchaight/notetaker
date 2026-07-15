@@ -42,7 +42,7 @@ struct AppLockPolicyTests {
 }
 
 struct NoteCryptoTests {
-    // Low rounds in tests: correctness, not KDF stretching, is under test.
+    /// Low rounds in tests: correctness, not KDF stretching, is under test.
     private let rounds = 1000
 
     @Test func roundTripEncryptDecrypt() throws {
@@ -83,7 +83,9 @@ struct NoteCryptoTests {
         // Reparse through the same shallow frontmatter shape the app uses.
         var values: [String: String] = [:]
         for line in rendered.split(separator: "\n").dropFirst() {
-            if line == "---" { break }
+            if line == "---" {
+                break
+            }
             let parts = line.split(separator: ":", maxSplits: 1)
             if parts.count == 2 {
                 values[String(parts[0])] = parts[1].trimmingCharacters(in: .whitespaces)

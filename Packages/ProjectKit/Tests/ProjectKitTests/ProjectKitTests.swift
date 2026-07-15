@@ -43,9 +43,9 @@ struct ProjectScheduleTests {
 
     @Test func topologicalOrderRespectsDependencies() throws {
         let order = try #require(ProjectSchedule.topologicalOrder(chain)).map(\.id)
-        #expect(order.firstIndex(of: "a")! < order.firstIndex(of: "b")!)
-        #expect(order.firstIndex(of: "b")! < order.firstIndex(of: "c")!)
-        #expect(order.firstIndex(of: "a")! < order.firstIndex(of: "d")!)
+        #expect(try #require(order.firstIndex(of: "a")) < order.firstIndex(of: "b")!)
+        #expect(try #require(order.firstIndex(of: "b")) < order.firstIndex(of: "c")!)
+        #expect(try #require(order.firstIndex(of: "a")) < order.firstIndex(of: "d")!)
     }
 
     @Test func cycleReturnsNil() {
@@ -60,12 +60,12 @@ struct ProjectScheduleTests {
     @Test func scheduleCascadesAndFindsCriticalPath() throws {
         let scheduled = try #require(ProjectSchedule.schedule(chain))
         let byId = Dictionary(uniqueKeysWithValues: scheduled.map { ($0.id, $0) })
-        #expect(byId["a"]!.start == 0 && byId["a"]!.end == 2)
-        #expect(byId["b"]!.start == 3)
-        #expect(byId["c"]!.start == byId["b"]!.end + 1)
+        #expect(byId["a"]?.start == 0 && byId["a"]!.end == 2)
+        #expect(byId["b"]?.start == 3)
+        #expect(byId["c"]?.start == byId["b"]!.end + 1)
         // a → b → c is the longest chain: all critical; docs has slack.
-        #expect(byId["a"]!.isCritical && byId["b"]!.isCritical && byId["c"]!.isCritical)
-        #expect(byId["d"]!.slack > 0)
+        #expect(try #require(byId["a"]?.isCritical) && byId["b"]!.isCritical && byId["c"]!.isCritical)
+        #expect(try #require(byId["d"]?.slack) > 0)
     }
 
     @Test func explicitStartDateWinsOverDependencyFloor() throws {
@@ -73,11 +73,11 @@ struct ProjectScheduleTests {
             TaskNode(id: "a", title: "a", dueDay: 1, blockId: "a"),
             TaskNode(id: "b", title: "b", startDay: 10, dueDay: 12, dependsOn: ["a"]),
         ]
-        let byId = Dictionary(
-            uniqueKeysWithValues: try #require(ProjectSchedule.schedule(nodes)).map { ($0.id, $0) }
+        let byId = try Dictionary(
+            uniqueKeysWithValues: #require(ProjectSchedule.schedule(nodes)).map { ($0.id, $0) }
         )
-        #expect(byId["b"]!.start == 10)
-        #expect(byId["b"]!.end == 12)
+        #expect(byId["b"]?.start == 10)
+        #expect(byId["b"]?.end == 12)
     }
 
     @Test func danglingReferenceIgnored() throws {

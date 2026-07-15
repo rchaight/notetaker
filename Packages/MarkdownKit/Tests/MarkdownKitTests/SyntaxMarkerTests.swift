@@ -76,7 +76,13 @@ struct ExtendedSyntaxTests {
 
     @Test func wikilinkDetectedWithTarget() {
         let styled = MarkdownStyler.styleRanges(in: "see [[Project Plan]] for details\n")
-        let link = styled.first { if case .wikilink = $0.kind { true } else { false } }
+        let link = styled.first {
+            if case .wikilink = $0.kind {
+                true
+            } else {
+                false
+            }
+        }
         #expect(link?.kind == .wikilink(target: "Project Plan"))
         #expect(link?.range == NSRange(location: 4, length: 16))
     }
@@ -87,10 +93,22 @@ struct ExtendedSyntaxTests {
 
     @Test func extendedSyntaxIgnoredInsideCode() {
         let inline = kinds("`[[not a link]]` and `==not marked==`\n")
-        #expect(!inline.contains { if case .wikilink = $0 { true } else { false } })
+        #expect(!inline.contains {
+            if case .wikilink = $0 {
+                true
+            } else {
+                false
+            }
+        })
         #expect(!inline.contains(.highlightMark))
         let fenced = kinds("```\n[[nope]] ==nope==\n```\n")
-        #expect(!fenced.contains { if case .wikilink = $0 { true } else { false } })
+        #expect(!fenced.contains {
+            if case .wikilink = $0 {
+                true
+            } else {
+                false
+            }
+        })
         #expect(!fenced.contains(.highlightMark))
     }
 
@@ -103,34 +121,40 @@ struct ExtendedSyntaxTests {
     }
 
     @Test func unclosedSyntaxIgnored() {
-        #expect(!kinds("[[dangling and ==half\n").contains { if case .wikilink = $0 { true } else { false } })
+        #expect(!kinds("[[dangling and ==half\n").contains {
+            if case .wikilink = $0 {
+                true
+            } else {
+                false
+            }
+        })
         #expect(!kinds("==half\n").contains(.highlightMark))
     }
 }
 
 struct FrontmatterUpdateTests {
-    @Test func addsKeyToExistingBlockPreservingOtherLines() {
+    @Test func addsKeyToExistingBlockPreservingOtherLines() throws {
         let doc = MarkdownDocument(source: "---\ntitle: My Note\n---\n# Body\n")
-        let updated = doc.frontmatter!.updating(key: "pinned", value: "true")
+        let updated = try #require(doc.frontmatter?.updating(key: "pinned", value: "true"))
         #expect(updated.rawBlock == "---\ntitle: My Note\npinned: true\n---\n")
         #expect(updated.values["pinned"] == "true")
         #expect(updated.values["title"] == "My Note")
     }
 
-    @Test func replacesAndRemovesKey() {
+    @Test func replacesAndRemovesKey() throws {
         let doc = MarkdownDocument(source: "---\npinned: true\ntitle: T\n---\nbody\n")
-        let off = doc.frontmatter!.updating(key: "pinned", value: nil)
+        let off = try #require(doc.frontmatter?.updating(key: "pinned", value: nil))
         #expect(off.rawBlock == "---\ntitle: T\n---\n")
         #expect(off.values["pinned"] == nil)
-        let flipped = doc.frontmatter!.updating(key: "pinned", value: "false")
+        let flipped = try #require(doc.frontmatter?.updating(key: "pinned", value: "false"))
         #expect(flipped.rawBlock.contains("pinned: false"))
         #expect(!flipped.rawBlock.contains("pinned: true"))
     }
 
-    @Test func roundTripsThroughDocumentRender() {
+    @Test func roundTripsThroughDocumentRender() throws {
         let doc = MarkdownDocument(source: "---\ntitle: T\n---\n# Body\ntext\n")
-        let updated = MarkdownDocument(
-            frontmatter: doc.frontmatter!.updating(key: "bookmarked", value: "true"),
+        let updated = try MarkdownDocument(
+            frontmatter: #require(doc.frontmatter?.updating(key: "bookmarked", value: "true")),
             body: doc.body
         )
         let reparsed = MarkdownDocument(source: updated.render())
@@ -140,9 +164,9 @@ struct FrontmatterUpdateTests {
 }
 
 struct TemplateExpansionTests {
-    @Test func expandsKnownPlaceholders() {
-        let now = Calendar(identifier: .gregorian)
-            .date(from: DateComponents(year: 2026, month: 7, day: 12, hour: 9, minute: 5))!
+    @Test func expandsKnownPlaceholders() throws {
+        let now = try #require(Calendar(identifier: .gregorian)
+            .date(from: DateComponents(year: 2026, month: 7, day: 12, hour: 9, minute: 5)))
         let out = TemplateExpansion.expand(
             "# {{title}}\nCreated {{date}} at {{time}} ({{datetime}})\n{{unknown}}\n",
             title: "Weekly Review", now: now

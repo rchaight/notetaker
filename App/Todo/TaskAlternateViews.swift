@@ -108,7 +108,7 @@ struct TaskAgendaView: View {
                     let due: String? = date == "No date" ? nil : date
                     var accepted = false
                     for id in ids {
-                        if let task = self.tasks.first(where: { $0.id == id }) {
+                        if let task = tasks.first(where: { $0.id == id }) {
                             onReschedule(task, due)
                             accepted = true
                         }

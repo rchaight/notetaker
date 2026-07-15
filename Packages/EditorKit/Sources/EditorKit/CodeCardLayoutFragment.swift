@@ -103,7 +103,9 @@ public enum CodeCardRegions {
             let content = ns.substring(with: item.range)
             guard content.hasPrefix("```") || content.hasPrefix("~~~") else { continue }
             var lines = MarkdownKit.splitLines(content)
-            if lines.last == "" { lines.removeLast() } // trailing newline artifact
+            if lines.last == "" {
+                lines.removeLast()
+            } // trailing newline artifact
             guard lines.count > 1 else { continue }
             let firstLength = String(lines[0]).utf16.count + 1 // + newline
             var lastLength = 0

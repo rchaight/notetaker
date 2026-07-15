@@ -60,7 +60,9 @@ public struct Frontmatter: Equatable, Sendable {
     /// block minimally: unrelated lines keep their exact bytes.
     public func updating(key: String, value: String?) -> Frontmatter {
         var lines = splitLines(rawBlock)
-        if lines.last == "" { lines.removeLast() } // block ends with newline
+        if lines.last == "" {
+            lines.removeLast()
+        } // block ends with newline
         lines.removeAll {
             strippingCarriageReturn($0).hasPrefix(key + ":")
         }

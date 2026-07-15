@@ -131,7 +131,7 @@ struct PipelineIntegrationTests {
     }
 }
 
-@Suite struct NoteTagTests {
+struct NoteTagTests {
     @Test func nestedTagsIndexAndQuery() throws {
         let (db, _) = try IndexDatabase.open(path: nil)
         let indexer = NoteIndexer(database: db)
@@ -156,7 +156,7 @@ struct PipelineIntegrationTests {
     }
 }
 
-@Suite struct NoteFlagTests {
+struct NoteFlagTests {
     @Test func frontmatterFlagsIndexAndClear() throws {
         let (db, _) = try IndexDatabase.open(path: nil)
         let indexer = NoteIndexer(database: db)
@@ -170,7 +170,7 @@ struct PipelineIntegrationTests {
     }
 }
 
-@Suite struct ProjectIndexTests {
+struct ProjectIndexTests {
     @Test func projectFrontmatterIndexesWithProgress() throws {
         let (db, _) = try IndexDatabase.open(path: nil)
         let indexer = NoteIndexer(database: db)
@@ -203,7 +203,7 @@ struct PipelineIntegrationTests {
     }
 }
 
-@Suite struct DependencyIndexTests {
+struct DependencyIndexTests {
     @Test func blockIdsAndDependenciesRoundTrip() throws {
         let (db, _) = try IndexDatabase.open(path: nil)
         let indexer = NoteIndexer(database: db)

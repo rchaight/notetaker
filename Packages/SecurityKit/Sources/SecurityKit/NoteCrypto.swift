@@ -74,7 +74,7 @@ public enum LockedNoteFile {
 
     /// Renders the full locked-file contents.
     public static func render(
-        title: String, salt: Data, rounds: Int, ciphertext: Data
+        title _: String, salt: Data, rounds: Int, ciphertext: Data
     ) -> String {
         """
         ---

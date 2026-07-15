@@ -12,6 +12,15 @@ ROUNDS="${1:-3}"
 # Fresh project first — new source files are invisible until regeneration.
 xcodegen generate > /dev/null
 
+# Formatting lint: CI enforces this — catching it here keeps every commit
+# green on GitHub (drift accumulated invisibly before this check existed).
+if command -v swiftformat > /dev/null; then
+  if ! swiftformat --lint . > /dev/null 2>&1; then
+    echo "FAIL [swiftformat --lint] — run: swiftformat ."
+    exit 1
+  fi
+fi
+
 for round in $(seq 1 "$ROUNDS"); do
   echo "=== test round $round/$ROUNDS ==="
   for PKG in Packages/*/; do

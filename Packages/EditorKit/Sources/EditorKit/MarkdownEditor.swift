@@ -2,9 +2,9 @@ import MarkdownKit
 import SwiftUI
 import TaskEngine
 
-// TextKit 2 markdown editor with live syntax styling on every keystroke.
-// The underlying storage is always the plain CommonMark source — styling
-// is attributes only, so the file on disk stays valid markdown.
+/// TextKit 2 markdown editor with live syntax styling on every keystroke.
+/// The underlying storage is always the plain CommonMark source — styling
+/// is attributes only, so the file on disk stays valid markdown.
 /// Ranges whose appearance depends on cursor position: syntax markers
 /// (hidden off-cursor) plus table/thematic-break bodies (rendered clear
 /// off-cursor). A cursor transition touching none of these cannot change
@@ -293,11 +293,19 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                         return apply(edit)
                     }
                 case #selector(NSResponder.insertTab(_:)):
-                    if let edit = MarkdownEditing.indentListItems(in: textView.string, selection: selection, outdent: false) {
+                    if let edit = MarkdownEditing.indentListItems(
+                        in: textView.string,
+                        selection: selection,
+                        outdent: false
+                    ) {
                         return apply(edit)
                     }
                 case #selector(NSResponder.insertBacktab(_:)):
-                    if let edit = MarkdownEditing.indentListItems(in: textView.string, selection: selection, outdent: true) {
+                    if let edit = MarkdownEditing.indentListItems(
+                        in: textView.string,
+                        selection: selection,
+                        outdent: true
+                    ) {
                         return apply(edit)
                     }
                 default:
@@ -322,7 +330,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
 
             public func textLayoutManager(
                 _ textLayoutManager: NSTextLayoutManager,
-                textLayoutFragmentFor location: NSTextLocation,
+                textLayoutFragmentFor _: NSTextLocation,
                 in textElement: NSTextElement
             ) -> NSTextLayoutFragment {
                 if let contentManager = textLayoutManager.textContentManager,
@@ -641,7 +649,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
 
             public func textLayoutManager(
                 _ textLayoutManager: NSTextLayoutManager,
-                textLayoutFragmentFor location: NSTextLocation,
+                textLayoutFragmentFor _: NSTextLocation,
                 in textElement: NSTextElement
             ) -> NSTextLayoutFragment {
                 if let contentManager = textLayoutManager.textContentManager,

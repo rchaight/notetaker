@@ -763,7 +763,9 @@ struct NotesView: View {
             let parts = tag.split(separator: "/")
             guard parts.count > depth else { continue }
             let name = String(parts[depth])
-            if seen.insert(name).inserted { names.append(name) }
+            if seen.insert(name).inserted {
+                names.append(name)
+            }
         }
         return names.map { name in
             let path = prefix.isEmpty ? name : prefix + "/" + name
@@ -1061,9 +1063,11 @@ struct NotesView: View {
                 .font(.headline)
             SecureField("Passphrase", text: $lockPassphrase)
             SecureField("Confirm passphrase", text: $lockConfirm)
-            Text("⚠️ There is NO recovery. If you forget this passphrase, the note's contents are permanently lost — Apple and Notetaker cannot decrypt it.")
-                .font(.caption)
-                .foregroundStyle(.orange)
+            Text(
+                "⚠️ There is NO recovery. If you forget this passphrase, the note's contents are permanently lost — Apple and Notetaker cannot decrypt it."
+            )
+            .font(.caption)
+            .foregroundStyle(.orange)
             if let lockError {
                 Text(lockError).font(.caption).foregroundStyle(.red)
             }

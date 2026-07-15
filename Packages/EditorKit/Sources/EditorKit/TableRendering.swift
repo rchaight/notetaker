@@ -20,7 +20,9 @@ public enum TableGrid {
     public struct Region: Equatable, Sendable {
         public let range: NSRange
         public let rows: [Row]
-        public var columnCount: Int { rows.map(\.cells.count).max() ?? 0 }
+        public var columnCount: Int {
+            rows.map(\.cells.count).max() ?? 0
+        }
     }
 
     public static func regions(in text: String, styled: [StyledRange]) -> [Region] {
@@ -50,8 +52,12 @@ public enum TableGrid {
     /// Cell texts of one row, outer pipes stripped.
     static func cells(of line: String) -> [String] {
         var trimmed = line
-        if trimmed.hasPrefix("|") { trimmed.removeFirst() }
-        if trimmed.hasSuffix("|") { trimmed.removeLast() }
+        if trimmed.hasPrefix("|") {
+            trimmed.removeFirst()
+        }
+        if trimmed.hasSuffix("|") {
+            trimmed.removeLast()
+        }
         return trimmed
             .split(separator: "|", omittingEmptySubsequences: false)
             .map { $0.trimmingCharacters(in: .whitespaces) }
