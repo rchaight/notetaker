@@ -22,6 +22,9 @@ struct TodoView: View {
     @State private var taskLabels: [String: [String]] = [:]
     @State private var selectedTaskIds: Set<String> = []
     @State private var detailTaskId: String?
+    /// Explicit multi-select mode (the ⌘-click path was undiscoverable,
+    /// and single-click now opens task details).
+    @State private var selectionMode = false
     @Environment(\.openWindow) private var openWindow
     @AppStorage("todoDensity") private var densityRaw = "comfortable"
     @AppStorage("showStreaks") private var showStreaks = false
@@ -216,6 +219,15 @@ struct TodoView: View {
             actionIcon("checkmark.circle", "Open the Logbook") {
                 viewModeRaw = ViewMode.log.rawValue
             }
+            actionIcon(
+                selectionMode ? "checklist.checked" : "checklist.unchecked",
+                selectionMode ? "Exit select mode" : "Select multiple to-dos (mass edit/delete)"
+            ) {
+                selectionMode.toggle()
+                if !selectionMode {
+                    selectedTaskIds = []
+                }
+            }
             Spacer()
             Menu {
                 Toggle("Show Streaks", isOn: $showStreaks)
@@ -343,9 +355,17 @@ struct TodoView: View {
             }
         }
         .safeAreaInset(edge: .bottom) {
-            if selectedTaskIds.count > 1 {
+            if selectionMode || selectedTaskIds.count > 1 {
                 batchBar
             }
+        }
+    }
+
+    private func toggleSelection(_ id: String) {
+        if selectedTaskIds.contains(id) {
+            selectedTaskIds.remove(id)
+        } else {
+            selectedTaskIds.insert(id)
         }
     }
 
@@ -354,6 +374,10 @@ struct TodoView: View {
         HStack(spacing: 12) {
             Text("\(selectedTaskIds.count) selected")
                 .font(.callout.weight(.medium))
+            Button("Select All") {
+                selectedTaskIds = Set(allFilteredTasks.map(\.id))
+            }
+            .disabled(selectedTaskIds.count == allFilteredTasks.count)
             Button("Complete", systemImage: "checkmark.circle") {
                 batch { await service.toggle($0) }
             }
@@ -380,7 +404,10 @@ struct TodoView: View {
                 batch { await service.deleteTask($0) }
             }
             Spacer()
-            Button("Done") { selectedTaskIds = [] }
+            Button("Done") {
+                selectedTaskIds = []
+                selectionMode = false
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -525,26 +552,45 @@ struct TodoView: View {
 
     private func row(_ task: TaskRecord) -> some View {
         let completing = completingIds.contains(task.id)
+        let selected = selectedTaskIds.contains(task.id)
         return HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Button {
-                completeWithFade(task)
-            } label: {
-                Image(systemName: completing ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(completing ? Color.secondary : priorityColor(task.priority))
+            if selectionMode {
+                Button {
+                    toggleSelection(task.id)
+                } label: {
+                    Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                        .font(.title3)
+                        .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+                }
+                .buttonStyle(.plain)
+                .help(selected ? "Deselect" : "Select")
+            } else {
+                Button {
+                    completeWithFade(task)
+                } label: {
+                    Image(systemName: completing ? "checkmark.circle.fill" : "circle")
+                        .font(.title3)
+                        .foregroundStyle(completing ? Color.secondary : priorityColor(task.priority))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Complete task")
+                .help("Complete task")
+                .disabled(completing)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Complete task")
-            .help("Complete task")
-            .disabled(completing)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(task.text)
                     .font(density.textFont)
                     .strikethrough(completing)
                     .contentShape(Rectangle())
-                    .onTapGesture { openDetail(task) }
-                    .help("Open task details")
+                    .onTapGesture {
+                        if selectionMode {
+                            toggleSelection(task.id)
+                        } else {
+                            openDetail(task)
+                        }
+                    }
+                    .help(selectionMode ? "Toggle selection" : "Open task details")
                 if density.showsMetaLine {
                     metaLine(task)
                 }
@@ -552,6 +598,9 @@ struct TodoView: View {
         }
         .padding(.vertical, density.rowPadding)
         .opacity(completing ? 0.45 : 1)
+        .listRowBackground(
+            selectionMode && selected ? Color.accentColor.opacity(0.14) : Color.clear
+        )
         .contextMenu {
             Button("Open Details", systemImage: "rectangle.expand.vertical") {
                 openDetail(task)
