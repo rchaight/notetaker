@@ -24,12 +24,29 @@ packages:
   SecurityKit: { path: Packages/SecurityKit }
   AppIntentsKit: { path: Packages/AppIntentsKit }
 targets:
+  NotetakerWidgets:
+    type: app-extension
+    supportedDestinations: [iOS, macOS]
+    sources:
+      - Widgets
+    info:
+      path: Widgets/Info.plist
+      properties:
+        CFBundleDisplayName: Notetaker Widgets
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.rchaight.notetaker.widgets
+        CODE_SIGN_ENTITLEMENTS: Widgets/NotetakerWidgets.entitlements
   Notetaker:
     type: application
     supportedDestinations: [iOS, macOS]
     sources:
       - App
     dependencies:
+      - target: NotetakerWidgets
+        embed: true
       - package: VaultKit
       - package: MarkdownKit
       - package: EditorKit

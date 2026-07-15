@@ -6,6 +6,7 @@ import MarkdownKit
 import Observation
 import TaskEngine
 import VaultKit
+import WidgetKit
 
 /// The app-level pipeline: vault files → live derived index → outbound
 /// checkbox writes. One instance shared by the To-Do tab (and later search,
@@ -191,6 +192,52 @@ final class VaultIndexService {
         // FIRST scan after launch must refresh them even when no file
         // changed (favorites/pins read the db before it opened otherwise).
         tasksVersion += 1
+        publishWidgetSnapshot()
+    }
+
+    /// Today-tasks snapshot for the widget, via the app-group container.
+    /// Fails silently when the group isn't provisioned (ad-hoc dev builds).
+    private func publishWidgetSnapshot() {
+        guard let container = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: "6A2NHN89Q8.com.rchaight.notetaker"
+        ) else { return }
+        let open = (try? database?.openTasks()) ?? []
+        let buckets = Dictionary(grouping: open) {
+            SmartBuckets.bucket(dueDate: $0.dueDate, startDate: $0.startDate)
+        }
+        let today = buckets[.today] ?? []
+        let payload: [String: Any] = [
+            "updated": ISO8601DateFormatter().string(from: Date()),
+            "todayCount": today.count,
+            "overdueCount": (buckets[.overdue] ?? []).count,
+            "items": today.prefix(6).map {
+                ["id": $0.id, "text": $0.text, "priority": $0.priority as Any]
+            },
+        ]
+        // Encodable via JSONSerialization keeps the widget's Codable shape
+        // without sharing a module.
+        struct Item: Codable { let id: String; let text: String; let priority: Int? }
+        struct Snapshot: Codable {
+            let updated: Date
+            let todayCount: Int
+            let overdueCount: Int
+            let items: [Item]
+        }
+        _ = payload
+        let snapshot = Snapshot(
+            updated: Date(),
+            todayCount: today.count,
+            overdueCount: (buckets[.overdue] ?? []).count,
+            items: today.prefix(6).map {
+                Item(id: $0.id, text: $0.text, priority: $0.priority)
+            }
+        )
+        if let data = try? JSONEncoder().encode(snapshot) {
+            try? data.write(to: container.appendingPathComponent("today-tasks.json"))
+            #if canImport(WidgetKit)
+                WidgetCenter.shared.reloadTimelines(ofKind: "TodayTasks")
+            #endif
+        }
     }
 
     /// ".Note.md.icloud" (possibly nested in folders) → "Note.md".

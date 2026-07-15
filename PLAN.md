@@ -305,7 +305,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 **Goal:** highest-ROI system integration, built on App Intents 2.0 (SiriKit deprecated).
 **Steps:**
 - [x] One `AppIntent` family ("Add Task"/"Create Note") → Siri, Spotlight actions, Shortcuts. *(AppEntity/IndexedEntity + CoreSpotlight deferred with the deep-link work; FTS5 stays primary search.)*
-- [ ] Home/Lock Screen interactive widgets: "Today's Tasks" (check off inline via `AppIntent`), "Quick Note"; macOS desktop widgets.
+- [x] "Today's Tasks" widget (small/medium, macOS desktop + iOS home screen): app publishes a today-snapshot to the app-group container on every reindex, WidgetCenter reload keeps it fresh. *(Interactive inline check-off + Quick Note widget deferred — needs the intent to run sandboxed in the widget process; logged.)*
 - [x] macOS `MenuBarExtra` (M7.5) + global hotkey ⌃⌥⌘N → floating quick-capture panel into Inbox.md. *(Control Center ControlWidget rides with the widget-extension pass.)*
 - [x] Handoff via `NSUserActivity` (open note continuable across devices); lightweight graph view (ring layout, degree-weighted hubs, tap-to-open). Wikilink autocomplete/nested tags/backlinks/templates shipped earlier (M6.6). Section deep-links deferred to M10 polish.
 - [ ] (Optional) Apple Watch complication: today's open-todo count.
