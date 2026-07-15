@@ -508,12 +508,7 @@ final class VaultIndexService {
         guard let root, let indexer else { return nil }
         let base = name.trimmingCharacters(in: .whitespaces)
         let title = base.isEmpty ? "New Project" : base
-        var fileName = title + ".md"
-        var counter = 2
-        while FileManager.default.fileExists(atPath: root.appendingPathComponent(fileName).path) {
-            fileName = "\(title) \(counter).md"
-            counter += 1
-        }
+        let fileName = VaultNaming.uniqueFileName(base: title, ext: "md", in: root)
         let contents = """
         ---
         project: true

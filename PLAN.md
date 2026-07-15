@@ -312,6 +312,14 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 **Done:** "Hey Siri, add a task to Notetaker" works; a Lock Screen widget checks off a task; the global hotkey captures a note; Spotlight surfaces notes semantically.
 **Effort:** ~2.5 weeks.
 
+### M9.5 — Shakedown + Settings buildout (user-directed, before M10)
+**Goal:** walk every surface, fix what's off, and grow Settings into a full preferences pane. M10 pushed until this passes user review.
+
+- [x] Overwrite-safe note creation everywhere: VaultNaming (disk + iCloud-placeholder aware) behind createNote/template/daily/project/headless/attachments; daily note downloads instead of overwriting an undownloaded remote.
+- [ ] Tag system rethink (user: sidebar tag dump is unwieldy).
+- [ ] Settings menu buildout: organized panes, all knobs discoverable.
+- [ ] Per-surface sweep with user: Notes, editor, To-Do, Projects, Vault, import/AI.
+
 ### M10 — Release / distribution
 **Goal:** macOS signed+notarized+stapled `.dmg`; iOS on TestFlight.
 **Steps:**

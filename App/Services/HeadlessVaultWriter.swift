@@ -33,12 +33,7 @@ enum HeadlessVaultWriter {
         let clean = NotesModel.sanitizeFileName(
             title.isEmpty ? "Untitled" : title
         )
-        var name = clean + ".md"
-        var counter = 2
-        while FileManager.default.fileExists(atPath: root.appendingPathComponent(name).path) {
-            name = "\(clean) \(counter).md"
-            counter += 1
-        }
+        let name = VaultNaming.uniqueFileName(base: clean, ext: "md", in: root)
         let contents = "# \(clean)\n\n" + (body.isEmpty ? "" : body + "\n")
         guard await (try? store.writeString(
             contents, to: root.appendingPathComponent(name)

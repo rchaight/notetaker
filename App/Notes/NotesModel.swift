@@ -339,12 +339,7 @@ final class NotesModel {
         let current = url.deletingPathExtension().lastPathComponent
         guard !sanitized.isEmpty, sanitized != current else { return }
         let folder = url.deletingLastPathComponent()
-        var name = sanitized + ".md"
-        var counter = 2
-        while FileManager.default.fileExists(atPath: folder.appendingPathComponent(name).path) {
-            name = "\(sanitized) \(counter).md"
-            counter += 1
-        }
+        let name = VaultNaming.uniqueFileName(base: sanitized, ext: "md", in: folder)
         let destination = folder.appendingPathComponent(name)
         do {
             try await store.move(from: url, to: destination)
@@ -398,12 +393,7 @@ final class NotesModel {
         try? await store.createFolder(at: attachments)
         let base = source.deletingPathExtension().lastPathComponent
         let ext = source.pathExtension.isEmpty ? "png" : source.pathExtension
-        var name = "\(base).\(ext)"
-        var counter = 2
-        while FileManager.default.fileExists(atPath: attachments.appendingPathComponent(name).path) {
-            name = "\(base) \(counter).\(ext)"
-            counter += 1
-        }
+        let name = VaultNaming.uniqueFileName(base: base, ext: ext, in: attachments)
         do {
             try await store.copy(from: source, to: attachments.appendingPathComponent(name))
         } catch {
@@ -425,7 +415,13 @@ final class NotesModel {
             let day = formatter.string(from: date)
             let relative = "Daily/\(day).md"
             let url = root.appendingPathComponent(relative)
-            if !notes.contains(where: { $0.relativePath == relative }) {
+            let known = notes.contains { $0.relativePath == relative }
+            if !known, VaultNaming.isTaken(url) {
+                // Exists remotely but hasn't downloaded: pull it, never
+                // overwrite it with a fresh template.
+                try? store.startDownloading(url)
+                apply(VaultEnumerator.snapshot(of: root))
+            } else if !known {
                 try? await store.createFolder(
                     at: root.appendingPathComponent("Daily", isDirectory: true)
                 )
@@ -528,15 +524,13 @@ final class NotesModel {
             guard let raw = try? await store.readString(at: template.url) else { return }
             let base = URL(fileURLWithPath: template.relativePath)
                 .deletingPathExtension().lastPathComponent
-            let existing = Set(notes.map(\.relativePath))
-            var title = base
-            var counter = 2
-            while existing.contains(title + ".md") {
-                title = "\(base) \(counter)"
-                counter += 1
-            }
+            let fileName = VaultNaming.uniqueFileName(
+                base: base, ext: "md", in: root,
+                reserved: Set(notes.map(\.relativePath))
+            )
+            let title = String(fileName.dropLast(3))
             let contents = TemplateExpansion.expand(raw, title: title)
-            let url = root.appendingPathComponent(title + ".md")
+            let url = root.appendingPathComponent(fileName)
             do {
                 try await store.writeString(contents, to: url)
                 apply(VaultEnumerator.snapshot(of: root))
@@ -550,14 +544,17 @@ final class NotesModel {
     func createNote(in folder: String = "") {
         guard let root else { return }
         Task {
-            let existing = Set(notes.map(\.relativePath))
             let prefix = folder.isEmpty ? "" : folder + "/"
-            var name = prefix + "Untitled.md"
-            var counter = 2
-            while existing.contains(name) {
-                name = prefix + "Untitled \(counter).md"
-                counter += 1
-            }
+            let reserved = Set(
+                notes.map(\.relativePath)
+                    .filter { $0.hasPrefix(prefix) }
+                    .map { String($0.dropFirst(prefix.count)) }
+            )
+            let name = prefix + VaultNaming.uniqueFileName(
+                base: "Untitled", ext: "md",
+                in: root.appendingPathComponent(folder, isDirectory: true),
+                reserved: reserved
+            )
             let url = root.appendingPathComponent(name)
             do {
                 let title = url.deletingPathExtension().lastPathComponent
