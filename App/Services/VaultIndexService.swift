@@ -538,6 +538,15 @@ final class VaultIndexService {
         projects().contains { $0.id == noteId }
     }
 
+    /// Manual full rescan (Vault tab toolbar).
+    func rescan() async {
+        await reindexFromDisk()
+    }
+
+    var vaultRootURL: URL? {
+        root
+    }
+
     func projects() -> [NoteRecord] {
         (try? database?.projects()) ?? []
     }

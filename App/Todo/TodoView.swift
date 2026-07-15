@@ -96,12 +96,20 @@ struct TodoView: View {
                             streakChip
                         }
                     }
-                    ToolbarItem {
-                        Button("New Task", systemImage: "plus") {
+                    ToolbarItemGroup(placement: .primaryAction) {
+                        Button("New Task", systemImage: "square.and.pencil") {
                             showingQuickAdd = true
                         }
                         .keyboardShortcut("n", modifiers: [.command, .shift])
                         .help("Quick Add (⇧⌘N) — e.g. \"email dean tomorrow p1 #admin\"")
+                        Button("Agenda", systemImage: "calendar") {
+                            viewModeRaw = ViewMode.agenda.rawValue
+                        }
+                        .help("Agenda view (by date)")
+                        Button("Logbook", systemImage: "checkmark.circle") {
+                            viewModeRaw = ViewMode.log.rawValue
+                        }
+                        .help("Completed tasks by day")
                     }
                 }
         }

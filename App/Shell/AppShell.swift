@@ -215,6 +215,22 @@ struct AppShell: View {
                 }
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 300)
                 .navigationTitle("Vault")
+                .toolbar {
+                    ToolbarItemGroup(placement: .primaryAction) {
+                        Button("Rescan", systemImage: "arrow.clockwise") {
+                            Task { await indexService.rescan() }
+                        }
+                        .help("Re-scan the vault and rebuild the index")
+                        #if os(macOS)
+                            Button("Reveal in Finder", systemImage: "folder") {
+                                if let root = indexService.vaultRootURL {
+                                    NSWorkspace.shared.open(root)
+                                }
+                            }
+                            .help("Open the vault folder in Finder")
+                        #endif
+                    }
+                }
             } detail: {
                 NavigationStack {
                     VaultDebugView()

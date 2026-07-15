@@ -24,6 +24,21 @@ struct TagsView: View {
             sidebar
                 .navigationSplitViewColumnWidth(min: 220, ideal: 280, max: 400)
                 .navigationTitle("Tags")
+                .toolbar {
+                    ToolbarItemGroup(placement: .primaryAction) {
+                        Button {
+                            suggesting = true
+                            Task {
+                                mergeSuggestions = await service.suggestTagMerges()
+                                suggesting = false
+                            }
+                        } label: {
+                            Label("Suggest Merges", systemImage: "wand.and.stars")
+                        }
+                        .help("Find duplicate-ish tags to fold together (heuristics + local Ollama)")
+                        .disabled(suggesting)
+                    }
+                }
         } detail: {
             detail
         }

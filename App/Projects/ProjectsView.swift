@@ -24,7 +24,7 @@ struct ProjectsView: View {
             .navigationSplitViewColumnWidth(min: 220, ideal: 300, max: 420)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Button("New Project", systemImage: "plus") {
+                    Button("New Project", systemImage: "square.and.pencil") {
                         newProjectName = ""
                         showingNewProject = true
                     }
