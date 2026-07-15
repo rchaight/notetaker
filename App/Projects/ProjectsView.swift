@@ -131,6 +131,7 @@ struct ProjectDetailView: View {
     @State private var tasks: [TaskRecord] = []
     @State private var mode: Mode = .tasks
     @State private var newTaskText = ""
+    @State private var objectiveText = ""
     @State private var detailTaskId: String?
     @Environment(\.openWindow) private var openWindow
 
@@ -168,6 +169,7 @@ struct ProjectDetailView: View {
         .navigationTitle(project.title)
         .task(id: "\(project.id)-\(service.tasksVersion)") {
             tasks = service.tasks(inNote: project.id)
+            objectiveText = await service.frontmatterValue(project.id, key: "objective") ?? ""
         }
         .sheet(
             isPresented: Binding(
@@ -185,6 +187,59 @@ struct ProjectDetailView: View {
         }
     }
 
+    // MARK: - Aggregates (rolled up from the note's task lines)
+
+    private var assignees: [String] {
+        Array(Set(tasks.compactMap(\.assignee))).sorted()
+    }
+
+    private var milestones: [TaskRecord] {
+        let labelled = service.taskLabels()
+        return tasks.filter { (labelled[$0.id] ?? []).contains("milestone") }
+    }
+
+    private var dependencyCount: Int {
+        tasks.count(where: { $0.dependsOn != nil })
+    }
+
+    private var overdueCount: Int {
+        let today = TodoView.todayISO()
+        return tasks.count(where: { !$0.checked && ($0.dueDate ?? "9999") < today })
+    }
+
+    private var healthColor: Color {
+        if overdueCount > 0 {
+            return .red
+        }
+        switch ProjectMetadata.Status(rawValue: project.projectStatus ?? "") {
+        case .done: return .green
+        case .onHold: return .orange
+        default: return tasks.allSatisfy(\.checked) && !tasks.isEmpty ? .green : .blue
+        }
+    }
+
+    private var objectiveRow: some View {
+        LabeledContent("Objective") {
+            TextField(
+                "What does this project deliver?",
+                text: $objectiveText,
+                axis: .vertical
+            )
+            .textFieldStyle(.plain)
+            .multilineTextAlignment(.trailing)
+            .onSubmit { commitObjective() }
+        }
+    }
+
+    private func commitObjective() {
+        let value = objectiveText.trimmingCharacters(in: .whitespaces)
+        Task {
+            await service.setFrontmatterValue(
+                project.id, key: "objective", value: value.isEmpty ? nil : value
+            )
+        }
+    }
+
     /// Same detail surface as the To-Do tab: window on macOS, sheet on iOS.
     private func openDetail(_ task: TaskRecord) {
         #if os(macOS)
@@ -197,9 +252,47 @@ struct ProjectDetailView: View {
     private var taskList: some View {
         List {
             Section {
-                LabeledContent("Status", value: project.projectStatus ?? "—")
+                LabeledContent("Status") {
+                    HStack(spacing: 6) {
+                        Circle().fill(healthColor).frame(width: 9, height: 9)
+                        Text(project.projectStatus ?? "—")
+                        if overdueCount > 0 {
+                            Text("· \(overdueCount) overdue")
+                                .foregroundStyle(.red)
+                        }
+                    }
+                }
                 LabeledContent("Start", value: project.projectStart ?? "—")
                 LabeledContent("Due", value: project.projectDue ?? "—")
+                objectiveRow
+                if !assignees.isEmpty {
+                    LabeledContent("Assignees", value: assignees.map { "@" + $0 }.joined(separator: ", "))
+                }
+                if !milestones.isEmpty {
+                    LabeledContent("Milestones") {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            ForEach(milestones) { milestone in
+                                HStack(spacing: 5) {
+                                    Image(systemName: milestone.checked
+                                        ? "diamond.fill" : "diamond")
+                                        .font(.caption2)
+                                        .foregroundStyle(.purple)
+                                    Text(milestone.text)
+                                    if let due = milestone.dueDate {
+                                        Text(due).foregroundStyle(.secondary)
+                                    }
+                                }
+                                .font(.callout)
+                            }
+                        }
+                    }
+                }
+                if dependencyCount > 0 {
+                    LabeledContent(
+                        "Dependencies",
+                        value: "\(dependencyCount) task\(dependencyCount == 1 ? "" : "s") blocked-by linked"
+                    )
+                }
             }
             Section("Tasks") {
                 HStack(spacing: 8) {

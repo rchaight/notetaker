@@ -12,6 +12,7 @@ final class TaskExtrasStore {
     struct Extras: Equatable {
         var description: String = ""
         var url: String = ""
+        var objective: String = ""
         var updatedAt: Date?
     }
 
@@ -41,6 +42,7 @@ final class TaskExtrasStore {
             let extras = Extras(
                 description: record["taskDescription"] as? String ?? "",
                 url: record["url"] as? String ?? "",
+                objective: record["objective"] as? String ?? "",
                 updatedAt: record.modificationDate
             )
             cache[taskKey] = extras
@@ -69,6 +71,7 @@ final class TaskExtrasStore {
             }
             record["taskDescription"] = extras.description
             record["url"] = extras.url
+            record["objective"] = extras.objective
             _ = try await database.save(record)
             var stamped = extras
             stamped.updatedAt = Date()

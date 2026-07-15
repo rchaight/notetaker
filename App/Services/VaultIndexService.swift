@@ -651,6 +651,32 @@ final class VaultIndexService {
         (try? database?.bookmarkedNoteIds()) ?? []
     }
 
+    /// Reads one frontmatter value from the note file.
+    func frontmatterValue(_ noteId: String, key: String) async -> String? {
+        guard let root else { return nil }
+        let url = root.appendingPathComponent(noteId)
+        guard let contents = try? await store.readString(at: url) else { return nil }
+        return MarkdownDocument(source: contents).frontmatter?.values[key]
+    }
+
+    /// Writes one frontmatter string value (nil removes the key).
+    func setFrontmatterValue(_ noteId: String, key: String, value: String?) async {
+        guard let root, let indexer else { return }
+        await beforeNoteMutation?(noteId)
+        let url = root.appendingPathComponent(noteId)
+        guard let contents = try? await store.readString(at: url) else { return }
+        let document = MarkdownDocument(source: contents)
+        let frontmatter = (document.frontmatter ?? Frontmatter(values: [:]))
+            .updating(key: key, value: value)
+        let updated = MarkdownDocument(frontmatter: frontmatter, body: document.body).render()
+        guard updated != contents else { return }
+        try? await store.writeString(updated, to: url)
+        try? indexer.index(noteId: noteId, contents: updated, modifiedAt: nil)
+        knownMTimes[noteId] = nil
+        tasksVersion += 1
+        onNoteMutated?(noteId)
+    }
+
     /// Flags live in the note's frontmatter (files are truth; they sync).
     func setNoteFlag(_ noteId: String, key: String, value: Bool) async {
         guard let root, let indexer else { return }
