@@ -22,6 +22,9 @@ struct TaskDetailView: View {
     @State private var assignee = ""
     @State private var isMilestone = false
     @State private var labels: [String] = []
+    @State private var subtasks: [TaskRecord] = []
+    @State private var fileBullets: [String] = []
+    @State private var newSubtask = ""
     @State private var extras = TaskExtrasStore.Extras()
     @State private var extrasKey: String?
     @State private var saveState: String?
@@ -72,6 +75,8 @@ struct TaskDetailView: View {
         labels = service.taskLabels()[task.id] ?? []
         isMilestone = labels.contains("milestone")
         assignee = task.assignee ?? ""
+        subtasks = service.subtasks(of: task)
+        fileBullets = await service.nestedBullets(for: task)
         if let key = task.blockId {
             extrasKey = key
             extras = await extrasStore.extras(for: key)
@@ -208,6 +213,69 @@ struct TaskDetailView: View {
             Divider()
 
             VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    rowLabel("Subtasks", "checklist")
+                    if !subtasks.isEmpty {
+                        let done = subtasks.count(where: \.checked)
+                        Text("\(done)/\(subtasks.count)")
+                            .font(.caption)
+                            .foregroundStyle(done == subtasks.count ? .green : .secondary)
+                    }
+                    Spacer()
+                }
+                ForEach(subtasks) { subtask in
+                    HStack(spacing: 8) {
+                        Button {
+                            Task { await service.toggle(subtask) }
+                        } label: {
+                            Image(systemName: subtask.checked
+                                ? "checkmark.circle.fill" : "circle")
+                                .foregroundStyle(subtask.checked
+                                    ? Color.secondary : Color.accentColor)
+                        }
+                        .buttonStyle(.plain)
+                        .help(subtask.checked ? "Reopen" : "Complete")
+                        Text(subtask.text)
+                            .strikethrough(subtask.checked)
+                            .foregroundStyle(subtask.checked ? .secondary : .primary)
+                        Spacer()
+                    }
+                    .padding(.leading, 4)
+                }
+                HStack(spacing: 8) {
+                    Image(systemName: "plus.circle")
+                        .foregroundStyle(Color.accentColor)
+                    TextField("Add a subtask…", text: $newSubtask)
+                        .textFieldStyle(.plain)
+                        .onSubmit {
+                            let text = newSubtask.trimmingCharacters(in: .whitespaces)
+                            guard !text.isEmpty else { return }
+                            newSubtask = ""
+                            Task { await service.addSubtask(to: task, text: text) }
+                        }
+                }
+                .padding(.leading, 4)
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                if !fileBullets.isEmpty {
+                    rowLabel("From the note", "text.badge.minus")
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(fileBullets, id: \.self) { bullet in
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text("•").foregroundStyle(.secondary)
+                                Text(bullet)
+                            }
+                            .font(.callout)
+                        }
+                    }
+                    .padding(.leading, 4)
+                    Text("Nested bullets under the task line — edit them in the note.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
                 rowLabel("Objective", "target")
                 TextField("What does done look like?", text: $extras.objective)
                     .textFieldStyle(.roundedBorder)

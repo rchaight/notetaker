@@ -614,6 +614,76 @@ final class VaultIndexService {
         }
     }
 
+    /// Checkbox children of a task (nested `- [ ]` lines — the index
+    /// already links them via parentId).
+    func subtasks(of task: TaskRecord) -> [TaskRecord] {
+        tasks(inNote: task.noteId).filter { $0.parentId == task.id }
+    }
+
+    /// Plain `- ` bullets nested under the task's line: file-owned notes
+    /// that display with the task's description (user convention).
+    func nestedBullets(for task: TaskRecord) async -> [String] {
+        guard let root else { return [] }
+        let url = root.appendingPathComponent(task.noteId)
+        guard let contents = try? await store.readString(at: url),
+              let index = TaskLineToggler.locate(
+                  contents: contents, anchorLine: task.line, expectedRawLine: task.rawLine
+              ) else { return [] }
+        let lines = splitLines(contents)
+        let parentIndent = task.rawLine.prefix { $0 == " " || $0 == "\t" }.count
+        var bullets: [String] = []
+        var cursor = index + 1
+        while cursor < lines.count {
+            let line = strippingCarriageReturn(lines[cursor])
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty {
+                cursor += 1
+                continue
+            }
+            let indent = line.prefix { $0 == " " || $0 == "\t" }.count
+            guard indent > parentIndent else { break }
+            if trimmed.hasPrefix("- "), !trimmed.hasPrefix("- [") {
+                bullets.append(String(trimmed.dropFirst(2)))
+            }
+            cursor += 1
+        }
+        return bullets
+    }
+
+    /// Appends a subtask line at the end of the parent's nested block.
+    func addSubtask(to task: TaskRecord, text: String) async {
+        guard let root, let indexer,
+              !text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        await beforeNoteMutation?(task.noteId)
+        let url = root.appendingPathComponent(task.noteId)
+        guard let contents = try? await store.readString(at: url),
+              let index = TaskLineToggler.locate(
+                  contents: contents, anchorLine: task.line, expectedRawLine: task.rawLine
+              ) else { return }
+        var lines = splitLines(contents)
+        let parentIndent = String(task.rawLine.prefix { $0 == " " || $0 == "\t" })
+        var insertAt = index + 1
+        while insertAt < lines.count {
+            let stripped = strippingCarriageReturn(lines[insertAt])
+            let trimmed = stripped.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty {
+                break
+            }
+            let indent = stripped.prefix { $0 == " " || $0 == "\t" }.count
+            if indent <= parentIndent.count {
+                break
+            }
+            insertAt += 1
+        }
+        lines.insert(parentIndent + "  - [ ] " + text, at: insertAt)
+        let updated = lines.joined(separator: "\n")
+        try? await store.writeString(updated, to: url)
+        try? indexer.index(noteId: task.noteId, contents: updated, modifiedAt: nil)
+        knownMTimes[task.noteId] = nil
+        tasksVersion += 1
+        onNoteMutated?(task.noteId)
+    }
+
     /// Manual full rescan (Vault tab toolbar).
     func rescan() async {
         await reindexFromDisk()
