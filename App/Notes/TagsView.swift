@@ -11,9 +11,21 @@ struct TagsView: View {
     /// Opens a note in the Notes tab (wired by AppShell).
     var openNote: (String) -> Void = { _ in }
 
+    var extrasStore = TaskExtrasStore()
+    @State private var tagStore = TagExtrasStore()
     @State private var allTags: [(tag: String, count: Int)] = []
-    @State private var selectedTag: String?
+    @State private var selectedTags: Set<String> = []
+    @State private var groupSuggestions: [TagGroup] = []
+    @State private var tagDescription = ""
+    @State private var descriptionTag: String?
+    @State private var detailTaskId: String?
+    @Environment(\.openWindow) private var openWindow
     @State private var search = ""
+
+    private var selectedTag: String? {
+        selectedTags.count == 1 ? selectedTags.first : nil
+    }
+
     @State private var renameTarget: String?
     @State private var renameText = ""
     @State private var mergeSuggestions: [TagMerge] = []
@@ -64,9 +76,11 @@ struct TagsView: View {
                         .replacingOccurrences(of: "#", with: "")
                     Task {
                         await service.renameTag(from: target, to: newName)
+                        await tagStore.move(from: target, to: newName)
                         allTags = service.noteTags()
-                        if selectedTag == target {
-                            selectedTag = newName
+                        if selectedTags.contains(target) {
+                            selectedTags.remove(target)
+                            selectedTags.insert(newName)
                         }
                     }
                 }
@@ -92,7 +106,10 @@ struct TagsView: View {
                 Button {
                     suggesting = true
                     Task {
-                        mergeSuggestions = await service.suggestTagMerges()
+                        async let merges = service.suggestTagMerges()
+                        async let groups = service.suggestTagGroups()
+                        mergeSuggestions = await merges
+                        groupSuggestions = await groups
                         suggesting = false
                     }
                 } label: {
@@ -106,11 +123,25 @@ struct TagsView: View {
                 .disabled(suggesting)
             }
             .padding(10)
-            if !mergeSuggestions.isEmpty {
-                suggestionList
+            if !mergeSuggestions.isEmpty || !groupSuggestions.isEmpty {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 8) {
+                        if !mergeSuggestions.isEmpty {
+                            suggestionList
+                        }
+                        if !groupSuggestions.isEmpty {
+                            groupList
+                        }
+                    }
+                }
+                .frame(maxHeight: 220)
                 Divider()
             }
-            List(selection: $selectedTag) {
+            if selectedTags.count > 1 {
+                bulkBar
+                Divider()
+            }
+            List(selection: $selectedTags) {
                 ForEach(filteredTags, id: \.tag) { entry in
                     HStack {
                         Label(entry.tag, systemImage: "number")
@@ -133,6 +164,7 @@ struct TagsView: View {
                                 Button("#" + other) {
                                     Task {
                                         await service.renameTag(from: entry.tag, to: other)
+                                        await tagStore.move(from: entry.tag, to: other)
                                         allTags = service.noteTags()
                                     }
                                 }
@@ -144,9 +176,7 @@ struct TagsView: View {
                             Task {
                                 await service.deleteTag(entry.tag)
                                 allTags = service.noteTags()
-                                if selectedTag == entry.tag {
-                                    selectedTag = nil
-                                }
+                                selectedTags.remove(entry.tag)
                             }
                         }
                     }
@@ -163,6 +193,43 @@ struct TagsView: View {
                 }
             }
         }
+    }
+
+    /// Bulk actions over the multi-selection.
+    private var bulkBar: some View {
+        HStack(spacing: 10) {
+            Text("\(selectedTags.count) tags")
+                .font(.callout.weight(.medium))
+            Menu("Merge Into") {
+                ForEach(allTags.map(\.tag).sorted(), id: \.self) { target in
+                    Button("#" + target) {
+                        let sources = selectedTags.filter { $0 != target }
+                        selectedTags = []
+                        Task {
+                            for source in sources {
+                                await service.renameTag(from: source, to: target)
+                                await tagStore.move(from: source, to: target)
+                            }
+                            allTags = service.noteTags()
+                        }
+                    }
+                }
+            }
+            .fixedSize()
+            Button("Delete All", role: .destructive) {
+                let doomed = selectedTags
+                selectedTags = []
+                Task {
+                    for tag in doomed {
+                        await service.deleteTag(tag)
+                    }
+                    allTags = service.noteTags()
+                }
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
     }
 
     private var suggestionList: some View {
@@ -182,6 +249,7 @@ struct TagsView: View {
                             Task {
                                 for source in suggestion.from {
                                     await service.renameTag(from: source, to: suggestion.into)
+                                    await tagStore.move(from: source, to: suggestion.into)
                                 }
                                 allTags = service.noteTags()
                             }
@@ -199,40 +267,194 @@ struct TagsView: View {
         .padding(.bottom, 8)
     }
 
+    private var groupList: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Group into families")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            ForEach(groupSuggestions) { group in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("#\(group.members.joined(separator: ", #")) → \(group.parent)/…")
+                        .font(.callout)
+                    HStack {
+                        Text(group.reason)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Apply") {
+                            let suggestion = group
+                            groupSuggestions.removeAll { $0.id == suggestion.id }
+                            Task {
+                                for member in suggestion.members {
+                                    let nested = TagGroup.nestedName(
+                                        member: member, parent: suggestion.parent
+                                    )
+                                    await service.renameTag(from: member, to: nested)
+                                    await tagStore.move(from: member, to: nested)
+                                }
+                                allTags = service.noteTags()
+                            }
+                        }
+                        .controlSize(.small)
+                        Button("Dismiss") {
+                            groupSuggestions.removeAll { $0.id == group.id }
+                        }
+                        .controlSize(.small)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.bottom, 8)
+    }
+
     @ViewBuilder private var detail: some View {
         if let selectedTag {
-            let ids = Set(service.tagNoteIds(selectedTag))
-            let notes = model.notes.filter { ids.contains($0.id) }
-            List(notes) { note in
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(
-                            URL(fileURLWithPath: note.relativePath)
-                                .deletingPathExtension().lastPathComponent
-                        )
-                        let folder = note.relativePath.split(separator: "/").dropLast()
-                            .joined(separator: "/")
-                        if !folder.isEmpty {
-                            Text(folder)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    Spacer()
-                    Image(systemName: "arrow.up.right.square")
-                        .foregroundStyle(.secondary)
-                }
-                .contentShape(Rectangle())
-                .onTapGesture { openNote(note.id) }
-                .help("Open in Notes")
-            }
-            .navigationTitle("#" + selectedTag)
+            tagPage(selectedTag)
+        } else if selectedTags.count > 1 {
+            ContentUnavailableView(
+                "\(selectedTags.count) Tags Selected",
+                systemImage: "number",
+                description: Text("Use the bulk bar to merge or delete them together.")
+            )
         } else {
             ContentUnavailableView(
                 "Select a Tag",
                 systemImage: "number",
-                description: Text("Pick a tag to see every note that carries it.")
+                description: Text("Everything carrying the tag — notes, to-dos, and projects — appears here.")
             )
         }
+    }
+
+    /// One page per tag: description (CloudKit), then every surface the
+    /// tag touches — notes, to-dos (task labels), projects.
+    private func tagPage(_ tag: String) -> some View {
+        let noteIds = Set(service.tagNoteIds(tag))
+        let taggedNotes = model.notes.filter { noteIds.contains($0.id) }
+        let tasks = service.tasksWithLabel(tag)
+        let taskNoteIds = Set(tasks.map(\.noteId))
+        let projects = service.projects().filter {
+            noteIds.contains($0.id) || taskNoteIds.contains($0.id)
+        }
+        let projectIds = Set(projects.map(\.id))
+        return List {
+            Section("About") {
+                TextField(
+                    "Describe what #\(tag) is for…",
+                    text: $tagDescription,
+                    axis: .vertical
+                )
+                .textFieldStyle(.plain)
+                .onSubmit { commitDescription(tag) }
+                if let unavailable = tagStore.unavailable {
+                    Text(unavailable).font(.caption).foregroundStyle(.orange)
+                } else {
+                    Text("Synced via your private iCloud database.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            if !projects.isEmpty {
+                Section("Projects") {
+                    ForEach(projects, id: \.id) { project in
+                        Label(project.title, systemImage: "calendar.day.timeline.left")
+                            .contentShape(Rectangle())
+                            .onTapGesture { openNote(project.id) }
+                    }
+                }
+            }
+            if !tasks.isEmpty {
+                Section("To-Dos") {
+                    ForEach(tasks) { task in
+                        HStack(spacing: 8) {
+                            Button {
+                                Task { await service.toggle(task) }
+                            } label: {
+                                Image(systemName: task.checked
+                                    ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(task.checked
+                                        ? Color.secondary : Color.accentColor)
+                            }
+                            .buttonStyle(.plain)
+                            .help(task.checked ? "Reopen" : "Complete")
+                            Text(task.text)
+                                .strikethrough(task.checked)
+                                .contentShape(Rectangle())
+                                .onTapGesture { openTaskDetail(task) }
+                            Spacer()
+                            if let due = task.dueDate {
+                                Text(due).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+            }
+            let plainNotes = taggedNotes.filter { !projectIds.contains($0.id) }
+            if !plainNotes.isEmpty {
+                Section("Notes") {
+                    ForEach(plainNotes) { note in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(
+                                    URL(fileURLWithPath: note.relativePath)
+                                        .deletingPathExtension().lastPathComponent
+                                )
+                                let folder = note.relativePath.split(separator: "/")
+                                    .dropLast().joined(separator: "/")
+                                if !folder.isEmpty {
+                                    Text(folder)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            Spacer()
+                            Image(systemName: "arrow.up.right.square")
+                                .foregroundStyle(.secondary)
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture { openNote(note.id) }
+                        .help("Open in Notes")
+                    }
+                }
+            }
+        }
+        .navigationTitle("#" + tag)
+        .task(id: tag) {
+            descriptionTag = tag
+            tagDescription = await tagStore.description(for: tag)
+        }
+        .onChange(of: tagDescription) {
+            // Debounced-ish: commit when the user pauses via submit; also
+            // commit on tag switch below.
+        }
+        .onDisappear { commitDescription(tag) }
+        .sheet(
+            isPresented: Binding(
+                get: { detailTaskId != nil },
+                set: {
+                    if !$0 {
+                        detailTaskId = nil
+                    }
+                }
+            )
+        ) {
+            if let id = detailTaskId {
+                TaskDetailView(service: service, extrasStore: extrasStore, taskId: id)
+            }
+        }
+    }
+
+    private func commitDescription(_ tag: String) {
+        guard descriptionTag == tag else { return }
+        let text = tagDescription
+        Task { await tagStore.saveDescription(text, for: tag) }
+    }
+
+    private func openTaskDetail(_ task: TaskRecord) {
+        #if os(macOS)
+            openWindow(id: "task-detail", value: task.id)
+        #else
+            detailTaskId = task.id
+        #endif
     }
 }

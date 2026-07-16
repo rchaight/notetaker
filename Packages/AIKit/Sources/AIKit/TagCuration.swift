@@ -20,7 +20,10 @@ public struct TagMerge: Equatable, Sendable, Codable, Identifiable {
 /// Group suggestion: rename members under a common parent path
 /// ("meeting-notes" → "meeting/notes") — organizes without deleting.
 public struct TagGroup: Equatable, Sendable, Codable, Identifiable {
-    public var id: String { parent + "⇐" + members.joined(separator: ",") }
+    public var id: String {
+        parent + "⇐" + members.joined(separator: ",")
+    }
+
     public let parent: String
     public let members: [String]
     public let reason: String

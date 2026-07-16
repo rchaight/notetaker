@@ -187,10 +187,15 @@ struct AppShell: View {
     }
 
     private var tagsTab: some View {
-        TagsView(service: indexService, model: notesModel) { id in
-            notesModel.openNote(id, jumpToLine: nil)
-            selectedTab = "notes"
-        }
+        TagsView(
+            service: indexService,
+            model: notesModel,
+            openNote: { id in
+                notesModel.openNote(id, jumpToLine: nil)
+                selectedTab = "notes"
+            },
+            extrasStore: extrasStore
+        )
     }
 
     private var notesTab: some View {

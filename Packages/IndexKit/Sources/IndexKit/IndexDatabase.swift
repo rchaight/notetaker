@@ -309,7 +309,7 @@ public extension IndexDatabase {
     }
 
     /// Tasks carrying `label` (the To-Do side of a tag).
-    public func tasks(withLabel label: String) throws -> [TaskRecord] {
+    func tasks(withLabel label: String) throws -> [TaskRecord] {
         try queue.read { db in
             try TaskRecord.fetchAll(db, sql: """
             SELECT task.* FROM task
