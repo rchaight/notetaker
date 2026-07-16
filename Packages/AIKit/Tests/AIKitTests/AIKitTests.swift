@@ -286,3 +286,33 @@ struct TagCurationTests {
         #expect(valid == [TagMerge(from: ["also"], into: "real", reason: "x")])
     }
 }
+
+struct TagGroupTests {
+    @Test func prefixFamiliesGroup() {
+        let groups = TagCuration.heuristicGroups(tags: [
+            ("meeting-notes", 4), ("meeting-agenda", 2), ("budget", 3), ("work/done", 1),
+        ])
+        #expect(groups.count == 1)
+        #expect(groups[0].parent == "meeting")
+        #expect(groups[0].members == ["meeting-agenda", "meeting-notes"])
+    }
+
+    @Test func nestedNameStripsSharedPrefix() {
+        #expect(TagGroup.nestedName(member: "meeting-notes", parent: "meeting") == "meeting/notes")
+        #expect(TagGroup.nestedName(member: "standup", parent: "meeting") == "meeting/standup")
+    }
+
+    @Test func groupValidationFiltersModelOutput() {
+        let tags: [(String, Int)] = [("alpha", 1), ("beta", 2), ("nested/x", 1)]
+        let groups = [
+            TagGroup(parent: "greek", members: ["alpha", "beta"], reason: "letters"),
+            TagGroup(parent: "bad!", members: ["alpha", "beta"], reason: "bad parent"),
+            TagGroup(parent: "solo", members: ["alpha"], reason: "one member"),
+            TagGroup(parent: "ghosts", members: ["nope", "nada"], reason: "unknown"),
+            TagGroup(parent: "mixed", members: ["alpha", "nested/x"], reason: "nested member"),
+        ]
+        let valid = TagCuration.validatedGroups(groups, against: tags)
+        #expect(valid.count == 1)
+        #expect(valid[0].parent == "greek")
+    }
+}

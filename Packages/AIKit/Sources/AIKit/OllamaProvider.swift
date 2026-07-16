@@ -150,6 +150,41 @@ public struct OllamaProvider: AIProvider {
         return heuristic + validated.filter { !heuristicIds.contains($0.id) }
     }
 
+    public func suggestTagGroups(tags: [(tag: String, count: Int)]) async throws -> [TagGroup] {
+        let heuristic = TagCuration.heuristicGroups(tags: tags)
+        let inventory = tags.map { "\($0.tag) (\($0.count))" }.joined(separator: ", ")
+        let schema: [String: Any] = [
+            "type": "object",
+            "properties": [
+                "groups": [
+                    "type": "array",
+                    "items": [
+                        "type": "object",
+                        "properties": [
+                            "parent": ["type": "string"],
+                            "members": ["type": "array", "items": ["type": "string"]],
+                            "reason": ["type": "string"],
+                        ],
+                        "required": ["parent", "members", "reason"],
+                    ],
+                ],
+            ],
+            "required": ["groups"],
+        ]
+        let raw = try await chat(
+            system: "You organize note tags into semantic families. Suggest grouping related FLAT tags under a short lowercase parent (members become parent/member). Only reference tags from the list; 2+ members per group; prefer meaningful themes (projects, areas, people) over superficial similarity.",
+            user: "Tags with usage counts: \(inventory)",
+            schema: schema
+        )
+        struct Response: Codable {
+            let groups: [TagGroup]
+        }
+        let ai = (try? JSONDecoder().decode(Response.self, from: Data(raw.utf8)))?.groups ?? []
+        let validated = TagCuration.validatedGroups(ai, against: tags)
+        let seen = Set(heuristic.map(\.id))
+        return heuristic + validated.filter { !seen.contains($0.id) }
+    }
+
     private func chat(system: String, user: String, schema: [String: Any]?) async throws -> String {
         var request = URLRequest(url: baseURL.appendingPathComponent("api/chat"))
         request.httpMethod = "POST"

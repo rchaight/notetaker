@@ -308,6 +308,18 @@ public extension IndexDatabase {
         }
     }
 
+    /// Tasks carrying `label` (the To-Do side of a tag).
+    public func tasks(withLabel label: String) throws -> [TaskRecord] {
+        try queue.read { db in
+            try TaskRecord.fetchAll(db, sql: """
+            SELECT task.* FROM task
+            JOIN taskLabel ON taskLabel.taskId = task.id
+            WHERE taskLabel.label = ?
+            ORDER BY task.checked, task.noteId, task.line
+            """, arguments: [label])
+        }
+    }
+
     /// Every wikilink edge in the vault: (source noteId, target TITLE).
     func allOutLinks() throws -> [(from: String, toTitle: String)] {
         try queue.read { db in

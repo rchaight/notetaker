@@ -759,6 +759,27 @@ final class VaultIndexService {
         return TagCuration.heuristicMerges(tags: tags)
     }
 
+    func tasksWithLabel(_ label: String) -> [TaskRecord] {
+        (try? database?.tasks(withLabel: label)) ?? []
+    }
+
+    /// Grouping suggestions: Ollama's semantic families when configured,
+    /// prefix heuristics otherwise.
+    func suggestTagGroups() async -> [TagGroup] {
+        let tags = noteTags()
+        guard !tags.isEmpty else { return [] }
+        if let urlString = KeychainStore.read(account: "ollamaURL"),
+           let url = ServerURL.normalize(urlString) {
+            let model = UserDefaults.standard.string(forKey: "ollamaModel") ?? "qwen3"
+            let provider = OllamaProvider(baseURL: url, model: model.isEmpty ? "qwen3" : model)
+            if await provider.isAvailable(),
+               let groups = try? await provider.suggestTagGroups(tags: tags) {
+                return groups
+            }
+        }
+        return TagCuration.heuristicGroups(tags: tags)
+    }
+
     func noteTags() -> [(tag: String, count: Int)] {
         (try? database?.tagsWithCounts()) ?? []
     }

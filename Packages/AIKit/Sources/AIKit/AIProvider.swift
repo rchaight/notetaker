@@ -51,6 +51,10 @@ public extension AIProvider {
     func suggestTagMerges(tags: [(tag: String, count: Int)]) async throws -> [TagMerge] {
         TagCuration.heuristicMerges(tags: tags)
     }
+
+    func suggestTagGroups(tags: [(tag: String, count: Int)]) async throws -> [TagGroup] {
+        TagCuration.heuristicGroups(tags: tags)
+    }
 }
 
 public protocol AIProvider: Sendable {
@@ -64,4 +68,6 @@ public protocol AIProvider: Sendable {
     func parseTask(_ input: String) async throws -> AITask
     /// Tag-consolidation suggestions. Default: deterministic heuristics.
     func suggestTagMerges(tags: [(tag: String, count: Int)]) async throws -> [TagMerge]
+    /// Tag-grouping suggestions (nested families). Default: heuristics.
+    func suggestTagGroups(tags: [(tag: String, count: Int)]) async throws -> [TagGroup]
 }

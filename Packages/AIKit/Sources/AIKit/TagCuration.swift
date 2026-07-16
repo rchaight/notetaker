@@ -17,6 +17,29 @@ public struct TagMerge: Equatable, Sendable, Codable, Identifiable {
     }
 }
 
+/// Group suggestion: rename members under a common parent path
+/// ("meeting-notes" → "meeting/notes") — organizes without deleting.
+public struct TagGroup: Equatable, Sendable, Codable, Identifiable {
+    public var id: String { parent + "⇐" + members.joined(separator: ",") }
+    public let parent: String
+    public let members: [String]
+    public let reason: String
+
+    public init(parent: String, members: [String], reason: String) {
+        self.parent = parent
+        self.members = members
+        self.reason = reason
+    }
+
+    /// The nested name a member becomes when the group applies.
+    public static func nestedName(member: String, parent: String) -> String {
+        let leaf = member.hasPrefix(parent + "-") || member.hasPrefix(parent + "_")
+            ? String(member.dropFirst(parent.count + 1))
+            : member
+        return parent + "/" + leaf
+    }
+}
+
 /// Deterministic tag-curation heuristics — the offline tier under the AI
 /// suggestions, and the sanity filter over them. Suggests folding the
 /// LOWER-count variant into the higher.
@@ -61,6 +84,47 @@ public enum TagCuration {
             return "singular/plural"
         }
         return "separator variant"
+    }
+
+    /// Prefix grouping: ≥2 tags sharing a hyphen/underscore prefix become
+    /// a nested family ("meeting-notes", "meeting-agenda" → meeting/…).
+    public static func heuristicGroups(tags: [(tag: String, count: Int)]) -> [TagGroup] {
+        var byPrefix: [String: [String]] = [:]
+        let flat = tags.map(\.tag).filter { !$0.contains("/") }
+        for tag in flat {
+            guard let separator = tag.firstIndex(where: { $0 == "-" || $0 == "_" }),
+                  separator != tag.startIndex else { continue }
+            let prefix = String(tag[..<separator]).lowercased()
+            byPrefix[prefix, default: []].append(tag)
+        }
+        return byPrefix
+            .filter { $0.value.count >= 2 }
+            .sorted { $0.key < $1.key }
+            .map { prefix, members in
+                TagGroup(
+                    parent: prefix,
+                    members: members.sorted(),
+                    reason: "shared \"\(prefix)\" prefix"
+                )
+            }
+    }
+
+    /// Group suggestions from a model, sanity-filtered: members must be
+    /// real flat tags; parent must be a plausible tag name.
+    public static func validatedGroups(
+        _ groups: [TagGroup], against tags: [(tag: String, count: Int)]
+    ) -> [TagGroup] {
+        let known = Set(tags.map(\.tag))
+        return groups.compactMap { group in
+            let members = group.members.filter {
+                known.contains($0) && !$0.contains("/") && $0 != group.parent
+            }
+            guard members.count >= 2,
+                  !group.parent.isEmpty,
+                  group.parent.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" })
+            else { return nil }
+            return TagGroup(parent: group.parent, members: members, reason: group.reason)
+        }
     }
 
     /// Drops AI suggestions that reference unknown tags or self-merges —
