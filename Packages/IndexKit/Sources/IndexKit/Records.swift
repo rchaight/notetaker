@@ -16,6 +16,8 @@ public struct NoteRecord: Codable, Equatable, Sendable, FetchableRecord, Persist
     public var pinned: Bool
     public var bookmarked: Bool
     public var favorite: Bool
+    /// Frontmatter `area:` — high-level topic area, independent of folders.
+    public var area: String?
     /// Frontmatter `project: true` + optional status/start/due (ISO days).
     public var isProject: Bool
     public var projectStatus: String?
@@ -25,7 +27,7 @@ public struct NoteRecord: Codable, Equatable, Sendable, FetchableRecord, Persist
     public init(
         id: String, title: String, folder: String, modifiedAt: Date?,
         contentHash: String, pinned: Bool = false, bookmarked: Bool = false,
-        favorite: Bool = false,
+        favorite: Bool = false, area: String? = nil,
         isProject: Bool = false, projectStatus: String? = nil,
         projectStart: String? = nil, projectDue: String? = nil
     ) {
@@ -37,6 +39,7 @@ public struct NoteRecord: Codable, Equatable, Sendable, FetchableRecord, Persist
         self.pinned = pinned
         self.bookmarked = bookmarked
         self.favorite = favorite
+        self.area = area
         self.isProject = isProject
         self.projectStatus = projectStatus
         self.projectStart = projectStart

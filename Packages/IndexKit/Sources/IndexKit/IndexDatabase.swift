@@ -7,7 +7,7 @@ import GRDB
 /// the caller trigger a full rescan.
 public final class IndexDatabase: Sendable {
     /// Bump when the schema changes; mismatch wipes and rebuilds.
-    public static let schemaVersion = 13
+    public static let schemaVersion = 14
 
     public let queue: DatabaseQueue
 
@@ -56,6 +56,7 @@ public final class IndexDatabase: Sendable {
                 t.column("pinned", .boolean).notNull().defaults(to: false)
                 t.column("bookmarked", .boolean).notNull().defaults(to: false)
                 t.column("favorite", .boolean).notNull().defaults(to: false)
+                t.column("area", .text).indexed()
                 t.column("isProject", .boolean).notNull().defaults(to: false)
                 t.column("projectStatus", .text)
                 t.column("projectStart", .text)
@@ -287,6 +288,20 @@ public extension IndexDatabase {
             try TaskRecord.filter(Column("noteId") == noteId)
                 .order(Column("line"))
                 .fetchAll(db)
+        }
+    }
+
+    /// area → noteIds, for the sidebar's Areas section.
+    func areaAssignments() throws -> [String: [String]] {
+        try queue.read { db in
+            let rows = try Row.fetchAll(
+                db, sql: "SELECT id, area FROM note WHERE area IS NOT NULL ORDER BY title"
+            )
+            var areas: [String: [String]] = [:]
+            for row in rows {
+                areas[row["area"] as String, default: []].append(row["id"] as String)
+            }
+            return areas
         }
     }
 

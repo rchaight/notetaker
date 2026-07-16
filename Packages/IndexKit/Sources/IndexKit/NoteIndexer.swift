@@ -44,6 +44,7 @@ public struct NoteIndexer: Sendable {
             pinned: flags["pinned"] == "true",
             bookmarked: flags["bookmarked"] == "true",
             favorite: flags["favorite"] == "true",
+            area: flags["area"].flatMap { $0.isEmpty ? nil : $0 },
             isProject: project != nil,
             projectStatus: project?.rawStatus,
             projectStart: project?.startDay,

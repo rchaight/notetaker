@@ -30,6 +30,9 @@ struct NotesView: View {
     @State private var pinnedIds: [String] = []
     @State private var bookmarkedIds: [String] = []
     @State private var favoriteIds: [String] = []
+    @State private var areas: [String: [String]] = [:]
+    @State private var newAreaTarget: String?
+    @State private var newAreaName = ""
     @AppStorage("savedNoteSearches") private var savedSearchesData = "[]"
     @AppStorage("favoriteFolders") private var favoriteFoldersData = "[]"
     @State private var importStatus: String?
@@ -164,6 +167,35 @@ struct NotesView: View {
         #if os(iOS)
         .searchable(text: $searchText, prompt: "Search all notes")
         #endif
+        .alert(
+            "New Area",
+            isPresented: Binding(
+                get: { newAreaTarget != nil },
+                set: {
+                    if !$0 {
+                        newAreaTarget = nil
+                    }
+                }
+            )
+        ) {
+            TextField("Area name (e.g. Work, Personal)", text: $newAreaName)
+            Button("Create & Assign") {
+                if let noteId = newAreaTarget {
+                    let name = newAreaName.trimmingCharacters(in: .whitespaces)
+                    if !name.isEmpty {
+                        Task {
+                            await indexService.setFrontmatterValue(
+                                noteId, key: "area", value: name
+                            )
+                        }
+                    }
+                }
+                newAreaTarget = nil
+            }
+            Button("Cancel", role: .cancel) { newAreaTarget = nil }
+        } message: {
+            Text("Areas are high-level topics that group notes across folders.")
+        }
         .alert("New Folder", isPresented: $showingNewFolder) {
             TextField("Folder name", text: $newFolderName)
             Button("Create") {
@@ -342,7 +374,54 @@ struct NotesView: View {
                         }
                     }
                 }
-                Section("Vault") {
+                if !areas.isEmpty {
+                    Section("Areas") {
+                        ForEach(areas.keys.sorted(), id: \.self) { area in
+                            DisclosureGroup {
+                                ForEach(notes(withIds: areas[area] ?? [])) { note in
+                                    noteRow(note, showFolder: true, selectable: false, section: "area-" + area)
+                                }
+                            } label: {
+                                HStack {
+                                    Label(area, systemImage: "square.grid.2x2")
+                                    Spacer()
+                                    Text("\(areas[area]?.count ?? 0)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .contentShape(Rectangle())
+                                .selectionDisabled(true)
+                                .dropDestination(for: String.self) { ids, _ in
+                                    // Drop a note onto an area to assign it.
+                                    for id in ids {
+                                        Task {
+                                            await indexService.setFrontmatterValue(
+                                                id, key: "area", value: area
+                                            )
+                                        }
+                                    }
+                                    return !ids.isEmpty
+                                }
+                            }
+                        }
+                    }
+                }
+                Section {
+                    EmptyView()
+                } header: {
+                    Text("Vault")
+                        .dropDestination(for: String.self) { ids, _ in
+                            var moved = false
+                            for id in ids {
+                                if let note = model.notes.first(where: { $0.id == id }) {
+                                    model.move(note, toFolder: "")
+                                    moved = true
+                                }
+                            }
+                            return moved
+                        }
+                }
+                Section {
                     ForEach(visibleNotes.filter { !$0.relativePath.contains("/") }) { note in
                         noteRow(note, showFolder: false)
                     }
@@ -421,6 +500,7 @@ struct NotesView: View {
             pinnedIds = indexService.pinnedNoteIds()
             bookmarkedIds = indexService.bookmarkedNoteIds()
             favoriteIds = indexService.favoriteNoteIds()
+            areas = indexService.areaAssignments()
         }
         .overlay {
             if visibleNotes.isEmpty {
@@ -1010,6 +1090,16 @@ struct NotesView: View {
                 Label(name, systemImage: "folder")
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
+                    .dropDestination(for: String.self) { ids, _ in
+                        var moved = false
+                        for id in ids {
+                            if let note = model.notes.first(where: { $0.id == id }) {
+                                model.move(note, toFolder: folder)
+                                moved = true
+                            }
+                        }
+                        return moved
+                    }
                     // Folders expand; they are never the List selection
                     // (their implicit tag also highlighted duplicates and
                     // clicking one cleared the open note).
@@ -1059,6 +1149,7 @@ struct NotesView: View {
             syncBadge(note)
         }
         .contentShape(Rectangle())
+        .draggable(note.id)
         // ONE context menu only: stacking a second .contextMenu shadows the
         // first entirely (user-reported as missing Favorites/Make Project).
         // Attached BEFORE the tag/tap modifier — order matters on the beta.
@@ -1091,6 +1182,33 @@ struct NotesView: View {
                     await indexService.setNoteFlag(
                         note.id, key: "bookmarked", value: !bookmarkedIds.contains(note.id)
                     )
+                }
+            }
+            Menu("Move to Area") {
+                ForEach(areas.keys.sorted(), id: \.self) { area in
+                    Button(area) {
+                        Task {
+                            await indexService.setFrontmatterValue(
+                                note.id, key: "area", value: area
+                            )
+                        }
+                    }
+                }
+                if !areas.isEmpty {
+                    Divider()
+                }
+                Button("New Area…") {
+                    newAreaName = ""
+                    newAreaTarget = note.id
+                }
+                if areas.values.contains(where: { $0.contains(note.id) }) {
+                    Button("Remove from Area", role: .destructive) {
+                        Task {
+                            await indexService.setFrontmatterValue(
+                                note.id, key: "area", value: nil
+                            )
+                        }
+                    }
                 }
             }
             Button("Make Project", systemImage: "calendar.day.timeline.left") {

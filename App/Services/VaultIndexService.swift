@@ -635,6 +635,10 @@ final class VaultIndexService {
         (try? database?.tasks(inNote: noteId)) ?? []
     }
 
+    func areaAssignments() -> [String: [String]] {
+        (try? database?.areaAssignments()) ?? [:]
+    }
+
     func favoriteNoteIds() -> [String] {
         (try? database?.favoriteNoteIds()) ?? []
     }
