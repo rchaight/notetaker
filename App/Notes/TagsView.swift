@@ -56,7 +56,7 @@ struct TagsView: View {
             detail
         }
         .task(id: service.tasksVersion) {
-            allTags = service.noteTags()
+            allTags = service.allTagCounts()
         }
         .alert(
             "Rename Tag",
@@ -78,7 +78,7 @@ struct TagsView: View {
                     Task {
                         await service.renameTag(from: target, to: newName)
                         await tagStore.move(from: target, to: newName)
-                        allTags = service.noteTags()
+                        allTags = service.allTagCounts()
                         if selectedTags.contains(target) {
                             selectedTags.remove(target)
                             selectedTags.insert(newName)
@@ -179,7 +179,7 @@ struct TagsView: View {
                                     Task {
                                         await service.renameTag(from: entry.tag, to: other)
                                         await tagStore.move(from: entry.tag, to: other)
-                                        allTags = service.noteTags()
+                                        allTags = service.allTagCounts()
                                     }
                                 }
                             }
@@ -189,7 +189,7 @@ struct TagsView: View {
                         ) {
                             Task {
                                 await service.deleteTag(entry.tag)
-                                allTags = service.noteTags()
+                                allTags = service.allTagCounts()
                                 selectedTags.remove(entry.tag)
                             }
                         }
@@ -224,7 +224,7 @@ struct TagsView: View {
                                 await service.renameTag(from: source, to: target)
                                 await tagStore.move(from: source, to: target)
                             }
-                            allTags = service.noteTags()
+                            allTags = service.allTagCounts()
                         }
                     }
                 }
@@ -237,7 +237,7 @@ struct TagsView: View {
                     for tag in doomed {
                         await service.deleteTag(tag)
                     }
-                    allTags = service.noteTags()
+                    allTags = service.allTagCounts()
                 }
             }
             Spacer()
@@ -265,7 +265,7 @@ struct TagsView: View {
                                     await service.renameTag(from: source, to: suggestion.into)
                                     await tagStore.move(from: source, to: suggestion.into)
                                 }
-                                allTags = service.noteTags()
+                                allTags = service.allTagCounts()
                             }
                         }
                         .controlSize(.small)
@@ -306,7 +306,7 @@ struct TagsView: View {
                                     await service.renameTag(from: member, to: nested)
                                     await tagStore.move(from: member, to: nested)
                                 }
-                                allTags = service.noteTags()
+                                allTags = service.allTagCounts()
                             }
                         }
                         .controlSize(.small)

@@ -323,6 +323,26 @@ public extension IndexDatabase {
         }
     }
 
+    /// Every task label with its task count (the To-Do side of tags).
+    func taskLabelCounts() throws -> [(label: String, count: Int)] {
+        try queue.read { db in
+            try Row.fetchAll(db, sql: """
+            SELECT label, COUNT(*) AS uses FROM taskLabel GROUP BY label ORDER BY label
+            """).map { ($0["label"] as String, $0["uses"] as Int) }
+        }
+    }
+
+    /// Notes containing at least one task labeled `label`.
+    func noteIds(withTaskLabel label: String) throws -> [String] {
+        try queue.read { db in
+            try String.fetchAll(db, sql: """
+            SELECT DISTINCT task.noteId FROM task
+            JOIN taskLabel ON taskLabel.taskId = task.id
+            WHERE taskLabel.label = ?
+            """, arguments: [label])
+        }
+    }
+
     /// Tasks carrying `label` (the To-Do side of a tag).
     func tasks(withLabel label: String) throws -> [TaskRecord] {
         try queue.read { db in

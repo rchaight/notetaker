@@ -776,7 +776,8 @@ final class VaultIndexService {
         guard let root, let indexer, let database, from != to, !to.isEmpty else { return }
         let pattern = "(?<=^|\\s)#" + NSRegularExpression.escapedPattern(for: from) + "(?![\\w/-])"
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return }
-        let ids = (try? database.noteIds(withTag: from)) ?? []
+        _ = database
+        let ids = notesTouchingTag(from)
         let replacement = "#" + NSRegularExpression.escapedTemplate(for: to)
         for id in ids {
             await beforeNoteMutation?(id)
@@ -800,7 +801,8 @@ final class VaultIndexService {
         guard let root, let indexer, let database else { return }
         let pattern = " ?#" + NSRegularExpression.escapedPattern(for: tag) + "(?![\\w/-])"
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return }
-        let ids = (try? database.noteIds(withTag: tag)) ?? []
+        _ = database
+        let ids = notesTouchingTag(tag)
         for id in ids {
             await beforeNoteMutation?(id)
             let url = root.appendingPathComponent(id)
@@ -821,7 +823,7 @@ final class VaultIndexService {
     /// timeouts: a slow homelab must never hang the wand (user-reported
     /// endless "thinking").
     func suggestTagMerges() async -> [TagMerge] {
-        let tags = noteTags()
+        let tags = allTagCounts()
         guard !tags.isEmpty else { return [] }
         if let provider = await reachableOllama(),
            let merges = await Self.withTimeout(30, {
@@ -864,7 +866,7 @@ final class VaultIndexService {
     /// Grouping suggestions: Ollama's semantic families when configured,
     /// prefix heuristics otherwise. Same timeout posture as merges.
     func suggestTagGroups() async -> [TagGroup] {
-        let tags = noteTags()
+        let tags = allTagCounts()
         guard !tags.isEmpty else { return [] }
         if let provider = await reachableOllama(),
            let groups = await Self.withTimeout(30, {
@@ -873,6 +875,28 @@ final class VaultIndexService {
             return groups
         }
         return TagCuration.heuristicGroups(tags: tags)
+    }
+
+    /// The FULL tag universe: note topics ∪ task labels, counts summed —
+    /// the Tags page manages both (task-line tags were invisible there,
+    /// user-reported via #Amber1).
+    func allTagCounts() -> [(tag: String, count: Int)] {
+        var merged: [String: Int] = [:]
+        for (tag, count) in noteTags() {
+            merged[tag, default: 0] += count
+        }
+        for (label, count) in (try? database?.taskLabelCounts()) ?? [] {
+            merged[label, default: 0] += count
+        }
+        return merged.map { ($0.key, $0.value) }.sorted { $0.0 < $1.0 }
+    }
+
+    /// Notes carrying the tag as a topic OR on a task line — the set every
+    /// tag mutation must cover.
+    func notesTouchingTag(_ tag: String) -> [String] {
+        let topical = (try? database?.noteIds(withTag: tag)) ?? []
+        let labelled = (try? database?.noteIds(withTaskLabel: tag)) ?? []
+        return Array(Set(topical + labelled)).sorted()
     }
 
     func noteTags() -> [(tag: String, count: Int)] {
