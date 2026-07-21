@@ -817,20 +817,44 @@ final class VaultIndexService {
     }
 
     /// Merge suggestions: heuristics always; Ollama's semantic layer when
-    /// configured (validated — never trusted to name real tags).
+    /// configured (validated — never trusted to name real tags). Hard
+    /// timeouts: a slow homelab must never hang the wand (user-reported
+    /// endless "thinking").
     func suggestTagMerges() async -> [TagMerge] {
         let tags = noteTags()
         guard !tags.isEmpty else { return [] }
-        if let urlString = KeychainStore.read(account: "ollamaURL"),
-           let url = ServerURL.normalize(urlString) {
-            let model = UserDefaults.standard.string(forKey: "ollamaModel") ?? "qwen3"
-            let provider = OllamaProvider(baseURL: url, model: model.isEmpty ? "qwen3" : model)
-            if await provider.isAvailable(),
-               let merges = try? await provider.suggestTagMerges(tags: tags) {
-                return merges
-            }
+        if let provider = await reachableOllama(),
+           let merges = await Self.withTimeout(30, {
+               try await provider.suggestTagMerges(tags: tags)
+           }) {
+            return merges
         }
         return TagCuration.heuristicMerges(tags: tags)
+    }
+
+    /// The configured Ollama provider iff it answers within 5s.
+    private func reachableOllama() async -> OllamaProvider? {
+        guard let urlString = KeychainStore.read(account: "ollamaURL"),
+              let url = ServerURL.normalize(urlString) else { return nil }
+        let model = UserDefaults.standard.string(forKey: "ollamaModel") ?? "qwen3"
+        let provider = OllamaProvider(baseURL: url, model: model.isEmpty ? "qwen3" : model)
+        let available = await Self.withTimeout(5) { await provider.isAvailable() } ?? false
+        return available ? provider : nil
+    }
+
+    static func withTimeout<T: Sendable>(
+        _ seconds: Double, _ operation: @escaping @Sendable () async throws -> T
+    ) async -> T? {
+        await withTaskGroup(of: T?.self) { group in
+            group.addTask { try? await operation() }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(seconds))
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
     }
 
     func tasksWithLabel(_ label: String) -> [TaskRecord] {
@@ -838,18 +862,15 @@ final class VaultIndexService {
     }
 
     /// Grouping suggestions: Ollama's semantic families when configured,
-    /// prefix heuristics otherwise.
+    /// prefix heuristics otherwise. Same timeout posture as merges.
     func suggestTagGroups() async -> [TagGroup] {
         let tags = noteTags()
         guard !tags.isEmpty else { return [] }
-        if let urlString = KeychainStore.read(account: "ollamaURL"),
-           let url = ServerURL.normalize(urlString) {
-            let model = UserDefaults.standard.string(forKey: "ollamaModel") ?? "qwen3"
-            let provider = OllamaProvider(baseURL: url, model: model.isEmpty ? "qwen3" : model)
-            if await provider.isAvailable(),
-               let groups = try? await provider.suggestTagGroups(tags: tags) {
-                return groups
-            }
+        if let provider = await reachableOllama(),
+           let groups = await Self.withTimeout(30, {
+               try await provider.suggestTagGroups(tags: tags)
+           }) {
+            return groups
         }
         return TagCuration.heuristicGroups(tags: tags)
     }

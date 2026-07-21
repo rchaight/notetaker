@@ -123,6 +123,13 @@ struct TagsView: View {
                 .disabled(suggesting)
             }
             .padding(10)
+            if let suggestStatus {
+                Text(suggestStatus)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+            }
             if !mergeSuggestions.isEmpty || !groupSuggestions.isEmpty {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 8) {

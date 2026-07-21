@@ -162,6 +162,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             var revealRanges: [NSRange] = []
             var frontmatterLength = 0
             var lastCommandID: UUID?
+            var lastTextLength = 0
             private var lastCursorLine: NSRange?
             private var pendingRestyle: Task<Void, Never>?
 
@@ -215,11 +216,15 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                 text.wrappedValue = textView.string
                 scheduleRestyle(textView)
                 // Auto-offer tag/[[link completions while a token is open —
-                // but ONLY when we have matching candidates: invoking the
-                // popup with none lets AppKit substitute its own lexicon
-                // (typing "#" was surfacing system suggestions like #000).
+                // but ONLY when we have matching candidates (an empty list
+                // lets AppKit substitute its own lexicon), and ONLY on
+                // INSERTION: re-triggering on deletion trapped users trying
+                // to backspace "#Header" into a heading (user-reported).
+                let newLength = (textView.string as NSString).length
+                let grew = newLength > lastTextLength
+                lastTextLength = newLength
                 let selection = textView.selectedRange()
-                if selection.length == 0,
+                if grew, selection.length == 0,
                    let match = AutocompleteContext.match(
                        in: textView.string, cursor: selection.location
                    ),
@@ -562,6 +567,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             var revealRanges: [NSRange] = []
             var frontmatterLength = 0
             var lastCommandID: UUID?
+            var lastTextLength = 0
             private var lastCursorLine: NSRange?
             private var pendingRestyle: Task<Void, Never>?
 
