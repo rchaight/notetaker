@@ -202,6 +202,18 @@ public struct MarkdownTheme: @unchecked Sendable {
         return style
     }
 
+    /// Display indentation for nested list/task lines: the file keeps its
+    /// 2-space nesting, the editor renders each level with a real indent
+    /// so subtasks read as children (user request). Wrapped lines align
+    /// past the bullet.
+    public func listIndentStyle(level: Int) -> NSParagraphStyle {
+        let style = NSMutableParagraphStyle()
+        let indent = CGFloat(level) * 22
+        style.firstLineHeadIndent = indent
+        style.headIndent = indent + 22
+        return style
+    }
+
     /// Indents quote text clear of the drawn accent bar.
     var quoteParagraphStyle: NSParagraphStyle {
         let style = NSMutableParagraphStyle()

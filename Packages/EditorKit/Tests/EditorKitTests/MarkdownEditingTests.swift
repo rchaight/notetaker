@@ -533,3 +533,22 @@ struct SubstringCompletionTests {
         #expect(!out.contains("budget"))
     }
 }
+
+@MainActor struct ListIndentTests {
+    @Test func nestedTaskLinesIndentByLevel() {
+        let text = "- [ ] parent\n  - [ ] child\n    - [ ] grandchild\nplain\n"
+        let storage = NSTextStorage(string: text)
+        MarkdownHighlighter.highlight(storage)
+        let ns = text as NSString
+
+        func indent(of marker: String) -> CGFloat {
+            let at = ns.range(of: marker).location
+            let style = storage.attribute(.paragraphStyle, at: at, effectiveRange: nil)
+                as? NSParagraphStyle
+            return style?.firstLineHeadIndent ?? 0
+        }
+        #expect(indent(of: "parent") == 0)
+        #expect(indent(of: "child") > 0)
+        #expect(indent(of: "grandchild") > indent(of: "child"))
+    }
+}

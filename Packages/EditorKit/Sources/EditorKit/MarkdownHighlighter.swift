@@ -38,6 +38,9 @@ public enum MarkdownHighlighter {
                 storage.addAttributes(attributes, range: item.range)
             }
         }
+        // Nested list/task lines get amplified display indentation: 2
+        // source spaces = one visual level.
+        Self.applyListIndents(storage, text: text, theme: theme)
         // Standalone image lines reserve room below for the thumbnail the
         // layout fragment draws.
         for item in styled {
@@ -105,6 +108,30 @@ public enum MarkdownHighlighter {
         }
         storage.endEditing()
         return styled
+    }
+
+    private static let listLineRegex = try? NSRegularExpression(
+        pattern: "^( *)(?:[-*+]|[0-9]+[.)]) ",
+        options: [.anchorsMatchLines]
+    )
+
+    static func applyListIndents(
+        _ storage: NSTextStorage, text: String, theme: MarkdownTheme
+    ) {
+        guard let regex = listLineRegex else { return }
+        let ns = text as NSString
+        let full = NSRange(location: 0, length: ns.length)
+        for match in regex.matches(in: text, range: full) {
+            let level = match.range(at: 1).length / 2
+            guard level > 0 else { continue }
+            let paragraph = ns.paragraphRange(for: match.range)
+            guard NSMaxRange(paragraph) <= full.length else { continue }
+            storage.addAttribute(
+                .paragraphStyle,
+                value: theme.listIndentStyle(level: level),
+                range: paragraph
+            )
+        }
     }
 
     /// Custom scheme the editor intercepts to flip a checkbox token.
