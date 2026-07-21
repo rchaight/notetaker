@@ -30,6 +30,7 @@ struct TagsView: View {
     @State private var renameText = ""
     @State private var mergeSuggestions: [TagMerge] = []
     @State private var suggesting = false
+    @State private var suggestStatus: String?
 
     var body: some View {
         NavigationSplitView {
@@ -105,12 +106,18 @@ struct TagsView: View {
                     .textFieldStyle(.roundedBorder)
                 Button {
                     suggesting = true
+                    suggestStatus = nil
                     Task {
                         async let merges = service.suggestTagMerges()
                         async let groups = service.suggestTagGroups()
                         mergeSuggestions = await merges
                         groupSuggestions = await groups
                         suggesting = false
+                        if mergeSuggestions.isEmpty, groupSuggestions.isEmpty {
+                            suggestStatus = allTags.count < 2
+                                ? "Add more tags first — nothing to organize yet."
+                                : "No suggestions — your tags already look tidy. (Ollama adds semantic suggestions when configured in Settings.)"
+                        }
                     }
                 } label: {
                     if suggesting {
