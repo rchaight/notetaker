@@ -55,12 +55,30 @@ public struct MarkdownTheme: @unchecked Sendable {
         self.secondaryColor = secondaryColor
     }
 
-    /// A user-customized copy (Settings drives size + design).
-    public func customized(baseFontSize: CGFloat, fontDesign: String) -> MarkdownTheme {
+    /// "yellow" | "orange" | "pink" | "green" | "blue" — ⌘F match color.
+    public var findHighlightName: String = "yellow"
+
+    /// A user-customized copy (Settings drives size + design + find color).
+    public func customized(
+        baseFontSize: CGFloat, fontDesign: String, findHighlight: String = "yellow"
+    ) -> MarkdownTheme {
         var theme = self
         theme.baseFontSize = baseFontSize
         theme.fontDesign = fontDesign
+        theme.findHighlightName = findHighlight
         return theme
+    }
+
+    /// Vivid, opaque-ish so matches jump out (user request: BOLD color).
+    public var findHighlightColor: PlatformColor {
+        let base: PlatformColor = switch findHighlightName {
+        case "orange": .systemOrange
+        case "pink": .systemPink
+        case "green": .systemGreen
+        case "blue": .systemBlue
+        default: .systemYellow
+        }
+        return base.withAlphaComponent(0.55)
     }
 
     private var systemDesign: PlatformFontDescriptor.SystemDesign? {
