@@ -58,6 +58,11 @@ public final class RuleLayoutFragment: NSTextLayoutFragment {
 public final class TagChipLayoutFragment: NSTextLayoutFragment {
     /// Character ranges LOCAL to this fragment's element, with the tag color.
     public var chips: [(local: NSRange, color: PlatformColor)] = []
+    /// Tag-font metrics: the pill hugs the GLYPHS (anchored to the text
+    /// baseline), not the full line box — otherwise smaller tag text sits
+    /// at the pill's bottom (user screenshot).
+    public var glyphAscent: CGFloat = 12
+    public var glyphDescent: CGFloat = -3
 
     override public func draw(at point: CGPoint, in context: CGContext) {
         context.saveGState()
@@ -65,15 +70,17 @@ public final class TagChipLayoutFragment: NSTextLayoutFragment {
             for line in textLineFragments {
                 let overlap = NSIntersectionRange(line.characterRange, chip.local)
                 guard overlap.length > 0 else { continue }
-                let x0 = line.locationForCharacter(at: overlap.location).x
+                let start = line.locationForCharacter(at: overlap.location)
+                let x0 = start.x
                 let x1 = line.locationForCharacter(at: NSMaxRange(overlap)).x
                 guard x1 > x0 else { continue }
-                let bounds = line.typographicBounds
+                let baseline = start.y
+                let pad: CGFloat = 2.5
                 let rect = CGRect(
                     x: point.x + x0 - 4,
-                    y: point.y + bounds.minY + 2,
+                    y: point.y + baseline - glyphAscent - pad,
                     width: x1 - x0 + 8,
-                    height: bounds.height - 4.5
+                    height: glyphAscent - glyphDescent + pad * 2
                 )
                 context.addPath(CGPath(
                     roundedRect: rect,

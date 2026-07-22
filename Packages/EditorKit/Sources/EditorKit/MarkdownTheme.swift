@@ -181,7 +181,7 @@ public struct MarkdownTheme: @unchecked Sendable {
             // corners (user screenshot).
             [
                 .foregroundColor: Self.tagColor(name),
-                .font: designedFont(size: baseFontSize * 0.94, bold: true),
+                .font: designedFont(size: baseFontSize * 0.88, bold: true),
             ]
         case .listItem, .taskCheckbox, .thematicBreak, .table, .image:
             [:]
@@ -191,6 +191,12 @@ public struct MarkdownTheme: @unchecked Sendable {
     /// Per-tag colors matching the To-Do tab's label chips EXACTLY: same
     /// palette order, same unicode-scalar fold, and the same "labelColors"
     /// override store — pick a chip color anywhere, it applies everywhere.
+    /// The chip fragment sizes pills from these metrics so the pill hugs
+    /// the glyphs evenly instead of filling the line box.
+    public var tagChipFont: PlatformFont {
+        designedFont(size: baseFontSize * 0.88, bold: true)
+    }
+
     static let tagPalette: [PlatformColor] = [
         .systemBlue, .systemGreen, .systemOrange, .systemPurple,
         .systemPink, .systemTeal, .systemIndigo, .systemBrown,

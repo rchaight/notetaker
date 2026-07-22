@@ -514,6 +514,9 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                                 hit.color
                             )
                         }
+                        let chipFont = theme.tagChipFont
+                        fragment.glyphAscent = chipFont.ascender
+                        fragment.glyphDescent = chipFont.descender
                         return fragment
                     }
                 }
@@ -869,6 +872,9 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                                 hit.color
                             )
                         }
+                        let chipFont = theme.tagChipFont
+                        fragment.glyphAscent = chipFont.ascender
+                        fragment.glyphDescent = chipFont.descender
                         return fragment
                     }
                 }
