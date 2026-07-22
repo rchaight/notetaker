@@ -40,6 +40,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
         var imageBase: URL?
         var tagCandidates: [String]
         var linkCandidates: [String]
+        var findSignal: Int
 
         public init(
             text: Binding<String>,
@@ -50,7 +51,8 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             focusMode: Bool = false,
             imageBase: URL? = nil,
             tagCandidates: [String] = [],
-            linkCandidates: [String] = []
+            linkCandidates: [String] = [],
+            findSignal: Int = 0
         ) {
             _text = text
             _scrollTarget = scrollTarget
@@ -61,13 +63,46 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             self.imageBase = imageBase
             self.tagCandidates = tagCandidates
             self.linkCandidates = linkCandidates
+            self.findSignal = findSignal
+        }
+
+        /// One cached editor per process: tab switches tear the SwiftUI
+        /// view down and rebuilding NSTextView + a full restyle cost a
+        /// visible beat (user-reported). Reuse skips both when the text
+        /// hasn't changed. A second window (cache occupied) builds fresh.
+        @MainActor
+        enum SharedEditorCache {
+            static var scrollView: NSScrollView?
+            static var coordinator: Coordinator?
         }
 
         public func makeCoordinator() -> Coordinator {
-            Coordinator(text: $text, theme: theme)
+            if let cached = SharedEditorCache.coordinator {
+                cached.text = $text
+                cached.theme = theme
+                return cached
+            }
+            let coordinator = Coordinator(text: $text, theme: theme)
+            SharedEditorCache.coordinator = coordinator
+            return coordinator
         }
 
         public func makeNSView(context: Context) -> NSScrollView {
+            if let cached = SharedEditorCache.scrollView,
+               cached.superview == nil, cached.window == nil,
+               let textView = cached.documentView as? NSTextView,
+               context.coordinator === SharedEditorCache.coordinator {
+                context.coordinator.livePreview = livePreview
+                context.coordinator.focusMode = focusMode
+                context.coordinator.imageBase = imageBase
+                context.coordinator.tagCandidates = tagCandidates
+                context.coordinator.linkCandidates = linkCandidates
+                if textView.string != text {
+                    textView.string = text
+                    context.coordinator.restyle(textView)
+                }
+                return cached
+            }
             let scrollView = NSTextView.scrollableTextView()
             let textView = scrollView.documentView as! NSTextView
             textView.delegate = context.coordinator
@@ -105,6 +140,9 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             context.coordinator.tagCandidates = tagCandidates
             context.coordinator.linkCandidates = linkCandidates
             context.coordinator.restyle(textView)
+            if SharedEditorCache.scrollView == nil {
+                SharedEditorCache.scrollView = scrollView
+            }
             return scrollView
         }
 
@@ -132,6 +170,14 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                 textView.setSelectedRange(NSRange(location: target.location, length: 0))
                 Task { @MainActor in scrollTarget = nil }
             }
+            // ⌘F: pop the native find bar (one-shot by signal).
+            if findSignal != context.coordinator.lastFindSignal {
+                context.coordinator.lastFindSignal = findSignal
+                let item = NSMenuItem()
+                item.tag = NSTextFinder.Action.showFindInterface.rawValue
+                textView.window?.makeFirstResponder(textView)
+                textView.performTextFinderAction(item)
+            }
             // One-shot by token: text mutation re-enters this method before
             // the async binding clear lands — un-stamped commands loop the
             // main thread forever (44s hang, user-reported).
@@ -150,7 +196,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
         @MainActor
         public final class Coordinator: NSObject, NSTextViewDelegate, @preconcurrency NSTextContentStorageDelegate,
             @preconcurrency NSTextLayoutManagerDelegate {
-            let text: Binding<String>
+            var text: Binding<String>
             var theme: MarkdownTheme
             var livePreview = true
             var focusMode = false
@@ -162,6 +208,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             var revealRanges: [NSRange] = []
             var frontmatterLength = 0
             var lastCommandID: UUID?
+            var lastFindSignal = 0
             var lastTextLength = 0
             private var lastCursorLine: NSRange?
             private var pendingRestyle: Task<Void, Never>?
@@ -451,6 +498,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
         var imageBase: URL?
         var tagCandidates: [String]
         var linkCandidates: [String]
+        var findSignal: Int
 
         public init(
             text: Binding<String>,
@@ -461,7 +509,8 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             focusMode: Bool = false,
             imageBase: URL? = nil,
             tagCandidates: [String] = [],
-            linkCandidates: [String] = []
+            linkCandidates: [String] = [],
+            findSignal: Int = 0
         ) {
             _text = text
             _scrollTarget = scrollTarget
@@ -472,6 +521,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             self.imageBase = imageBase
             self.tagCandidates = tagCandidates
             self.linkCandidates = linkCandidates
+            self.findSignal = findSignal
         }
 
         public func makeCoordinator() -> Coordinator {
@@ -487,6 +537,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             textView.smartDashesType = .no
             textView.writingToolsBehavior = .complete
             textView.alwaysBounceVertical = true
+            textView.isFindInteractionEnabled = true
             textView.textContainerInset = UIEdgeInsets(top: 16, left: 12, bottom: 16, right: 12)
             textView.backgroundColor = theme.editorBackground
             textView.tintColor = theme.accentColor
@@ -513,6 +564,10 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
         }
 
         public func updateUIView(_ textView: UITextView, context: Context) {
+            if findSignal != context.coordinator.lastFindSignal {
+                context.coordinator.lastFindSignal = findSignal
+                textView.findInteraction?.presentFindNavigator(showingReplace: false)
+            }
             let modeChanged = context.coordinator.livePreview != livePreview
                 || context.coordinator.focusMode != focusMode
                 || context.coordinator.theme.baseFontSize != theme.baseFontSize
@@ -555,7 +610,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
         @MainActor
         public final class Coordinator: NSObject, UITextViewDelegate, UIGestureRecognizerDelegate,
             @preconcurrency NSTextContentStorageDelegate, @preconcurrency NSTextLayoutManagerDelegate {
-            let text: Binding<String>
+            var text: Binding<String>
             var theme: MarkdownTheme
             var livePreview = true
             var focusMode = false
@@ -567,6 +622,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             var revealRanges: [NSRange] = []
             var frontmatterLength = 0
             var lastCommandID: UUID?
+            var lastFindSignal = 0
             var lastTextLength = 0
             private var lastCursorLine: NSRange?
             private var pendingRestyle: Task<Void, Never>?

@@ -43,6 +43,7 @@ struct NotesView: View {
     @State private var showInspector = false
     @State private var scrollTarget: NSRange?
     @State private var editorCommand: EditorCommandRequest?
+    @State private var findSignal = 0
     @State private var showingGraph = false
     @State private var showingLockSheet = false
     @State private var showingUnlockSheet = false
@@ -748,9 +749,15 @@ struct NotesView: View {
                 focusMode: focusMode,
                 imageBase: selectedNoteFolder,
                 tagCandidates: allTags.map(\.tag),
-                linkCandidates: model.notes.map(noteTitle)
+                linkCandidates: model.notes.map(noteTitle),
+                findSignal: findSignal
             )
             .safeAreaInset(edge: .top, spacing: 0) { formatBar }
+            .background(
+                Button("") { findSignal += 1 }
+                    .keyboardShortcut("f", modifiers: [.command])
+                    .hidden()
+            )
             .overlay(alignment: .bottomTrailing) {
                 Text(statsChip)
                     .font(.caption)

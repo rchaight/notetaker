@@ -169,11 +169,11 @@ struct AppShell: View {
         #endif
     }
 
-    /// Plain switch: exactly ONE view in the hierarchy. Mounting all tabs
-    /// at once kept every tab's TOOLBAR registered with the window, and
-    /// the union of toolbar rows drove the window's minimum size past the
-    /// screen (user-reported unresizable). Shared models carry the state
-    /// that must survive switches; volatile view prefs live in AppStorage.
+    /// Plain switch: exactly ONE view in the hierarchy — mounting all
+    /// tabs unions their window toolbars into the min size (scripted
+    /// resize check clamped at 1410pt even with toolbarVisibility(.hidden);
+    /// the beta does not unregister hidden toolbars). Perceived switch lag
+    /// is solved by caching the editor's NSTextView in EditorKit instead.
     @ViewBuilder private var mountedViews: some View {
         switch selectedTab {
         case "todo": todoTab
