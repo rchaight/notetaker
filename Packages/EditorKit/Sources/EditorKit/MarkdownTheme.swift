@@ -175,9 +175,44 @@ public struct MarkdownTheme: @unchecked Sendable {
              .underlineStyle: NSUnderlineStyle.single.rawValue]
         case .highlightMark:
             [.backgroundColor: highlightBackground]
+        case let .tag(name):
+            [
+                .foregroundColor: Self.tagColor(name),
+                .backgroundColor: Self.tagColor(name).withAlphaComponent(0.14),
+                .font: designedFont(size: baseFontSize * 0.94, bold: true),
+            ]
         case .listItem, .taskCheckbox, .thematicBreak, .table, .image:
             [:]
         }
+    }
+
+    /// Per-tag colors matching the To-Do tab's label chips EXACTLY: same
+    /// palette order, same unicode-scalar fold, and the same "labelColors"
+    /// override store — pick a chip color anywhere, it applies everywhere.
+    static let tagPalette: [PlatformColor] = [
+        .systemBlue, .systemGreen, .systemOrange, .systemPurple,
+        .systemPink, .systemTeal, .systemIndigo, .systemBrown,
+    ]
+
+    /// Overrides cached briefly: attributes(for:) runs per tag per restyle.
+    private nonisolated(unsafe) static var overrideCache:
+        (map: [String: Int], stamp: Date)?
+
+    static func tagColor(_ name: String) -> PlatformColor {
+        let now = Date()
+        let overrides: [String: Int]
+        if let cached = overrideCache, now.timeIntervalSince(cached.stamp) < 2 {
+            overrides = cached.map
+        } else {
+            let raw = UserDefaults.standard.string(forKey: "labelColors") ?? "{}"
+            overrides = (try? JSONDecoder().decode([String: Int].self, from: Data(raw.utf8))) ?? [:]
+            overrideCache = (overrides, now)
+        }
+        if let index = overrides[name], tagPalette.indices.contains(index) {
+            return tagPalette[index]
+        }
+        let folded = name.unicodeScalars.reduce(5381) { ($0 << 5) &+ $0 &+ Int($1.value) }
+        return tagPalette[abs(folded) % tagPalette.count]
     }
 
     /// Marker-pen tint for `==highlight==` runs; translucent so it adapts to

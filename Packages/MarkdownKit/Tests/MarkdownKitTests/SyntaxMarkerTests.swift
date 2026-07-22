@@ -221,3 +221,12 @@ struct NoteTagScopeTests {
         #expect(NoteScanner.tags(in: text).contains("admin"))
     }
 }
+
+struct TagStyleKindTests {
+    @Test func tagsEmitStyledRangesOutsideCode() {
+        let kinds = MarkdownStyler.styleRanges(in: "note #work/deep here\n`#not-a-tag`\n")
+            .map(\.kind)
+        #expect(kinds.contains(.tag("work/deep")))
+        #expect(!kinds.contains(.tag("not-a-tag")))
+    }
+}

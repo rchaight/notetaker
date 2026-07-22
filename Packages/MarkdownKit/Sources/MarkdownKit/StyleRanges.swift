@@ -23,6 +23,8 @@ public enum MarkdownElementKind: Equatable, Sendable {
     case highlightMark
     /// `![alt](source)` inline image.
     case image(source: String?)
+    /// `#tag` — styled as a colored chip in the editor.
+    case tag(String)
 }
 
 /// A styled span of the markdown body in UTF-16 (NSRange) coordinates —
@@ -57,6 +59,9 @@ public enum MarkdownStyler {
     private static let highlightRegex = try? NSRegularExpression(
         pattern: #"==([^=\n]+?)=="#
     )
+    private static let editorTagRegex = try? NSRegularExpression(
+        pattern: #"(?<=^|\s)#([\p{L}\p{N}_][\p{L}\p{N}_\-/]*)"#
+    )
 
     /// Wikilinks and highlight marks aren't CommonMark, so swift-markdown
     /// never emits them — a post-parse regex scan finds them, skipping any
@@ -81,6 +86,11 @@ public enum MarkdownStyler {
         for match in highlightRegex?.matches(in: body, range: full) ?? []
             where !insideCode(match.range) {
             ranges.append(StyledRange(kind: .highlightMark, range: match.range))
+        }
+        for match in editorTagRegex?.matches(in: body, range: full) ?? []
+            where !insideCode(match.range) {
+            let name = ns.substring(with: match.range(at: 1))
+            ranges.append(StyledRange(kind: .tag(name), range: match.range))
         }
     }
 }
