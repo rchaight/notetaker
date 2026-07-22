@@ -210,6 +210,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             var linkCandidates: [String] = []
             var codeRegions: [CodeCardRegions.Region] = []
             var tableRegions: [TableGrid.Region] = []
+            var tagChipRanges: [(range: NSRange, color: PlatformColor)] = []
             var revealRanges: [NSRange] = []
             var frontmatterLength = 0
             var lastCommandID: UUID?
@@ -242,6 +243,13 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                 codeRegions = CodeCardRegions.regions(in: textView.string, styled: styled)
                 tableRegions = TableGrid.regions(in: textView.string, styled: styled)
                 revealRanges = markdownRevealRanges(in: textView.string, styled: styled)
+                tagChipRanges = styled.compactMap { item in
+                    if case let .tag(name) = item.kind {
+                        (item.range, MarkdownTheme.tagColor(name))
+                    } else {
+                        nil
+                    }
+                }
                 frontmatterLength = MarkdownDocument(source: textView.string).bodyUTF16Offset
             }
 
@@ -490,6 +498,24 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                         fragment.badgeColor = theme.secondaryColor
                         return fragment
                     }
+                    let chipHits = tagChipRanges.filter {
+                        NSIntersectionRange($0.range, paragraphRange).length > 0
+                    }
+                    if !chipHits.isEmpty {
+                        let fragment = TagChipLayoutFragment(
+                            textElement: textElement, range: textElement.elementRange
+                        )
+                        fragment.chips = chipHits.map { hit in
+                            (
+                                NSRange(
+                                    location: hit.range.location - paragraphRange.location,
+                                    length: hit.range.length
+                                ),
+                                hit.color
+                            )
+                        }
+                        return fragment
+                    }
                 }
                 if let paragraph = textElement as? NSTextParagraph {
                     let content = paragraph.attributedString.string
@@ -674,6 +700,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             var linkCandidates: [String] = []
             var codeRegions: [CodeCardRegions.Region] = []
             var tableRegions: [TableGrid.Region] = []
+            var tagChipRanges: [(range: NSRange, color: PlatformColor)] = []
             var revealRanges: [NSRange] = []
             var frontmatterLength = 0
             var lastCommandID: UUID?
@@ -703,6 +730,13 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                 codeRegions = CodeCardRegions.regions(in: textView.text ?? "", styled: styled)
                 tableRegions = TableGrid.regions(in: textView.text ?? "", styled: styled)
                 revealRanges = markdownRevealRanges(in: textView.text ?? "", styled: styled)
+                tagChipRanges = styled.compactMap { item in
+                    if case let .tag(name) = item.kind {
+                        (item.range, MarkdownTheme.tagColor(name))
+                    } else {
+                        nil
+                    }
+                }
                 frontmatterLength = MarkdownDocument(source: textView.text ?? "").bodyUTF16Offset
             }
 
@@ -817,6 +851,24 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                         fragment.badge = fragment.roundsTop ? region.language : nil
                         fragment.fillColor = theme.surfaceBackground
                         fragment.badgeColor = theme.secondaryColor
+                        return fragment
+                    }
+                    let chipHits = tagChipRanges.filter {
+                        NSIntersectionRange($0.range, paragraphRange).length > 0
+                    }
+                    if !chipHits.isEmpty {
+                        let fragment = TagChipLayoutFragment(
+                            textElement: textElement, range: textElement.elementRange
+                        )
+                        fragment.chips = chipHits.map { hit in
+                            (
+                                NSRange(
+                                    location: hit.range.location - paragraphRange.location,
+                                    length: hit.range.length
+                                ),
+                                hit.color
+                            )
+                        }
                         return fragment
                     }
                 }

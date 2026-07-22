@@ -176,9 +176,11 @@ public struct MarkdownTheme: @unchecked Sendable {
         case .highlightMark:
             [.backgroundColor: highlightBackground]
         case let .tag(name):
+            // Pill background is DRAWN (TagChipLayoutFragment) — the
+            // attribute version filled the whole line height with square
+            // corners (user screenshot).
             [
                 .foregroundColor: Self.tagColor(name),
-                .backgroundColor: Self.tagColor(name).withAlphaComponent(0.14),
                 .font: designedFont(size: baseFontSize * 0.94, bold: true),
             ]
         case .listItem, .taskCheckbox, .thematicBreak, .table, .image:

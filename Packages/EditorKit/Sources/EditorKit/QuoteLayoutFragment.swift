@@ -53,6 +53,42 @@ public final class RuleLayoutFragment: NSTextLayoutFragment {
     }
 }
 
+/// Draws rounded pill backgrounds behind #tag ranges — inset from the
+/// line box so chips never kiss neighboring lines, with true rounded ends.
+public final class TagChipLayoutFragment: NSTextLayoutFragment {
+    /// Character ranges LOCAL to this fragment's element, with the tag color.
+    public var chips: [(local: NSRange, color: PlatformColor)] = []
+
+    override public func draw(at point: CGPoint, in context: CGContext) {
+        context.saveGState()
+        for chip in chips {
+            for line in textLineFragments {
+                let overlap = NSIntersectionRange(line.characterRange, chip.local)
+                guard overlap.length > 0 else { continue }
+                let x0 = line.locationForCharacter(at: overlap.location).x
+                let x1 = line.locationForCharacter(at: NSMaxRange(overlap)).x
+                guard x1 > x0 else { continue }
+                let bounds = line.typographicBounds
+                let rect = CGRect(
+                    x: point.x + x0 - 4,
+                    y: point.y + bounds.minY + 2,
+                    width: x1 - x0 + 8,
+                    height: bounds.height - 4.5
+                )
+                context.addPath(CGPath(
+                    roundedRect: rect,
+                    cornerWidth: rect.height / 2, cornerHeight: rect.height / 2,
+                    transform: nil
+                ))
+                context.setFillColor(chip.color.withAlphaComponent(0.16).cgColor)
+                context.fillPath()
+            }
+        }
+        context.restoreGState()
+        super.draw(at: point, in: context)
+    }
+}
+
 public enum ThematicBreakDetection {
     /// A thematic-break paragraph: ≤3 leading spaces, then 3+ of -/*/_
     /// (optionally space-separated, per CommonMark), nothing else.
