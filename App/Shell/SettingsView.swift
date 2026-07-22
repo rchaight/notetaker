@@ -9,6 +9,7 @@ struct SettingsView: View {
     @AppStorage(VaultRegistry.activeKey) private var activeVault = VaultRegistry.iCloudId
     @State private var showingVaultChooser = false
     @AppStorage("editorFontSize") private var editorFontSize = 16.0
+    @AppStorage("findHighlightColor") private var findHighlightColor = "yellow"
     @AppStorage("appLockEnabled") private var appLockEnabled = false
     @AppStorage("appLockGrace") private var appLockGrace = 60.0
     @AppStorage("editorFontDesign") private var editorFontDesign = "system"
@@ -71,6 +72,13 @@ struct SettingsView: View {
                             )
                             Button("Reset") { editorFontSize = 16 }
                                 .disabled(editorFontSize == 16)
+                        }
+                        Picker("Find highlight (⌘F)", selection: $findHighlightColor) {
+                            Text("Yellow").tag("yellow")
+                            Text("Orange").tag("orange")
+                            Text("Pink").tag("pink")
+                            Text("Green").tag("green")
+                            Text("Blue").tag("blue")
                         }
                         Text("Applies to body text; headings scale proportionally. Code blocks stay monospaced.")
                             .font(.caption)

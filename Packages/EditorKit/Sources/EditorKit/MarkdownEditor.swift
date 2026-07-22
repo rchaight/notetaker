@@ -152,6 +152,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                 || context.coordinator.focusMode != focusMode
                 || context.coordinator.theme.baseFontSize != theme.baseFontSize
                 || context.coordinator.theme.fontDesign != theme.fontDesign
+                || context.coordinator.theme.findHighlightName != theme.findHighlightName
             context.coordinator.theme = theme
             context.coordinator.livePreview = livePreview
             context.coordinator.focusMode = focusMode
@@ -170,13 +171,17 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                 textView.setSelectedRange(NSRange(location: target.location, length: 0))
                 Task { @MainActor in scrollTarget = nil }
             }
-            // ⌘F: pop the native find bar (one-shot by signal).
+            // ⌘F: pop the native find bar (one-shot by signal) and start
+            // our own bold match highlighting — NSTextFinder's colors are
+            // not customizable, so we tint every match ourselves from the
+            // system find pasteboard while the bar is open.
             if findSignal != context.coordinator.lastFindSignal {
                 context.coordinator.lastFindSignal = findSignal
                 let item = NSMenuItem()
                 item.tag = NSTextFinder.Action.showFindInterface.rawValue
                 textView.window?.makeFirstResponder(textView)
                 textView.performTextFinderAction(item)
+                context.coordinator.startFindWatcher(textView)
             }
             // One-shot by token: text mutation re-enters this method before
             // the async binding clear lands — un-stamped commands loop the
@@ -210,6 +215,8 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             var lastCommandID: UUID?
             var lastFindSignal = 0
             var lastTextLength = 0
+            var findWatcher: Task<Void, Never>?
+            var lastFindTerm = ""
             private var lastCursorLine: NSRange?
             private var pendingRestyle: Task<Void, Never>?
 
@@ -256,6 +263,54 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                 let selection = textView.selectedRange()
                 let location = min(selection.location, ns.length)
                 return ns.paragraphRange(for: NSRange(location: location, length: 0))
+            }
+
+            /// Polls the find pasteboard while the find bar is visible and
+            /// paints all matches in the theme's find color; closing the
+            /// bar restyles clean and stops the watcher.
+            func startFindWatcher(_ textView: NSTextView) {
+                findWatcher?.cancel()
+                lastFindTerm = ""
+                findWatcher = Task { [weak self, weak textView] in
+                    while !Task.isCancelled {
+                        try? await Task.sleep(for: .milliseconds(350))
+                        guard let self, let textView else { return }
+                        let visible = textView.enclosingScrollView?.isFindBarVisible ?? false
+                        let term = visible
+                            ? (NSPasteboard(name: .findPboard).string(forType: .string) ?? "")
+                            : ""
+                        if term != lastFindTerm {
+                            lastFindTerm = term
+                            restyle(textView)
+                            if !term.isEmpty {
+                                highlightFindMatches(term, in: textView)
+                            }
+                        }
+                        if !visible, lastFindTerm.isEmpty {
+                            return
+                        }
+                    }
+                }
+            }
+
+            private func highlightFindMatches(_ term: String, in textView: NSTextView) {
+                guard let storage = textView.textStorage else { return }
+                let ns = textView.string as NSString
+                var searchRange = NSRange(location: 0, length: ns.length)
+                storage.beginEditing()
+                while true {
+                    let found = ns.range(
+                        of: term, options: [.caseInsensitive], range: searchRange
+                    )
+                    guard found.location != NSNotFound else { break }
+                    storage.addAttribute(
+                        .backgroundColor, value: theme.findHighlightColor, range: found
+                    )
+                    let next = NSMaxRange(found)
+                    guard next < ns.length else { break }
+                    searchRange = NSRange(location: next, length: ns.length - next)
+                }
+                storage.endEditing()
             }
 
             public func textDidChange(_ notification: Notification) {

@@ -18,6 +18,7 @@ struct NotesView: View {
     @AppStorage("editorFocusMode") private var focusMode = false
     @AppStorage("editorFontSize") private var editorFontSize = 16.0
     @AppStorage("editorFontDesign") private var editorFontDesign = "system"
+    @AppStorage("findHighlightColor") private var findHighlightColor = "yellow"
     @State private var searchText = ""
     @State private var semanticIds: [String] = []
     @State private var showingImporter = false
@@ -743,7 +744,9 @@ struct NotesView: View {
                 scrollTarget: $scrollTarget,
                 command: $editorCommand,
                 theme: .default.customized(
-                    baseFontSize: CGFloat(editorFontSize), fontDesign: editorFontDesign
+                    baseFontSize: CGFloat(editorFontSize),
+                    fontDesign: editorFontDesign,
+                    findHighlight: findHighlightColor
                 ),
                 livePreview: livePreview,
                 focusMode: focusMode,
