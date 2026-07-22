@@ -270,6 +270,10 @@ struct AppShell: View {
                                     ? AnyShapeStyle(.selection) : AnyShapeStyle(.clear),
                                 in: Capsule()
                             )
+                            // The whole capsule is the click target — without
+                            // this, the icon-text gap and padding are dead
+                            // zones (only rendered pixels hit-test).
+                            .contentShape(Capsule())
                     }
                     .buttonStyle(.plain)
                     .help("Switch to \(tab.title)")
