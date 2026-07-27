@@ -169,44 +169,50 @@ struct NotesView: View {
         #if os(iOS)
         .searchable(text: $searchText, prompt: "Search all notes")
         #endif
-        .alert(
-            "New Area",
-            isPresented: Binding(
-                get: { newAreaTarget != nil },
-                set: {
-                    if !$0 {
-                        newAreaTarget = nil
-                    }
-                }
-            )
-        ) {
-            TextField("Area name (e.g. Work, Personal)", text: $newAreaName)
-            Button("Create & Assign") {
-                if let noteId = newAreaTarget {
-                    let name = newAreaName.trimmingCharacters(in: .whitespaces)
-                    if !name.isEmpty {
-                        Task {
-                            await indexService.setFrontmatterValue(
-                                noteId, key: "area", value: name
-                            )
+        // Two alerts must NOT share one attachment point — SwiftUI honors
+        // only one .alert per view (New Folder went dead, user-reported).
+        .background(
+            EmptyView().alert(
+                "New Area",
+                isPresented: Binding(
+                    get: { newAreaTarget != nil },
+                    set: {
+                        if !$0 {
+                            newAreaTarget = nil
                         }
                     }
+                )
+            ) {
+                TextField("Area name (e.g. Work, Personal)", text: $newAreaName)
+                Button("Create & Assign") {
+                    if let noteId = newAreaTarget {
+                        let name = newAreaName.trimmingCharacters(in: .whitespaces)
+                        if !name.isEmpty {
+                            Task {
+                                await indexService.setFrontmatterValue(
+                                    noteId, key: "area", value: name
+                                )
+                            }
+                        }
+                    }
+                    newAreaTarget = nil
                 }
-                newAreaTarget = nil
+                Button("Cancel", role: .cancel) { newAreaTarget = nil }
+            } message: {
+                Text("Areas are high-level topics that group notes across folders.")
             }
-            Button("Cancel", role: .cancel) { newAreaTarget = nil }
-        } message: {
-            Text("Areas are high-level topics that group notes across folders.")
-        }
-        .alert("New Folder", isPresented: $showingNewFolder) {
-            TextField("Folder name", text: $newFolderName)
-            Button("Create") {
-                model.createFolder(named: newFolderName, in: newFolderParent)
-                newFolderName = ""
-                newFolderParent = ""
+        )
+        .background(
+            EmptyView().alert("New Folder", isPresented: $showingNewFolder) {
+                TextField("Folder name", text: $newFolderName)
+                Button("Create") {
+                    model.createFolder(named: newFolderName, in: newFolderParent)
+                    newFolderName = ""
+                    newFolderParent = ""
+                }
+                Button("Cancel", role: .cancel) { newFolderName = "" }
             }
-            Button("Cancel", role: .cancel) { newFolderName = "" }
-        }
+        )
         .task { await model.start() }
         .task(id: searchText) {
             // Semantic results trail the instant FTS list slightly.
