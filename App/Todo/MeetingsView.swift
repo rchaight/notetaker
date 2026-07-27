@@ -2,11 +2,12 @@ import IndexKit
 import SwiftUI
 import TaskEngine
 
-/// People module: one page per person aggregating everything that touches
-/// them — To Discuss (?discuss), Delegated (@person plain tasks), Waiting
-/// (?waiting). "Start 1:1" runs the discussion queue Fellow-style and can
-/// log the meeting to People/<Name>.md (vault-native, syncs, searchable).
-struct PeopleView: View {
+/// Meetings module: one page per AUDIENCE — a person (@Amber), committee
+/// (@curriculum-committee), or workgroup — aggregating To Discuss
+/// (?discuss), Delegated (plain @tasks), and Waiting (?waiting) items.
+/// "Start Meeting" runs the discussion queue Fellow-style and can log the
+/// session to Meetings/<Name>.md (vault-native, syncs, searchable).
+struct MeetingsView: View {
     let service: VaultIndexService
     let extrasStore: TaskExtrasStore
     var openNote: (String, Int?) -> Void = { _, _ in }
@@ -48,11 +49,17 @@ struct PeopleView: View {
             .map { ($0.key, $0.value) }
     }
 
-    private func hasMeetingLog(_ person: String) -> Bool {
-        guard let root = service.vaultRootURL else { return false }
-        return FileManager.default.fileExists(
-            atPath: root.appendingPathComponent("People/\(person).md").path
-        )
+    /// Meetings/<Name>.md, with legacy People/<Name>.md fallback.
+    private func meetingLogId(_ person: String) -> String? {
+        guard let root = service.vaultRootURL else { return nil }
+        for candidate in ["Meetings/\(person).md", "People/\(person).md"] {
+            if FileManager.default.fileExists(
+                atPath: root.appendingPathComponent(candidate).path
+            ) {
+                return candidate
+            }
+        }
+        return nil
     }
 
     private func tasks(for person: String, kind: String?) -> [TaskRecord] {
@@ -85,14 +92,14 @@ struct PeopleView: View {
                 }
             }
             .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 340)
-            .navigationTitle("People")
+            .navigationTitle("Meetings")
             .overlay {
                 if people.isEmpty {
                     ContentUnavailableView(
-                        "No People Yet",
-                        systemImage: "person.2",
+                        "No Meetings Yet",
+                        systemImage: "person.3",
                         description: Text(
-                            "Add @name to a task, or mark talking points with ?discuss:\n- [ ] renewal timeline @Amber ?discuss"
+                            "Address items to a person or group with @, and mark talking points with ?discuss:\n- [ ] renewal timeline @Amber ?discuss\n- [ ] budget review @curriculum-committee ?discuss"
                         )
                     )
                 }
@@ -102,9 +109,11 @@ struct PeopleView: View {
                 personPage(person)
             } else {
                 ContentUnavailableView(
-                    "Select a Person",
-                    systemImage: "person.2",
-                    description: Text("To Discuss, Delegated, and Waiting items live here.")
+                    "Select a Meeting",
+                    systemImage: "person.3",
+                    description: Text(
+                        "Each person, committee, or workgroup gets a page: To Discuss, Delegated, and Waiting."
+                    )
                 )
             }
         }
@@ -113,7 +122,7 @@ struct PeopleView: View {
         }
         .sheet(isPresented: $runningOneOnOne) {
             if let person = selectedPerson {
-                OneOnOneRunView(
+                MeetingRunView(
                     service: service,
                     person: person,
                     items: tasks(for: person, kind: "discuss")
@@ -201,9 +210,9 @@ struct PeopleView: View {
                                 }
                             }
                         }
-                        if hasMeetingLog(person) {
+                        if let logId = meetingLogId(person) {
                             Button {
-                                openNote("People/\(person).md", nil)
+                                openNote(logId, nil)
                             } label: {
                                 Label("Open meeting log", systemImage: "text.book.closed")
                                     .font(.callout)
@@ -223,11 +232,11 @@ struct PeopleView: View {
         .navigationTitle(person == Self.unassigned ? "Unassigned" : person)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button("Start 1:1", systemImage: "play.circle") {
+                Button("Start Meeting", systemImage: "play.circle") {
                     runningOneOnOne = true
                 }
                 .disabled(discuss.isEmpty || person == Self.unassigned)
-                .help("Run through the discussion queue and log the meeting")
+                .help("Run through the discussion queue and log the session")
             }
         }
         .overlay {
@@ -301,7 +310,7 @@ struct PeopleView: View {
 
 /// Fellow-style meeting run: walk the queue, check what you covered,
 /// finish with an optional dated log written into People/<Name>.md.
-struct OneOnOneRunView: View {
+struct MeetingRunView: View {
     let service: VaultIndexService
     let person: String
     let items: [TaskRecord]
@@ -312,7 +321,7 @@ struct OneOnOneRunView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Label("1:1 with \(person)", systemImage: "person.crop.circle")
+            Label("Meeting: \(person)", systemImage: "person.3")
                 .font(.title2.weight(.semibold))
             Text("\(covered.count) of \(items.count) covered")
                 .font(.callout)
@@ -340,7 +349,7 @@ struct OneOnOneRunView: View {
                 .padding(.vertical, 4)
             }
             .listStyle(.plain)
-            Toggle("Log this meeting to People/\(person).md", isOn: $logMeeting)
+            Toggle("Log this meeting to Meetings/\(person).md", isOn: $logMeeting)
                 .font(.callout)
             HStack {
                 Text("Uncovered items stay queued for next time.")
@@ -348,7 +357,7 @@ struct OneOnOneRunView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }
-                Button("Finish 1:1") {
+                Button("Finish Meeting") {
                     let coveredItems = items.filter { covered.contains($0.id) }
                     let log = logMeeting
                     dismiss()

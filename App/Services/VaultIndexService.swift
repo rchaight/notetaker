@@ -863,15 +863,15 @@ final class VaultIndexService {
     /// lives in the vault (searchable, synced), never only in CloudKit.
     func appendMeetingLog(person: String, covered: [String]) async {
         guard let root, let indexer else { return }
-        let folder = root.appendingPathComponent("People", isDirectory: true)
+        let folder = root.appendingPathComponent("Meetings", isDirectory: true)
         try? await store.createFolder(at: folder)
-        let noteId = "People/\(person).md"
-        let url = root.appendingPathComponent("People").appendingPathComponent(person + ".md")
+        let noteId = "Meetings/\(person).md"
+        let url = root.appendingPathComponent("Meetings").appendingPathComponent(person + ".md")
         let existing = await (try? store.readString(at: url)) ?? "# \(person)\n"
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
-        var entry = "\n## 1:1 — \(formatter.string(from: Date()))\n\n"
+        var entry = "\n## Meeting — \(formatter.string(from: Date()))\n\n"
         for item in covered {
             entry += "- \(item)\n"
         }

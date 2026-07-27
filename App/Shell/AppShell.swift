@@ -29,7 +29,7 @@ struct AppShell: View {
         ("notes", "Notes", "note.text"),
         ("todo", "To-Do", "checklist"),
         ("projects", "Projects", "calendar.day.timeline.left"),
-        ("people", "People", "person.2"),
+        ("meetings", "Meetings", "person.3"),
         ("tags", "Tags", "number"),
         ("vault", "Vault", "icloud"),
     ]
@@ -157,8 +157,8 @@ struct AppShell: View {
                 Tab("Projects", systemImage: "calendar.day.timeline.left", value: "projects") {
                     projectsTab
                 }
-                Tab("People", systemImage: "person.2", value: "people") {
-                    peopleTab
+                Tab("Meetings", systemImage: "person.3", value: "meetings") {
+                    meetingsTab
                 }
                 Tab("Tags", systemImage: "number", value: "tags") {
                     tagsTab
@@ -182,7 +182,7 @@ struct AppShell: View {
         switch selectedTab {
         case "todo": todoTab
         case "projects": projectsTab
-        case "people": peopleTab
+        case "meetings": meetingsTab
         case "tags": tagsTab
         #if DEBUG
             case "vault": vaultTab
@@ -191,8 +191,8 @@ struct AppShell: View {
         }
     }
 
-    private var peopleTab: some View {
-        PeopleView(service: indexService, extrasStore: extrasStore) { noteId, line in
+    private var meetingsTab: some View {
+        MeetingsView(service: indexService, extrasStore: extrasStore) { noteId, line in
             notesModel.openNote(noteId, jumpToLine: line)
             selectedTab = "notes"
         }
