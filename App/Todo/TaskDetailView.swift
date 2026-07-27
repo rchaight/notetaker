@@ -166,6 +166,27 @@ struct TaskDetailView: View {
                     .frame(maxWidth: 260)
                 }
                 GridRow {
+                    rowLabel("Kind", "bubble.left.and.bubble.right")
+                    Picker("", selection: Binding(
+                        get: { task.kind ?? "task" },
+                        set: { newKind in
+                            let kind = newKind == "task" ? nil : newKind
+                            Task {
+                                await service.rewriteTaskLine(task) {
+                                    TaskLineRewriter.settingKind($0, to: kind)
+                                }
+                            }
+                        }
+                    )) {
+                        Text("Task").tag("task")
+                        Text("Discuss").tag("discuss")
+                        Text("Waiting").tag("waiting")
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(maxWidth: 260)
+                }
+                GridRow {
                     rowLabel("Assignee", "person")
                     TextField("@name", text: $assignee)
                         .textFieldStyle(.roundedBorder)

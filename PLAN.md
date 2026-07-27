@@ -325,8 +325,8 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 ### M9.6 — 1:1s / People module (user-selected 2026-07-27: ?discuss grammar + full People build)
 - [x] Grammar: `?discuss` / `?waiting` kind tokens (parse, rewrite, rebuild-preserve, tests).
 - [x] Index schema v15 (task.kind) + people queries; TaskFilter gains kind: and @person.
-- [ ] People tab: per-person pages — To Discuss / Delegated / Waiting; detail-window Kind picker.
-- [ ] Start 1:1 run mode + dated meeting log appended to People/<Name>.md (vault-native).
+- [x] People tab: per-person pages — To Discuss / Delegated / Waiting; detail-window Kind picker.
+- [x] Start 1:1 run mode + dated meeting log appended to People/<Name>.md (vault-native).
 
 ### M10 — Release / distribution
 **Goal:** macOS signed+notarized+stapled `.dmg`; iOS on TestFlight.

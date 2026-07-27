@@ -859,6 +859,30 @@ final class VaultIndexService {
         }
     }
 
+    /// Appends a dated 1:1 entry to People/<Name>.md — meeting history
+    /// lives in the vault (searchable, synced), never only in CloudKit.
+    func appendMeetingLog(person: String, covered: [String]) async {
+        guard let root, let indexer else { return }
+        let folder = root.appendingPathComponent("People", isDirectory: true)
+        try? await store.createFolder(at: folder)
+        let noteId = "People/\(person).md"
+        let url = root.appendingPathComponent("People").appendingPathComponent(person + ".md")
+        let existing = await (try? store.readString(at: url)) ?? "# \(person)\n"
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        var entry = "\n## 1:1 — \(formatter.string(from: Date()))\n\n"
+        for item in covered {
+            entry += "- \(item)\n"
+        }
+        let updated = (existing.hasSuffix("\n") ? existing : existing + "\n") + entry
+        try? await store.writeString(updated, to: url)
+        try? indexer.index(noteId: noteId, contents: updated, modifiedAt: nil)
+        knownMTimes[noteId] = nil
+        tasksVersion += 1
+        onNoteMutated?(noteId)
+    }
+
     func peopleTasks() -> [TaskRecord] {
         (try? database?.peopleTasks()) ?? []
     }
