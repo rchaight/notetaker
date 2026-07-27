@@ -162,12 +162,15 @@ struct TaskDetailView: View {
                     rowLabel("Kind", "bubble.left.and.bubble.right")
                     Picker("", selection: $kindSelection) {
                         Text("Task").tag("task")
+                        Text("Next").tag("next")
                         Text("Discuss").tag("discuss")
                         Text("Waiting").tag("waiting")
+                        Text("Follow-up").tag("followup")
+                        Text("Someday").tag("someday")
                     }
-                    .pickerStyle(.segmented)
+                    .pickerStyle(.menu)
                     .labelsHidden()
-                    .frame(maxWidth: 260)
+                    .fixedSize()
                 }
                 GridRow {
                     rowLabel("Assignee", "person")

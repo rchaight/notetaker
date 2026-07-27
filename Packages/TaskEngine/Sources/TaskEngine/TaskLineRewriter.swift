@@ -118,7 +118,7 @@ public enum TaskLineRewriter {
 
     /// The raw line with its `?kind` token replaced/added/removed.
     public static func settingKind(_ rawLine: String, to kind: String?) -> String {
-        let pattern = "(?<=^|\\s)\\?(discuss|waiting)\\b"
+        let pattern = "(?<=^|\\s)\\?(discuss|waiting|next|someday|followup)\\b"
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
         else { return rawLine }
         let ns = rawLine as NSString

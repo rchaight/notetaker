@@ -361,7 +361,10 @@ public extension IndexDatabase {
         try queue.read { db in
             try TaskRecord
                 .filter(Column("checked") == false)
-                .filter(Column("assignee") != nil || Column("kind") != nil)
+                .filter(
+                    Column("assignee") != nil
+                        || ["discuss", "waiting", "followup"].contains(Column("kind"))
+                )
                 .order(Column("assignee"), Column("kind"), Column("noteId"), Column("line"))
                 .fetchAll(db)
         }

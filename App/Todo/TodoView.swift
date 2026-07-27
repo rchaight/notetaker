@@ -22,6 +22,9 @@ struct TodoView: View {
     @State private var completingIds: Set<String> = []
     @State private var taskLabels: [String: [String]] = [:]
     @State private var subtasksByParent: [String: [TaskRecord]] = [:]
+    @State private var nextTasks: [TaskRecord] = []
+    @State private var somedayTasks: [TaskRecord] = []
+    @State private var somedayExpanded = false
     @State private var selectedTaskIds: Set<String> = []
     @State private var detailTaskId: String?
     /// Explicit multi-select mode (the ⌘-click path was undiscoverable,
@@ -334,6 +337,16 @@ struct TodoView: View {
 
     private var taskList: some View {
         List(selection: $selectedTaskIds) {
+            if !nextTasks.isEmpty {
+                Section {
+                    ForEach(nextTasks) { task in
+                        row(task).tag(task.id)
+                    }
+                } header: {
+                    Label("Next (\(nextTasks.count))", systemImage: "arrow.right.circle")
+                        .foregroundStyle(.green)
+                }
+            }
             ForEach(Self.sections, id: \.0) { bucket, title, icon in
                 if let tasks = grouped[bucket], !tasks.isEmpty {
                     Section {
@@ -352,9 +365,22 @@ struct TodoView: View {
                     }
                 }
             }
+            if !somedayTasks.isEmpty {
+                Section {
+                    DisclosureGroup(isExpanded: $somedayExpanded) {
+                        ForEach(somedayTasks) { task in
+                            row(task).tag(task.id)
+                        }
+                    } label: {
+                        Label("Someday (\(somedayTasks.count))", systemImage: "tray")
+                            .foregroundStyle(.secondary)
+                            .selectionDisabled(true)
+                    }
+                }
+            }
         }
         .overlay {
-            if grouped.values.allSatisfy(\.isEmpty) || grouped.isEmpty {
+            if grouped.values.allSatisfy(\.isEmpty), nextTasks.isEmpty, somedayTasks.isEmpty {
                 ContentUnavailableView(
                     "No Open Tasks",
                     systemImage: "checklist",
@@ -565,7 +591,10 @@ struct TodoView: View {
                 assignee: task.assignee, kind: task.kind
             )
         }
-        grouped = Dictionary(grouping: tasks) {
+        nextTasks = tasks.filter { $0.kind == "next" }
+        somedayTasks = tasks.filter { $0.kind == "someday" }
+        let active = tasks.filter { $0.kind != "next" && $0.kind != "someday" }
+        grouped = Dictionary(grouping: active) {
             SmartBuckets.bucket(dueDate: $0.dueDate, startDate: $0.startDate)
         }
         subtaskProgress = service.subtaskProgress()

@@ -286,3 +286,14 @@ struct PeopleFilterTests {
         ))
     }
 }
+
+struct ExtendedKindTests {
+    @Test func newKindsParseAndRewrite() {
+        for kind in ["next", "someday", "followup"] {
+            #expect(TaskTokenParser.parse("thing ?\(kind)").kind == kind)
+        }
+        let line = TaskLineRewriter.settingKind("- [ ] park this idea", to: "someday")
+        #expect(line == "- [ ] park this idea ?someday")
+        #expect(TaskLineRewriter.settingKind(line, to: "next") == "- [ ] park this idea ?next")
+    }
+}

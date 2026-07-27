@@ -149,6 +149,7 @@ struct MeetingsView: View {
         let discuss = tasks(for: person, kind: "discuss")
         let delegated = tasks(for: person, kind: nil)
         let waiting = tasks(for: person, kind: "waiting")
+        let followups = tasks(for: person, kind: "followup")
         let discussed = discussedHistory(for: person)
         return List {
             if !discuss.isEmpty {
@@ -176,6 +177,15 @@ struct MeetingsView: View {
                     }
                 } header: {
                     Label("Waiting On (\(waiting.count))", systemImage: "hourglass")
+                }
+            }
+            if !followups.isEmpty {
+                Section {
+                    ForEach(followups) { task in
+                        taskRow(task, accent: .blue)
+                    }
+                } header: {
+                    Label("Follow-ups (\(followups.count))", systemImage: "arrow.uturn.left.circle")
                 }
             }
             if !discussed.isEmpty {
@@ -240,7 +250,7 @@ struct MeetingsView: View {
             }
         }
         .overlay {
-            if discuss.isEmpty, delegated.isEmpty, waiting.isEmpty {
+            if discuss.isEmpty, delegated.isEmpty, waiting.isEmpty, followups.isEmpty {
                 ContentUnavailableView(
                     "All Clear",
                     systemImage: "checkmark.circle",

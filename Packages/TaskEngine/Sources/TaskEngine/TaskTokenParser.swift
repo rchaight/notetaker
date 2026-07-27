@@ -91,7 +91,7 @@ public enum TaskTokenParser {
     /// `?discuss` / `?waiting` at a word boundary — a closed set, so a
     /// question mark in prose never matches.
     private static let kindRegex = try? NSRegularExpression(
-        pattern: "(?<=^|\\s)\\?(discuss|waiting)\\b",
+        pattern: "(?<=^|\\s)\\?(discuss|waiting|next|someday|followup)\\b",
         options: [.caseInsensitive]
     )
 

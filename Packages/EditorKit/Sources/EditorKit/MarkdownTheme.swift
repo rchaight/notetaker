@@ -208,7 +208,13 @@ public struct MarkdownTheme: @unchecked Sendable {
     }
 
     static func kindColor(_ kind: String) -> PlatformColor {
-        kind == "waiting" ? .systemOrange : .systemTeal
+        switch kind {
+        case "waiting": .systemOrange
+        case "next": .systemGreen
+        case "someday": .systemGray
+        case "followup": .systemBlue
+        default: .systemTeal
+        }
     }
 
     static let tagPalette: [PlatformColor] = [

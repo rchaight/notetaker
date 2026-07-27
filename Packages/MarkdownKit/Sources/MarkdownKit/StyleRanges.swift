@@ -70,7 +70,7 @@ public enum MarkdownStyler {
         pattern: #"(?<=^|\s)@([A-Za-z0-9_.-]+)"#
     )
     private static let editorKindRegex = try? NSRegularExpression(
-        pattern: #"(?<=^|\s)\?(discuss|waiting)\b"#,
+        pattern: #"(?<=^|\s)\?(discuss|waiting|next|someday|followup)\b"#,
         options: [.caseInsensitive]
     )
 

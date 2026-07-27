@@ -69,6 +69,9 @@ struct MeetingChip: View {
         switch kind {
         case "discuss": .teal
         case "waiting": .orange
+        case "next": .green
+        case "someday": .gray
+        case "followup": .blue
         default: .indigo
         }
     }
@@ -78,7 +81,7 @@ struct MeetingChip: View {
             HStack(spacing: 3) {
                 Image(systemName: "person.3")
                     .font(.system(size: 8))
-                Text(assignee.map { "@" + $0 } ?? (kind == "discuss" ? "discuss" : "waiting"))
+                Text(assignee.map { "@" + $0 } ?? (kind ?? ""))
             }
             .font(.caption2.weight(.medium))
             .padding(.horizontal, 5)
@@ -93,6 +96,9 @@ struct MeetingChip: View {
         switch kind {
         case "discuss": "On the meeting agenda" + (assignee.map { " for @\($0)" } ?? "")
         case "waiting": "Waiting on " + (assignee.map { "@" + $0 } ?? "someone")
+        case "next": "Chosen next action"
+        case "someday": "Someday/maybe — parked"
+        case "followup": "Follow up" + (assignee.map { " with @\($0)" } ?? "")
         default: "Delegated to " + (assignee.map { "@" + $0 } ?? "someone")
         }
     }
