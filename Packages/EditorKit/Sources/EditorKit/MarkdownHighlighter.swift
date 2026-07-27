@@ -23,7 +23,8 @@ public enum MarkdownHighlighter {
         _ storage: NSTextStorage,
         theme: MarkdownTheme = .default,
         hideMarkersOutside: NSRange? = nil,
-        dimOutside: NSRange? = nil
+        dimOutside: NSRange? = nil,
+        foldRanges: [NSRange] = []
     ) -> [StyledRange] {
         let text = storage.string
         let fullRange = NSRange(location: 0, length: (text as NSString).length)
@@ -105,6 +106,11 @@ public enum MarkdownHighlighter {
                 && NSMaxRange(marker) <= fullRange.length {
                 storage.addAttributes(theme.hiddenMarkerAttributes, range: marker)
             }
+        }
+        // Heading folds hide whole sections (hair-height, like markers) —
+        // applied last so nothing re-reveals them.
+        for fold in foldRanges where NSMaxRange(fold) <= fullRange.length {
+            storage.addAttributes(theme.hiddenMarkerAttributes, range: fold)
         }
         storage.endEditing()
         return styled

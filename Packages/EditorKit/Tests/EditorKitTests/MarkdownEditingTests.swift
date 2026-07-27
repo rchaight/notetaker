@@ -571,3 +571,51 @@ struct MentionKindAutocompleteTests {
         #expect(match("really? yes", cursorAfter: "really?") == nil)
     }
 }
+
+struct HeadingFoldingTests {
+    private let doc = """
+    # Top
+    intro text
+    ## Section A
+    a body one
+    a body two
+    ### Sub A1
+    deep text
+    ## Section B
+    b body
+    """
+
+    private func infos() -> [HeadingFolding.HeadingInfo] {
+        HeadingFolding.headings(in: doc, styled: MarkdownStyler.styleRanges(in: doc))
+    }
+
+    @Test func headingsExtractWithLevelsAndTitles() {
+        let found = infos()
+        #expect(found.map(\.level) == [1, 2, 3, 2])
+        #expect(found.map(\.title) == ["Top", "Section A", "Sub A1", "Section B"])
+    }
+
+    @Test func foldStopsAtSameOrHigherLevel() throws {
+        let all = infos()
+        let sectionA = try #require(all.first { $0.title == "Section A" })
+        let range = try #require(HeadingFolding.foldRange(for: sectionA, in: doc, headings: all))
+        let hidden = (doc as NSString).substring(with: range)
+        #expect(hidden.contains("a body one"))
+        #expect(hidden.contains("Sub A1"))
+        #expect(!hidden.contains("Section B"))
+    }
+
+    @Test func topLevelFoldRunsToNextTopOrEnd() throws {
+        let all = infos()
+        let top = try #require(all.first { $0.title == "Top" })
+        let range = try #require(HeadingFolding.foldRange(for: top, in: doc, headings: all))
+        #expect(NSMaxRange(range) == (doc as NSString).length)
+    }
+
+    @Test func lastHeadingFoldsToEnd() throws {
+        let all = infos()
+        let b = try #require(all.first { $0.title == "Section B" })
+        let range = try #require(HeadingFolding.foldRange(for: b, in: doc, headings: all))
+        #expect((doc as NSString).substring(with: range) == "b body")
+    }
+}

@@ -138,6 +138,13 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             textView.textContentStorage?.delegate = context.coordinator
             // Custom fragment drawing (blockquote accent bar).
             textView.textLayoutManager?.delegate = context.coordinator
+            // Margin clicks fold/unfold headings.
+            let foldClick = NSClickGestureRecognizer(
+                target: context.coordinator,
+                action: #selector(Coordinator.handleFoldClick(_:))
+            )
+            foldClick.delegate = context.coordinator
+            textView.addGestureRecognizer(foldClick)
             context.coordinator.livePreview = livePreview
             context.coordinator.focusMode = focusMode
             context.coordinator.imageBase = imageBase
@@ -206,7 +213,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
 
         @MainActor
         public final class Coordinator: NSObject, NSTextViewDelegate, @preconcurrency NSTextContentStorageDelegate,
-            @preconcurrency NSTextLayoutManagerDelegate {
+            @preconcurrency NSTextLayoutManagerDelegate, NSGestureRecognizerDelegate {
             var text: Binding<String>
             var theme: MarkdownTheme
             var livePreview = true
@@ -218,6 +225,8 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             var codeRegions: [CodeCardRegions.Region] = []
             var tableRegions: [TableGrid.Region] = []
             var tagChipRanges: [(range: NSRange, color: PlatformColor)] = []
+            var foldedKeys: Set<String> = []
+            var headingInfos: [HeadingFolding.HeadingInfo] = []
             var revealRanges: [NSRange] = []
             var frontmatterLength = 0
             var lastCommandID: UUID?
@@ -241,11 +250,17 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                 guard let storage = textView.textStorage else { return }
                 let cursor = cursorParagraph(textView)
                 lastCursorLine = cursor
+                let prepass = MarkdownStyler.styleRanges(in: textView.string)
+                headingInfos = HeadingFolding.headings(in: textView.string, styled: prepass)
+                let folds = HeadingFolding.foldRanges(
+                    foldedKeys: foldedKeys, in: textView.string, styled: prepass
+                )
                 let styled = MarkdownHighlighter.highlight(
                     storage,
                     theme: theme,
                     hideMarkersOutside: livePreview ? cursor : nil,
-                    dimOutside: focusMode ? cursor : nil
+                    dimOutside: focusMode ? cursor : nil,
+                    foldRanges: folds
                 )
                 codeRegions = CodeCardRegions.regions(in: textView.string, styled: styled)
                 tableRegions = TableGrid.regions(in: textView.string, styled: styled)
@@ -331,6 +346,42 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                     searchRange = NSRange(location: next, length: ns.length - next)
                 }
                 storage.endEditing()
+            }
+
+            @objc func handleFoldClick(_ gesture: NSClickGestureRecognizer) {
+                guard let textView = gesture.view as? NSTextView else { return }
+                let point = gesture.location(in: textView)
+                // Only the left margin folds — normal clicks edit.
+                guard point.x < textView.textContainerInset.width else { return }
+                guard let layoutManager = textView.textLayoutManager,
+                      let contentManager = layoutManager.textContentManager,
+                      let fragment = layoutManager.textLayoutFragment(for: point),
+                      let elementRange = fragment.textElement?.elementRange
+                else { return }
+                let start = contentManager.offset(
+                    from: contentManager.documentRange.location, to: elementRange.location
+                )
+                guard let heading = headingInfos.first(where: {
+                    ($0.range.location ..< NSMaxRange($0.range)).contains(start)
+                        || (textView.string as NSString)
+                        .paragraphRange(for: $0.range).location == start
+                }) else { return }
+                if foldedKeys.contains(heading.key) {
+                    foldedKeys.remove(heading.key)
+                } else {
+                    foldedKeys.insert(heading.key)
+                }
+                restyle(textView)
+            }
+
+            public func gestureRecognizer(
+                _ gestureRecognizer: NSGestureRecognizer,
+                shouldAttemptToRecognizeWith event: NSEvent
+            ) -> Bool {
+                // Fail fast outside the margin so editing is untouched.
+                guard let textView = gestureRecognizer.view as? NSTextView else { return false }
+                let point = textView.convert(event.locationInWindow, from: nil)
+                return point.x < textView.textContainerInset.width
             }
 
             public func textDidChange(_ notification: Notification) {
@@ -527,6 +578,15 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                         fragment.badge = fragment.roundsTop ? region.language : nil
                         fragment.fillColor = theme.surfaceBackground
                         fragment.badgeColor = theme.secondaryColor
+                        return fragment
+                    }
+                    if let heading = headingInfos.first(where: {
+                        NSIntersectionRange($0.range, paragraphRange).length > 0
+                    }) {
+                        let fragment = HeadingFoldFragment(
+                            textElement: textElement, range: textElement.elementRange
+                        )
+                        fragment.folded = foldedKeys.contains(heading.key)
                         return fragment
                     }
                     let chipHits = tagChipRanges.filter {
@@ -741,6 +801,8 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             var codeRegions: [CodeCardRegions.Region] = []
             var tableRegions: [TableGrid.Region] = []
             var tagChipRanges: [(range: NSRange, color: PlatformColor)] = []
+            var foldedKeys: Set<String> = []
+            var headingInfos: [HeadingFolding.HeadingInfo] = []
             var revealRanges: [NSRange] = []
             var frontmatterLength = 0
             var lastCommandID: UUID?
@@ -761,11 +823,16 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             func restyle(_ textView: UITextView) {
                 let cursor = cursorParagraph(textView)
                 lastCursorLine = cursor
+                let prepass = MarkdownStyler.styleRanges(in: textView.text ?? "")
+                headingInfos = HeadingFolding.headings(in: textView.text ?? "", styled: prepass)
                 let styled = MarkdownHighlighter.highlight(
                     textView.textStorage,
                     theme: theme,
                     hideMarkersOutside: livePreview ? cursor : nil,
-                    dimOutside: focusMode ? cursor : nil
+                    dimOutside: focusMode ? cursor : nil,
+                    foldRanges: HeadingFolding.foldRanges(
+                        foldedKeys: foldedKeys, in: textView.text ?? "", styled: prepass
+                    )
                 )
                 codeRegions = CodeCardRegions.regions(in: textView.text ?? "", styled: styled)
                 tableRegions = TableGrid.regions(in: textView.text ?? "", styled: styled)
@@ -896,6 +963,15 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                         fragment.badge = fragment.roundsTop ? region.language : nil
                         fragment.fillColor = theme.surfaceBackground
                         fragment.badgeColor = theme.secondaryColor
+                        return fragment
+                    }
+                    if let heading = headingInfos.first(where: {
+                        NSIntersectionRange($0.range, paragraphRange).length > 0
+                    }) {
+                        let fragment = HeadingFoldFragment(
+                            textElement: textElement, range: textElement.elementRange
+                        )
+                        fragment.folded = foldedKeys.contains(heading.key)
                         return fragment
                     }
                     let chipHits = tagChipRanges.filter {
