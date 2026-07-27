@@ -322,6 +322,12 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 - [x] To-Do extended data: private CloudKit database (TaskExtras records) joined by lazily-assigned durable ^ids; Todoist-style task-detail window (title/due/priority edit the markdown line; description/link live in CloudKit).
 - [ ] Per-surface sweep with user: Notes, editor, To-Do, Projects, Vault, import/AI.
 
+### M9.6 — 1:1s / People module (user-selected 2026-07-27: ?discuss grammar + full People build)
+- [x] Grammar: `?discuss` / `?waiting` kind tokens (parse, rewrite, rebuild-preserve, tests).
+- [x] Index schema v15 (task.kind) + people queries; TaskFilter gains kind: and @person.
+- [ ] People tab: per-person pages — To Discuss / Delegated / Waiting; detail-window Kind picker.
+- [ ] Start 1:1 run mode + dated meeting log appended to People/<Name>.md (vault-native).
+
 ### M10 — Release / distribution
 **Goal:** macOS signed+notarized+stapled `.dmg`; iOS on TestFlight.
 **Steps:**

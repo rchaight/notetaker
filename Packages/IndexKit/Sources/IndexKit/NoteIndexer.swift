@@ -88,7 +88,8 @@ public struct NoteIndexer: Sendable {
                     dependsOn: parsed.dependsOn.isEmpty
                         ? nil : parsed.dependsOn.joined(separator: " "),
                     completedDay: parsed.completedDay,
-                    assignee: parsed.assignee
+                    assignee: parsed.assignee,
+                    kind: parsed.kind
                 )
                 enclosing.append((task.indent, record.id))
                 try record.save(db)

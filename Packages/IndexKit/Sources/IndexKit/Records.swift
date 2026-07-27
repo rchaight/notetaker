@@ -74,13 +74,16 @@ public struct TaskRecord: Codable, Equatable, Sendable, Identifiable, FetchableR
     public var completedDay: String?
     /// @name owner (projects aggregate these).
     public var assignee: String?
+    /// ?discuss / ?waiting item kind; nil = plain task.
+    public var kind: String?
 
     public init(
         id: String, noteId: String, line: Int, text: String, rawLine: String,
         checked: Bool, dueDate: String? = nil, startDate: String? = nil,
         priority: Int? = nil, recurrence: String? = nil, parentId: String? = nil,
         blockId: String? = nil, dependsOn: String? = nil, completedDay: String? = nil,
-        assignee: String? = nil
+        assignee: String? = nil,
+        kind: String? = nil
     ) {
         self.id = id
         self.noteId = noteId
@@ -97,6 +100,7 @@ public struct TaskRecord: Codable, Equatable, Sendable, Identifiable, FetchableR
         self.dependsOn = dependsOn
         self.completedDay = completedDay
         self.assignee = assignee
+        self.kind = kind
     }
 }
 

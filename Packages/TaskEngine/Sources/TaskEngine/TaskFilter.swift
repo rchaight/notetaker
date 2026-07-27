@@ -13,6 +13,8 @@ public struct TaskFilter: Equatable, Sendable {
         case due(DueTerm)
         case label(String)
         case note(String)
+        case assignee(String)
+        case kind(String)
         case textContains(String)
     }
 
@@ -41,6 +43,10 @@ public struct TaskFilter: Equatable, Sendable {
                 predicates.append(.due(due))
             } else if term.hasPrefix("#"), term.count > 1 {
                 predicates.append(.label(String(term.dropFirst()).lowercased()))
+            } else if term.hasPrefix("@"), term.count > 1 {
+                predicates.append(.assignee(String(term.dropFirst()).lowercased()))
+            } else if lower.hasPrefix("kind:"), term.count > 5 {
+                predicates.append(.kind(String(lower.dropFirst(5))))
             } else if lower.hasPrefix("note:"), term.count > 5 {
                 predicates.append(.note(String(term.dropFirst(5)).lowercased()))
             } else {
@@ -57,6 +63,8 @@ public struct TaskFilter: Equatable, Sendable {
         dueDate: String?,
         priority: Int?,
         labels: [String],
+        assignee: String? = nil,
+        kind: String? = nil,
         today: Date = Date(),
         calendar: Calendar = .current
     ) -> Bool {
@@ -93,6 +101,14 @@ public struct TaskFilter: Equatable, Sendable {
                 }
             case let .note(fragment):
                 if !noteId.lowercased().contains(fragment) {
+                    return false
+                }
+            case let .assignee(wanted):
+                if assignee?.lowercased() != wanted {
+                    return false
+                }
+            case let .kind(wanted):
+                if kind?.lowercased() != wanted {
                     return false
                 }
             case let .textContains(fragment):

@@ -243,3 +243,46 @@ struct AssigneeTests {
             == "- [ ] x #milestones")
     }
 }
+
+struct KindTokenTests {
+    @Test func discussAndWaitingParse() {
+        let discuss = TaskTokenParser.parse("renewal timeline @Amber ?discuss")
+        #expect(discuss.kind == "discuss")
+        #expect(discuss.assignee == "Amber")
+        #expect(discuss.cleanText == "renewal timeline")
+        #expect(TaskTokenParser.parse("chase invoice ?waiting").kind == "waiting")
+    }
+
+    @Test func questionMarksInProseNeverMatch() {
+        let parsed = TaskTokenParser.parse("should we ship? ask team")
+        #expect(parsed.kind == nil)
+        #expect(parsed.cleanText == "should we ship? ask team")
+    }
+
+    @Test func setRemoveAndRebuildKeepKind() {
+        let set = TaskLineRewriter.settingKind("- [ ] topic @Amber", to: "discuss")
+        #expect(set == "- [ ] topic @Amber ?discuss")
+        #expect(TaskLineRewriter.settingKind(set, to: "waiting") == "- [ ] topic @Amber ?waiting")
+        #expect(TaskLineRewriter.settingKind(set, to: nil) == "- [ ] topic @Amber")
+        let rebuilt = TaskLineRewriter.replacingText(set, with: "new topic")
+        #expect(rebuilt == "- [ ] new topic @Amber ?discuss")
+    }
+}
+
+struct PeopleFilterTests {
+    @Test func assigneeAndKindPredicates() {
+        let filter = TaskFilter.parse("@amber kind:discuss")
+        #expect(filter.matches(
+            text: "renewal", noteId: "n.md", dueDate: nil, priority: nil,
+            labels: [], assignee: "Amber", kind: "discuss"
+        ))
+        #expect(!filter.matches(
+            text: "renewal", noteId: "n.md", dueDate: nil, priority: nil,
+            labels: [], assignee: "Amber", kind: nil
+        ))
+        #expect(!filter.matches(
+            text: "renewal", noteId: "n.md", dueDate: nil, priority: nil,
+            labels: [], assignee: "Bob", kind: "discuss"
+        ))
+    }
+}

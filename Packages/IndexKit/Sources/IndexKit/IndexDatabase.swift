@@ -7,7 +7,7 @@ import GRDB
 /// the caller trigger a full rescan.
 public final class IndexDatabase: Sendable {
     /// Bump when the schema changes; mismatch wipes and rebuilds.
-    public static let schemaVersion = 14
+    public static let schemaVersion = 15
 
     public let queue: DatabaseQueue
 
@@ -79,6 +79,7 @@ public final class IndexDatabase: Sendable {
                 t.column("dependsOn", .text)
                 t.column("completedDay", .text).indexed()
                 t.column("assignee", .text)
+                t.column("kind", .text).indexed()
             }
             try db.create(table: TaskLabelRecord.databaseTableName) { t in
                 t.column("taskId", .text).notNull().indexed()
@@ -340,6 +341,18 @@ public extension IndexDatabase {
             JOIN taskLabel ON taskLabel.taskId = task.id
             WHERE taskLabel.label = ?
             """, arguments: [label])
+        }
+    }
+
+    /// Open tasks that matter to the People module: anything with an
+    /// assignee OR a kind token. UI groups by person/kind.
+    func peopleTasks() throws -> [TaskRecord] {
+        try queue.read { db in
+            try TaskRecord
+                .filter(Column("checked") == false)
+                .filter(Column("assignee") != nil || Column("kind") != nil)
+                .order(Column("assignee"), Column("kind"), Column("noteId"), Column("line"))
+                .fetchAll(db)
         }
     }
 

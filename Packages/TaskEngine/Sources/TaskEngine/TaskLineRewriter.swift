@@ -83,6 +83,9 @@ public enum TaskLineRewriter {
         if let assignee = parsed.assignee {
             tokens.append("@" + assignee)
         }
+        if let kind = parsed.kind {
+            tokens.append("?" + kind)
+        }
         if let completed = parsed.completedDay {
             tokens.append("✅" + completed)
         }
@@ -111,6 +114,27 @@ public enum TaskLineRewriter {
         }
         guard let priority else { return rawLine }
         return appending(rawLine, token: "!p\(priority)")
+    }
+
+    /// The raw line with its `?kind` token replaced/added/removed.
+    public static func settingKind(_ rawLine: String, to kind: String?) -> String {
+        let pattern = "(?<=^|\\s)\\?(discuss|waiting)\\b"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+        else { return rawLine }
+        let ns = rawLine as NSString
+        let match = regex.firstMatch(in: rawLine, range: NSRange(location: 0, length: ns.length))
+        if let match {
+            if let kind {
+                return ns.replacingCharacters(in: match.range, with: "?" + kind)
+            }
+            var removal = match.range
+            if removal.location > 0, ns.character(at: removal.location - 1) == 0x20 {
+                removal = NSRange(location: removal.location - 1, length: removal.length + 1)
+            }
+            return ns.replacingCharacters(in: removal, with: "")
+        }
+        guard let kind else { return rawLine }
+        return appending(rawLine, token: "?" + kind)
     }
 
     /// The raw line with its `@assignee` token replaced/added/removed.

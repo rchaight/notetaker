@@ -23,6 +23,9 @@ public struct ParsedTaskMetadata: Equatable, Sendable {
     public let completedDay: String?
     /// `@name` — who owns the task (projects aggregate these).
     public let assignee: String?
+    /// `?discuss` / `?waiting` — item kind beyond a plain task (1:1
+    /// talking points, delegated-and-waiting items).
+    public let kind: String?
 
     public init(
         cleanText: String,
@@ -34,7 +37,8 @@ public struct ParsedTaskMetadata: Equatable, Sendable {
         blockId: String? = nil,
         dependsOn: [String] = [],
         completedDay: String? = nil,
-        assignee: String? = nil
+        assignee: String? = nil,
+        kind: String? = nil
     ) {
         self.cleanText = cleanText
         self.dueDate = dueDate
@@ -46,6 +50,7 @@ public struct ParsedTaskMetadata: Equatable, Sendable {
         self.dependsOn = dependsOn
         self.completedDay = completedDay
         self.assignee = assignee
+        self.kind = kind
     }
 }
 
@@ -71,6 +76,7 @@ public enum TaskTokenParser {
         let dependsOn = extractDependencies(&working)
         let completedDay = extractCompletedDay(&working)
         let assignee = extractAssignee(&working)
+        let kind = extractKind(&working)
         let clean = working
             .replacingOccurrences(of: #"\s{2,}"#, with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespaces)
@@ -78,8 +84,25 @@ public enum TaskTokenParser {
             cleanText: clean, dueDate: dueDate, startDate: startDate,
             priority: priority, labels: labels, recurrence: recurrence,
             blockId: blockId, dependsOn: dependsOn, completedDay: completedDay,
-            assignee: assignee
+            assignee: assignee, kind: kind
         )
+    }
+
+    /// `?discuss` / `?waiting` at a word boundary — a closed set, so a
+    /// question mark in prose never matches.
+    private static let kindRegex = try? NSRegularExpression(
+        pattern: "(?<=^|\\s)\\?(discuss|waiting)\\b",
+        options: [.caseInsensitive]
+    )
+
+    private static func extractKind(_ text: inout String) -> String? {
+        guard let regex = kindRegex else { return nil }
+        let ns = text as NSString
+        guard let match = regex.firstMatch(in: text, range: NSRange(location: 0, length: ns.length))
+        else { return nil }
+        let kind = ns.substring(with: match.range(at: 1)).lowercased()
+        text = ns.replacingCharacters(in: match.range, with: "")
+        return kind
     }
 
     /// `@name` at a word boundary; e-mail-style "a@b" never matches.

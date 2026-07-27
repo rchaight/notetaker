@@ -859,6 +859,10 @@ final class VaultIndexService {
         }
     }
 
+    func peopleTasks() -> [TaskRecord] {
+        (try? database?.peopleTasks()) ?? []
+    }
+
     func tasksWithLabel(_ label: String) -> [TaskRecord] {
         (try? database?.tasks(withLabel: label)) ?? []
     }

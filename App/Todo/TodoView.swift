@@ -554,7 +554,8 @@ struct TodoView: View {
         let tasks = service.openTasks().filter { task in
             filter.isEmpty || filter.matches(
                 text: task.text, noteId: task.noteId, dueDate: task.dueDate,
-                priority: task.priority, labels: labels[task.id] ?? []
+                priority: task.priority, labels: labels[task.id] ?? [],
+                assignee: task.assignee, kind: task.kind
             )
         }
         grouped = Dictionary(grouping: tasks) {
