@@ -344,6 +344,17 @@ public extension IndexDatabase {
         }
     }
 
+    /// Open nested subtasks, for inline display under their parents.
+    func openSubtasks() throws -> [TaskRecord] {
+        try queue.read { db in
+            try TaskRecord
+                .filter(Column("checked") == false)
+                .filter(Column("parentId") != nil)
+                .order(Column("noteId"), Column("line"))
+                .fetchAll(db)
+        }
+    }
+
     /// Open tasks that matter to the People module: anything with an
     /// assignee OR a kind token. UI groups by person/kind.
     func peopleTasks() throws -> [TaskRecord] {

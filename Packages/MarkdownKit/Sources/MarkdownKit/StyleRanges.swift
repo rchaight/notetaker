@@ -25,6 +25,10 @@ public enum MarkdownElementKind: Equatable, Sendable {
     case image(source: String?)
     /// `#tag` — styled as a colored chip in the editor.
     case tag(String)
+    /// `@person` — assignee/mention chip.
+    case mention(String)
+    /// `?discuss` / `?waiting` — item-kind chip.
+    case kindToken(String)
 }
 
 /// A styled span of the markdown body in UTF-16 (NSRange) coordinates —
@@ -62,6 +66,13 @@ public enum MarkdownStyler {
     private static let editorTagRegex = try? NSRegularExpression(
         pattern: #"(?<=^|\s)#([\p{L}\p{N}_][\p{L}\p{N}_\-/]*)"#
     )
+    private static let editorMentionRegex = try? NSRegularExpression(
+        pattern: #"(?<=^|\s)@([A-Za-z0-9_.-]+)"#
+    )
+    private static let editorKindRegex = try? NSRegularExpression(
+        pattern: #"(?<=^|\s)\?(discuss|waiting)\b"#,
+        options: [.caseInsensitive]
+    )
 
     /// Wikilinks and highlight marks aren't CommonMark, so swift-markdown
     /// never emits them — a post-parse regex scan finds them, skipping any
@@ -91,6 +102,16 @@ public enum MarkdownStyler {
             where !insideCode(match.range) {
             let name = ns.substring(with: match.range(at: 1))
             ranges.append(StyledRange(kind: .tag(name), range: match.range))
+        }
+        for match in editorMentionRegex?.matches(in: body, range: full) ?? []
+            where !insideCode(match.range) {
+            let name = ns.substring(with: match.range(at: 1))
+            ranges.append(StyledRange(kind: .mention(name), range: match.range))
+        }
+        for match in editorKindRegex?.matches(in: body, range: full) ?? []
+            where !insideCode(match.range) {
+            let kind = ns.substring(with: match.range(at: 1)).lowercased()
+            ranges.append(StyledRange(kind: .kindToken(kind), range: match.range))
         }
     }
 }

@@ -25,7 +25,7 @@ public struct ScannedTask: Equatable, Sendable {
 /// writer must agree on what a "line" is.
 public enum NoteScanner {
     private static let taskRegex = try? NSRegularExpression(
-        pattern: #"^\s*(?:[-*+]|[0-9]+[.)])\s+\[( |x|X)\]\s+(.+)$"#
+        pattern: #"^\s*(?:[-*+]|[0-9]+[.)])\s+\[( |x|X)\]\s*(.*)$"#
     )
     private static let wikilinkRegex = try? NSRegularExpression(
         pattern: #"\[\[([^\[\]\|#]+)(?:#[^\]\|]*)?(?:\|[^\]]*)?\]\]"#

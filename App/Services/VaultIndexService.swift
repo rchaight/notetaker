@@ -883,6 +883,10 @@ final class VaultIndexService {
         onNoteMutated?(noteId)
     }
 
+    func openSubtasksByParent() -> [String: [TaskRecord]] {
+        Dictionary(grouping: (try? database?.openSubtasks()) ?? []) { $0.parentId ?? "" }
+    }
+
     func peopleTasks() -> [TaskRecord] {
         (try? database?.peopleTasks()) ?? []
     }

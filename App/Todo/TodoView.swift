@@ -21,6 +21,7 @@ struct TodoView: View {
     /// the write removes them from the list.
     @State private var completingIds: Set<String> = []
     @State private var taskLabels: [String: [String]] = [:]
+    @State private var subtasksByParent: [String: [TaskRecord]] = [:]
     @State private var selectedTaskIds: Set<String> = []
     @State private var detailTaskId: String?
     /// Explicit multi-select mode (the ⌘-click path was undiscoverable,
@@ -338,6 +339,12 @@ struct TodoView: View {
                     Section {
                         ForEach(tasks) { task in
                             row(task).tag(task.id)
+                            // Nested subtasks show inline, indented — hiding
+                            // them entirely read as "tasks disappeared"
+                            // (user-reported).
+                            ForEach(subtasksByParent[task.id] ?? []) { subtask in
+                                subtaskRow(subtask)
+                            }
                         }
                     } header: {
                         Label(title, systemImage: icon)
@@ -563,6 +570,34 @@ struct TodoView: View {
         }
         subtaskProgress = service.subtaskProgress()
         taskLabels = service.taskLabels()
+        subtasksByParent = service.openSubtasksByParent()
+    }
+
+    private func subtaskRow(_ subtask: TaskRecord) -> some View {
+        HStack(spacing: 8) {
+            Button {
+                Task { await service.toggle(subtask) }
+            } label: {
+                Image(systemName: "circle")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Complete subtask")
+            Text(displayText(subtask))
+                .font(.callout)
+                .foregroundStyle(subtask.text.isEmpty ? .tertiary : .secondary)
+                .italic(subtask.text.isEmpty)
+                .contentShape(Rectangle())
+                .onTapGesture { openDetail(subtask) }
+            Spacer()
+        }
+        .padding(.leading, 34)
+        .selectionDisabled(true)
+    }
+
+    private func displayText(_ task: TaskRecord) -> String {
+        task.text.isEmpty ? "(untitled task)" : task.text
     }
 
     private func row(_ task: TaskRecord) -> some View {
@@ -594,8 +629,10 @@ struct TodoView: View {
             }
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(task.text)
+                Text(displayText(task))
                     .font(density.textFont)
+                    .foregroundStyle(task.text.isEmpty ? .tertiary : .primary)
+                    .italic(task.text.isEmpty)
                     .strikethrough(completing)
                     .contentShape(Rectangle())
                     .onTapGesture {

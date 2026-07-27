@@ -244,9 +244,14 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                 tableRegions = TableGrid.regions(in: textView.string, styled: styled)
                 revealRanges = markdownRevealRanges(in: textView.string, styled: styled)
                 tagChipRanges = styled.compactMap { item in
-                    if case let .tag(name) = item.kind {
+                    switch item.kind {
+                    case let .tag(name):
                         (item.range, MarkdownTheme.tagColor(name))
-                    } else {
+                    case .mention:
+                        (item.range, PlatformColor.systemIndigo)
+                    case let .kindToken(kind):
+                        (item.range, MarkdownTheme.kindColor(kind))
+                    default:
                         nil
                     }
                 }
@@ -734,9 +739,14 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                 tableRegions = TableGrid.regions(in: textView.text ?? "", styled: styled)
                 revealRanges = markdownRevealRanges(in: textView.text ?? "", styled: styled)
                 tagChipRanges = styled.compactMap { item in
-                    if case let .tag(name) = item.kind {
+                    switch item.kind {
+                    case let .tag(name):
                         (item.range, MarkdownTheme.tagColor(name))
-                    } else {
+                    case .mention:
+                        (item.range, PlatformColor.systemIndigo)
+                    case let .kindToken(kind):
+                        (item.range, MarkdownTheme.kindColor(kind))
+                    default:
                         nil
                     }
                 }

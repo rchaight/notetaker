@@ -183,6 +183,16 @@ public struct MarkdownTheme: @unchecked Sendable {
                 .foregroundColor: Self.tagColor(name),
                 .font: designedFont(size: baseFontSize * 0.88, bold: true),
             ]
+        case .mention:
+            [
+                .foregroundColor: PlatformColor.systemIndigo,
+                .font: designedFont(size: baseFontSize * 0.88, bold: true),
+            ]
+        case let .kindToken(kind):
+            [
+                .foregroundColor: Self.kindColor(kind),
+                .font: designedFont(size: baseFontSize * 0.88, bold: true),
+            ]
         case .listItem, .taskCheckbox, .thematicBreak, .table, .image:
             [:]
         }
@@ -195,6 +205,10 @@ public struct MarkdownTheme: @unchecked Sendable {
     /// the glyphs evenly instead of filling the line box.
     public var tagChipFont: PlatformFont {
         designedFont(size: baseFontSize * 0.88, bold: true)
+    }
+
+    static func kindColor(_ kind: String) -> PlatformColor {
+        kind == "waiting" ? .systemOrange : .systemTeal
     }
 
     static let tagPalette: [PlatformColor] = [
