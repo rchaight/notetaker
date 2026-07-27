@@ -59,6 +59,45 @@ struct PriorityChip: View {
     }
 }
 
+/// Marks tasks that also live on a Meetings page (any @audience or
+/// ?kind token): teal = to discuss, orange = waiting, indigo = delegated.
+struct MeetingChip: View {
+    let assignee: String?
+    let kind: String?
+
+    private var tint: Color {
+        switch kind {
+        case "discuss": .teal
+        case "waiting": .orange
+        default: .indigo
+        }
+    }
+
+    var body: some View {
+        if assignee != nil || kind != nil {
+            HStack(spacing: 3) {
+                Image(systemName: "person.3")
+                    .font(.system(size: 8))
+                Text(assignee.map { "@" + $0 } ?? (kind == "discuss" ? "discuss" : "waiting"))
+            }
+            .font(.caption2.weight(.medium))
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(tint.opacity(0.16), in: Capsule())
+            .foregroundStyle(tint)
+            .help(helpText)
+        }
+    }
+
+    private var helpText: String {
+        switch kind {
+        case "discuss": "On the meeting agenda" + (assignee.map { " for @\($0)" } ?? "")
+        case "waiting": "Waiting on " + (assignee.map { "@" + $0 } ?? "someone")
+        default: "Delegated to " + (assignee.map { "@" + $0 } ?? "someone")
+        }
+    }
+}
+
 struct LabelChips: View {
     let labels: [String]
 

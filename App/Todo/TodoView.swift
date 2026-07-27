@@ -730,6 +730,7 @@ struct TodoView: View {
             }
             PriorityChip(priority: task.priority)
             LabelChips(labels: taskLabels[task.id] ?? [])
+            MeetingChip(assignee: task.assignee, kind: task.kind)
             if let progress = subtaskProgress[task.id] {
                 Label("\(progress.done)/\(progress.total)", systemImage: "checklist")
                     .foregroundStyle(progress.done == progress.total ? .green : .secondary)

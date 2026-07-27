@@ -198,6 +198,7 @@ struct TaskCard: View {
                         Text(due)
                     }
                     PriorityChip(priority: task.priority)
+                    MeetingChip(assignee: task.assignee, kind: task.kind)
                     if let progress {
                         Text("\(progress.done)/\(progress.total)")
                     }
