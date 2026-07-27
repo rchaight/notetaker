@@ -7,7 +7,12 @@ public enum AutocompleteContext {
     public enum Kind: Equatable, Sendable {
         case tag
         case wikilink
+        case mention
+        case kindToken
     }
+
+    /// The closed ?kind vocabulary, offered when "?" opens a token.
+    public static let kindVocabulary = ["discuss", "waiting", "next", "someday", "followup"]
 
     public struct Match: Equatable, Sendable {
         public let kind: Kind
@@ -34,28 +39,34 @@ public enum AutocompleteContext {
                 return Match(kind: .wikilink, query: after)
             }
         }
-        // Tag: "#" preceded by start-of-line/whitespace, tag charset since.
+        // Token triggers: "#tag" (non-empty body — bare # is a heading),
+        // "@person" and "?kind" (empty body allowed — no prose conflict:
+        // both require whitespace BEFORE the sigil, and prose "we?" or
+        // "a@b" put the sigil after a non-space).
         var index = head.endIndex
         var body = ""
         while index > head.startIndex {
             let previous = head.index(before: index)
             let character = head[previous]
-            if character == "#" {
-                // A bare "#" is ambiguous: it's how headings start ("# ").
-                // Only a # with tag characters after it is a tag context —
-                // "#w" triggers, "# " never does.
-                guard !body.isEmpty else { return nil }
-                let atStart = previous == head.startIndex
-                if atStart || head[head.index(before: previous)].isWhitespace {
-                    return Match(kind: .tag, query: body)
+            let atStart = previous == head.startIndex
+            let precededBySpace = atStart || head[head.index(before: previous)].isWhitespace
+            switch character {
+            case "#":
+                guard !body.isEmpty, precededBySpace else { return nil }
+                return Match(kind: .tag, query: body)
+            case "@":
+                guard precededBySpace else { return nil }
+                return Match(kind: .mention, query: body)
+            case "?":
+                guard precededBySpace else { return nil }
+                return Match(kind: .kindToken, query: body)
+            default:
+                guard character.unicodeScalars.allSatisfy({ tagCharacters.contains($0) }) else {
+                    return nil
                 }
-                return nil
+                body = String(character) + body
+                index = previous
             }
-            guard character.unicodeScalars.allSatisfy({ tagCharacters.contains($0) }) else {
-                return nil
-            }
-            body = String(character) + body
-            index = previous
         }
         return nil
     }

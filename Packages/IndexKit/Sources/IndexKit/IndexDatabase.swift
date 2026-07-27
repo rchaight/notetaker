@@ -344,6 +344,15 @@ public extension IndexDatabase {
         }
     }
 
+    /// Every distinct @audience ever used (autocomplete pool).
+    func allAssignees() throws -> [String] {
+        try queue.read { db in
+            try String.fetchAll(
+                db, sql: "SELECT DISTINCT assignee FROM task WHERE assignee IS NOT NULL ORDER BY assignee"
+            )
+        }
+    }
+
     /// Open nested subtasks, for inline display under their parents.
     func openSubtasks() throws -> [TaskRecord] {
         try queue.read { db in

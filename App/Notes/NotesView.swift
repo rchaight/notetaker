@@ -759,6 +759,7 @@ struct NotesView: View {
                 imageBase: selectedNoteFolder,
                 tagCandidates: allTags.map(\.tag),
                 linkCandidates: model.notes.map(noteTitle),
+                mentionCandidates: indexService.allAssignees(),
                 findSignal: findSignal
             )
             .safeAreaInset(edge: .top, spacing: 0) { formatBar }

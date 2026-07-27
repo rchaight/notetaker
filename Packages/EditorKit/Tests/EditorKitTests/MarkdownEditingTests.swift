@@ -552,3 +552,22 @@ struct SubstringCompletionTests {
         #expect(indent(of: "grandchild") > indent(of: "child"))
     }
 }
+
+struct MentionKindAutocompleteTests {
+    private func match(_ text: String, cursorAfter marker: String) -> AutocompleteContext.Match? {
+        let location = (text as NSString).range(of: marker).location + (marker as NSString).length
+        return AutocompleteContext.match(in: text, cursor: location)
+    }
+
+    @Test func mentionContexts() {
+        #expect(match("task @Am", cursorAfter: "@Am") == .init(kind: .mention, query: "Am"))
+        #expect(match("bare @ here", cursorAfter: "bare @") == .init(kind: .mention, query: ""))
+        #expect(match("mail a@b now", cursorAfter: "a@b") == nil)
+    }
+
+    @Test func kindContexts() {
+        #expect(match("topic ?dis", cursorAfter: "?dis") == .init(kind: .kindToken, query: "dis"))
+        #expect(match("bare ? open", cursorAfter: "bare ?") == .init(kind: .kindToken, query: ""))
+        #expect(match("really? yes", cursorAfter: "really?") == nil)
+    }
+}

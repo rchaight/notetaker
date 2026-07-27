@@ -40,6 +40,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
         var imageBase: URL?
         var tagCandidates: [String]
         var linkCandidates: [String]
+        var mentionCandidates: [String]
         var findSignal: Int
 
         public init(
@@ -52,6 +53,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             imageBase: URL? = nil,
             tagCandidates: [String] = [],
             linkCandidates: [String] = [],
+            mentionCandidates: [String] = [],
             findSignal: Int = 0
         ) {
             _text = text
@@ -63,6 +65,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             self.imageBase = imageBase
             self.tagCandidates = tagCandidates
             self.linkCandidates = linkCandidates
+            self.mentionCandidates = mentionCandidates
             self.findSignal = findSignal
         }
 
@@ -97,6 +100,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                 context.coordinator.imageBase = imageBase
                 context.coordinator.tagCandidates = tagCandidates
                 context.coordinator.linkCandidates = linkCandidates
+                context.coordinator.mentionCandidates = mentionCandidates
                 if textView.string != text {
                     textView.string = text
                     context.coordinator.restyle(textView)
@@ -139,6 +143,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             context.coordinator.imageBase = imageBase
             context.coordinator.tagCandidates = tagCandidates
             context.coordinator.linkCandidates = linkCandidates
+            context.coordinator.mentionCandidates = mentionCandidates
             context.coordinator.restyle(textView)
             if SharedEditorCache.scrollView == nil {
                 SharedEditorCache.scrollView = scrollView
@@ -159,6 +164,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             context.coordinator.imageBase = imageBase
             context.coordinator.tagCandidates = tagCandidates
             context.coordinator.linkCandidates = linkCandidates
+            context.coordinator.mentionCandidates = mentionCandidates
             if textView.string != text {
                 textView.string = text
                 context.coordinator.restyle(textView)
@@ -208,6 +214,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             var imageBase: URL?
             var tagCandidates: [String] = []
             var linkCandidates: [String] = []
+            var mentionCandidates: [String] = []
             var codeRegions: [CodeCardRegions.Region] = []
             var tableRegions: [TableGrid.Region] = []
             var tagChipRanges: [(range: NSRange, color: PlatformColor)] = []
@@ -348,10 +355,19 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                 }
             }
 
+            private func candidatePool(_ kind: AutocompleteContext.Kind) -> [String] {
+                switch kind {
+                case .tag: tagCandidates
+                case .wikilink: linkCandidates
+                case .mention: mentionCandidates
+                case .kindToken: AutocompleteContext.kindVocabulary
+                }
+            }
+
             private func hasCandidates(for match: AutocompleteContext.Match) -> Bool {
-                let pool = match.kind == .tag ? tagCandidates : linkCandidates
-                return !AutocompleteContext.completionStrings(
-                    query: match.query, partialLength: 0, candidates: pool
+                !AutocompleteContext.completionStrings(
+                    query: match.query, partialLength: 0,
+                    candidates: candidatePool(match.kind)
                 ).isEmpty
             }
 
@@ -374,6 +390,16 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                     AutocompleteContext.completionStrings(
                         query: match.query, partialLength: charRange.length,
                         candidates: linkCandidates, appending: "]]"
+                    )
+                case .mention:
+                    AutocompleteContext.completionStrings(
+                        query: match.query, partialLength: charRange.length,
+                        candidates: mentionCandidates
+                    )
+                case .kindToken:
+                    AutocompleteContext.completionStrings(
+                        query: match.query, partialLength: charRange.length,
+                        candidates: AutocompleteContext.kindVocabulary
                     )
                 }
             }
@@ -587,6 +613,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
         var imageBase: URL?
         var tagCandidates: [String]
         var linkCandidates: [String]
+        var mentionCandidates: [String]
         var findSignal: Int
 
         public init(
@@ -599,6 +626,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             imageBase: URL? = nil,
             tagCandidates: [String] = [],
             linkCandidates: [String] = [],
+            mentionCandidates: [String] = [],
             findSignal: Int = 0
         ) {
             _text = text
@@ -610,6 +638,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             self.imageBase = imageBase
             self.tagCandidates = tagCandidates
             self.linkCandidates = linkCandidates
+            self.mentionCandidates = mentionCandidates
             self.findSignal = findSignal
         }
 
@@ -648,6 +677,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             context.coordinator.imageBase = imageBase
             context.coordinator.tagCandidates = tagCandidates
             context.coordinator.linkCandidates = linkCandidates
+            context.coordinator.mentionCandidates = mentionCandidates
             context.coordinator.restyle(textView)
             return textView
         }
@@ -667,6 +697,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             context.coordinator.imageBase = imageBase
             context.coordinator.tagCandidates = tagCandidates
             context.coordinator.linkCandidates = linkCandidates
+            context.coordinator.mentionCandidates = mentionCandidates
             if textView.text != text {
                 textView.text = text
                 context.coordinator.restyle(textView)
@@ -706,6 +737,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             var imageBase: URL?
             var tagCandidates: [String] = []
             var linkCandidates: [String] = []
+            var mentionCandidates: [String] = []
             var codeRegions: [CodeCardRegions.Region] = []
             var tableRegions: [TableGrid.Region] = []
             var tagChipRanges: [(range: NSRange, color: PlatformColor)] = []
