@@ -1233,6 +1233,9 @@ struct NotesView: View {
                 }
             }
             Divider()
+            Button("Duplicate", systemImage: "plus.square.on.square") {
+                model.duplicate(note)
+            }
             Menu("Move To") {
                 Button("Vault Root") { model.move(note, toFolder: "") }
                 ForEach(model.folders, id: \.self) { folder in

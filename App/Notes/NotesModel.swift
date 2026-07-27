@@ -541,6 +541,32 @@ final class NotesModel {
         }
     }
 
+    /// Duplicates a note next to the original ("Title copy.md",
+    /// overwrite-safe naming).
+    func duplicate(_ item: VaultItem) {
+        guard let root else { return }
+        Task {
+            guard let contents = try? await store.readString(at: item.url) else { return }
+            let url = URL(fileURLWithPath: item.relativePath)
+            let folder = url.deletingLastPathComponent().relativePath
+            let base = url.deletingPathExtension().lastPathComponent + " copy"
+            let folderURL = folder == "." || folder.isEmpty
+                ? root : root.appendingPathComponent(folder, isDirectory: true)
+            let name = VaultNaming.uniqueFileName(
+                base: base, ext: "md", in: folderURL,
+                reserved: Set(notes.map(\.relativePath))
+            )
+            let destination = folderURL.appendingPathComponent(name)
+            do {
+                try await store.writeString(contents, to: destination)
+                apply(VaultEnumerator.snapshot(of: root))
+                await performSelect(VaultPath.relativePath(of: destination, in: root))
+            } catch {
+                // Surfaced implicitly: the copy won't appear.
+            }
+        }
+    }
+
     func createNote(in folder: String = "") {
         guard let root else { return }
         Task {
