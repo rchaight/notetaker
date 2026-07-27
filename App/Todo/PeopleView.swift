@@ -15,6 +15,7 @@ struct PeopleView: View {
     @State private var selectedPerson: String?
     @State private var runningOneOnOne = false
     @State private var detailTaskId: String?
+    @State private var historyExpanded = false
     @Environment(\.openWindow) private var openWindow
 
     /// "Unassigned" bucket for ?discuss items with no @person yet.
@@ -34,6 +35,24 @@ struct PeopleView: View {
         return buckets
             .map { ($0.key, $0.value.discuss, $0.value.total) }
             .sorted { $0.0.localizedCaseInsensitiveCompare($1.0) == .orderedAscending }
+    }
+
+    /// Completed ?discuss items for the person, newest day first.
+    private func discussedHistory(for person: String) -> [(day: String, items: [TaskRecord])] {
+        let done = service.completedTasks().filter {
+            $0.kind == "discuss" && ($0.assignee ?? Self.unassigned) == person
+        }
+        let grouped = Dictionary(grouping: done) { $0.completedDay ?? "Unknown" }
+        return grouped
+            .sorted { $0.key > $1.key }
+            .map { ($0.key, $0.value) }
+    }
+
+    private func hasMeetingLog(_ person: String) -> Bool {
+        guard let root = service.vaultRootURL else { return false }
+        return FileManager.default.fileExists(
+            atPath: root.appendingPathComponent("People/\(person).md").path
+        )
     }
 
     private func tasks(for person: String, kind: String?) -> [TaskRecord] {
@@ -121,6 +140,7 @@ struct PeopleView: View {
         let discuss = tasks(for: person, kind: "discuss")
         let delegated = tasks(for: person, kind: nil)
         let waiting = tasks(for: person, kind: "waiting")
+        let discussed = discussedHistory(for: person)
         return List {
             if !discuss.isEmpty {
                 Section {
@@ -147,6 +167,56 @@ struct PeopleView: View {
                     }
                 } header: {
                     Label("Waiting On (\(waiting.count))", systemImage: "hourglass")
+                }
+            }
+            if !discussed.isEmpty {
+                Section {
+                    DisclosureGroup(isExpanded: $historyExpanded) {
+                        ForEach(discussed, id: \.day) { group in
+                            Text(group.day)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            ForEach(group.items) { item in
+                                HStack(spacing: 8) {
+                                    Button {
+                                        Task { await service.toggle(item) }
+                                    } label: {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundStyle(.green)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help("Reopen (back onto the agenda)")
+                                    Text(item.text)
+                                        .strikethrough()
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                    Button {
+                                        openNote(item.noteId, item.line)
+                                    } label: {
+                                        Image(systemName: "arrow.up.right.square")
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help("Open in note")
+                                }
+                            }
+                        }
+                        if hasMeetingLog(person) {
+                            Button {
+                                openNote("People/\(person).md", nil)
+                            } label: {
+                                Label("Open meeting log", systemImage: "text.book.closed")
+                                    .font(.callout)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    } label: {
+                        Label(
+                            "Discussed (\(discussed.reduce(0) { $0 + $1.items.count }))",
+                            systemImage: "checkmark.bubble"
+                        )
+                        .selectionDisabled(true)
+                    }
                 }
             }
         }
