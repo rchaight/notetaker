@@ -21,6 +21,8 @@ struct TaskDetailView: View {
     @State private var priority: Int?
     @State private var assignee = ""
     @State private var isMilestone = false
+    @State private var kindSelection = "task"
+    @State private var baseline: TaskRecord?
     @State private var labels: [String] = []
     @State private var subtasks: [TaskRecord] = []
     @State private var fileBullets: [String] = []
@@ -52,11 +54,6 @@ struct TaskDetailView: View {
         }
         .frame(minWidth: 460, idealWidth: 540, minHeight: 480, idealHeight: 620)
         .task(id: "\(taskId)-\(service.tasksVersion)") { await load() }
-        .onDisappear {
-            if let task {
-                commitTitle(task)
-            }
-        }
     }
 
     // MARK: - Loading
@@ -75,6 +72,8 @@ struct TaskDetailView: View {
         labels = service.taskLabels()[task.id] ?? []
         isMilestone = labels.contains("milestone")
         assignee = task.assignee ?? ""
+        kindSelection = task.kind ?? "task"
+        baseline = task
         subtasks = service.subtasks(of: task)
         fileBullets = await service.nestedBullets(for: task)
         if let key = task.blockId {
@@ -129,12 +128,6 @@ struct TaskDetailView: View {
                     .font(.title3)
                     .textFieldStyle(.plain)
                     .focused($titleFocused)
-                    .onSubmit { commitTitle(task) }
-                    .onChange(of: titleFocused) {
-                        if !titleFocused {
-                            commitTitle(task)
-                        }
-                    }
             }
 
             Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 10) {
@@ -144,17 +137,17 @@ struct TaskDetailView: View {
                 }
                 GridRow {
                     rowLabel("Due", "calendar")
-                    datePickerRow(date: $dueDate) { commitDates(task) }
+                    datePickerRow(date: $dueDate) {}
                 }
                 GridRow {
                     rowLabel("Start", "hourglass")
-                    datePickerRow(date: $startDate) { commitDates(task) }
+                    datePickerRow(date: $startDate) {}
                 }
                 GridRow {
                     rowLabel("Priority", "flag")
                     Picker("", selection: Binding(
                         get: { priority ?? 0 },
-                        set: { priority = $0 == 0 ? nil : $0; commitPriority(task) }
+                        set: { priority = $0 == 0 ? nil : $0 }
                     )) {
                         Text("None").tag(0)
                         ForEach(1 ... 4, id: \.self) { level in
@@ -167,17 +160,7 @@ struct TaskDetailView: View {
                 }
                 GridRow {
                     rowLabel("Kind", "bubble.left.and.bubble.right")
-                    Picker("", selection: Binding(
-                        get: { task.kind ?? "task" },
-                        set: { newKind in
-                            let kind = newKind == "task" ? nil : newKind
-                            Task {
-                                await service.rewriteTaskLine(task) {
-                                    TaskLineRewriter.settingKind($0, to: kind)
-                                }
-                            }
-                        }
-                    )) {
+                    Picker("", selection: $kindSelection) {
                         Text("Task").tag("task")
                         Text("Discuss").tag("discuss")
                         Text("Waiting").tag("waiting")
@@ -191,17 +174,13 @@ struct TaskDetailView: View {
                     TextField("@name", text: $assignee)
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 200)
-                        .onSubmit { commitAssignee(task) }
                 }
                 GridRow {
                     rowLabel("Milestone", "diamond")
-                    Toggle("", isOn: Binding(
-                        get: { isMilestone },
-                        set: { isMilestone = $0; commitMilestone(task) }
-                    ))
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
+                    Toggle("", isOn: $isMilestone)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
                 }
                 GridRow {
                     rowLabel("Blocked by", "hand.raised")
@@ -339,13 +318,72 @@ struct TaskDetailView: View {
 
     private func footer(_ task: TaskRecord) -> some View {
         HStack {
+            if let saveState {
+                Text(saveState).font(.caption).foregroundStyle(.secondary)
+            }
             Spacer()
-            Button("Save Details") { Task { await saveExtras(task) } }
-                .buttonStyle(.borderedProminent)
+            Button("Cancel", role: .cancel) { dismiss() }
+            Button("Save") { Task { await saveAll(task) } }
                 .disabled(extrasStore.state == .loading)
+            Button("Save & Exit") {
+                Task {
+                    await saveAll(task)
+                    dismiss()
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(extrasStore.state == .loading)
         }
         .padding(12)
         .background(.bar)
+    }
+
+    /// ONE atomic line rewrite composing every staged field diff —
+    /// sequential single-field writes would invalidate each other's
+    /// rawLine anchors.
+    private func saveAll(_ task: TaskRecord) async {
+        saveState = "Saving…"
+        let base = baseline ?? task
+        let newTitle = titleText.trimmingCharacters(in: .whitespaces)
+        let newDue = dueDate.map(Self.formatISO)
+        let newStart = startDate.map(Self.formatISO)
+        let newAssignee = assignee
+            .trimmingCharacters(in: .whitespaces)
+            .replacingOccurrences(of: "@", with: "")
+        let newKind = kindSelection == "task" ? nil : kindSelection
+        let milestone = isMilestone
+
+        await service.rewriteTaskLine(task) { line in
+            var rewritten = line
+            if !newTitle.isEmpty, newTitle != base.text {
+                rewritten = TaskLineRewriter.replacingText(rewritten, with: newTitle)
+            }
+            if newDue != base.dueDate {
+                rewritten = TaskLineRewriter.settingDueDate(rewritten, to: newDue)
+            }
+            if newStart != base.startDate {
+                rewritten = TaskLineRewriter.settingStartDate(rewritten, to: newStart)
+            }
+            if priority != base.priority {
+                rewritten = TaskLineRewriter.settingPriority(rewritten, to: priority)
+            }
+            if newAssignee != (base.assignee ?? "") {
+                rewritten = TaskLineRewriter.settingAssignee(
+                    rewritten, to: newAssignee.isEmpty ? nil : newAssignee
+                )
+            }
+            if newKind != base.kind {
+                rewritten = TaskLineRewriter.settingKind(rewritten, to: newKind)
+            }
+            let hadMilestone = (service.taskLabels()[base.id] ?? []).contains("milestone")
+            if milestone != hadMilestone {
+                rewritten = milestone
+                    ? TaskLineRewriter.addingLabel(rewritten, label: "milestone")
+                    : TaskLineRewriter.removingLabel(rewritten, label: "milestone")
+            }
+            return rewritten
+        }
+        await saveExtras(task)
     }
 
     private func rowLabel(_ text: String, _ icon: String) -> some View {
@@ -430,52 +468,7 @@ struct TaskDetailView: View {
 
     // MARK: - Commits (each through the grammar-safe write engines)
 
-    private func commitTitle(_ task: TaskRecord) {
-        let newTitle = titleText.trimmingCharacters(in: .whitespaces)
-        guard !newTitle.isEmpty, newTitle != task.text else { return }
-        Task {
-            await service.rewriteTaskLine(task) { line in
-                TaskLineRewriter.replacingText(line, with: newTitle)
-            }
-        }
-    }
-
-    private func commitDates(_ task: TaskRecord) {
-        let due = dueDate.map(Self.formatISO)
-        let start: String?? = .some(startDate.map(Self.formatISO))
-        Task { await service.reschedule(task, due: due, start: start) }
-    }
-
-    private func commitPriority(_ task: TaskRecord) {
-        let level = priority
-        Task { await service.setPriority(task, priority: level) }
-    }
-
-    private func commitAssignee(_ task: TaskRecord) {
-        let name = assignee
-            .trimmingCharacters(in: .whitespaces)
-            .replacingOccurrences(of: "@", with: "")
-        Task {
-            await service.rewriteTaskLine(task) { line in
-                TaskLineRewriter.settingAssignee(line, to: name.isEmpty ? nil : name)
-            }
-        }
-    }
-
-    private func commitMilestone(_ task: TaskRecord) {
-        let on = isMilestone
-        Task {
-            await service.rewriteTaskLine(task) { line in
-                on
-                    ? TaskLineRewriter.addingLabel(line, label: "milestone")
-                    : TaskLineRewriter.removingLabel(line, label: "milestone")
-            }
-        }
-    }
-
     private func saveExtras(_ task: TaskRecord) async {
-        commitTitle(task)
-        commitAssignee(task)
         saveState = "Saving…"
         var key = extrasKey
         if key == nil {
