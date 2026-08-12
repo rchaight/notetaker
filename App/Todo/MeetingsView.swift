@@ -17,6 +17,7 @@ struct MeetingsView: View {
     @State private var runningOneOnOne = false
     @State private var detailTaskId: String?
     @State private var historyExpanded = false
+    @State private var newDiscussText = ""
     @Environment(\.openWindow) private var openWindow
 
     /// "Unassigned" bucket for ?discuss items with no @person yet.
@@ -151,7 +152,62 @@ struct MeetingsView: View {
         let waiting = tasks(for: person, kind: "waiting")
         let followups = tasks(for: person, kind: "followup")
         let discussed = discussedHistory(for: person)
-        return List {
+        return VStack(spacing: 0) {
+            HStack {
+                Text(person == Self.unassigned ? "Unassigned" : person)
+                    .font(.title2.weight(.semibold))
+                Spacer()
+                Button("Start Meeting", systemImage: "play.circle") {
+                    runningOneOnOne = true
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(discuss.isEmpty || person == Self.unassigned)
+                .help("Run through the discussion queue and log the session")
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(Color.headerBackground)
+            Divider()
+            personList(
+                person: person, discuss: discuss, delegated: delegated,
+                waiting: waiting, followups: followups, discussed: discussed
+            )
+        }
+        // Kill the split view's residual toolbar strip — content was
+        // still sliding under a translucent bar (user report ×2).
+        #if os(macOS)
+        .toolbar(.hidden, for: .windowToolbar)
+        #endif
+    }
+
+    private func personList(
+        person: String,
+        discuss: [TaskRecord],
+        delegated: [TaskRecord],
+        waiting: [TaskRecord],
+        followups: [TaskRecord],
+        discussed: [(day: String, items: [TaskRecord])]
+    ) -> some View {
+        List {
+            if person != Self.unassigned {
+                Section {
+                    HStack(spacing: 8) {
+                        Image(systemName: "plus.circle")
+                            .foregroundStyle(Color.accentColor)
+                        TextField(
+                            "Add a discussion item for \(person)…",
+                            text: $newDiscussText
+                        )
+                        .textFieldStyle(.plain)
+                        .onSubmit {
+                            let text = newDiscussText.trimmingCharacters(in: .whitespaces)
+                            guard !text.isEmpty else { return }
+                            newDiscussText = ""
+                            Task { _ = await service.addDiscussItem(person: person, text: text) }
+                        }
+                    }
+                }
+            }
             if !discuss.isEmpty {
                 Section {
                     ForEach(discuss) { task in
@@ -239,25 +295,7 @@ struct MeetingsView: View {
                 }
             }
         }
-        // In-content header instead of .toolbar/.navigationTitle: the
-        // detail toolbar rendered as an opaque black bar over content
-        // under the custom shell (user screenshot, beta artifact).
-        .safeAreaInset(edge: .top, spacing: 0) {
-            HStack {
-                Text(person == Self.unassigned ? "Unassigned" : person)
-                    .font(.title2.weight(.semibold))
-                Spacer()
-                Button("Start Meeting", systemImage: "play.circle") {
-                    runningOneOnOne = true
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(discuss.isEmpty || person == Self.unassigned)
-                .help("Run through the discussion queue and log the session")
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(.bar)
-        }
+
         .overlay {
             if discuss.isEmpty, delegated.isEmpty, waiting.isEmpty, followups.isEmpty {
                 ContentUnavailableView(
@@ -398,5 +436,17 @@ struct MeetingRunView: View {
         }
         .padding(20)
         .frame(minWidth: 460, minHeight: 420)
+    }
+}
+
+extension Color {
+    /// Opaque header ground — translucent bars let content ghost through
+    /// (user report).
+    static var headerBackground: Color {
+        #if os(macOS)
+            Color(nsColor: .windowBackgroundColor)
+        #else
+            Color(uiColor: .systemBackground)
+        #endif
     }
 }

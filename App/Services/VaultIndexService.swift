@@ -889,6 +889,31 @@ final class VaultIndexService {
         Dictionary(grouping: (try? database?.openSubtasks()) ?? []) { $0.parentId ?? "" }
     }
 
+    /// Adds a discussion item for an audience. Home note = their meeting
+    /// note (Meetings/<Name>.md), created on first use — so ad-hoc agenda
+    /// items don't need an open note to live in.
+    func addDiscussItem(person: String, text: String) async -> Bool {
+        guard let root, let indexer,
+              !text.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
+        let folder = root.appendingPathComponent("Meetings", isDirectory: true)
+        try? await store.createFolder(at: folder)
+        let noteId = "Meetings/\(person).md"
+        let url = folder.appendingPathComponent(person + ".md")
+        let existing = await (try? store.readString(at: url)) ?? "# \(person)\n"
+        let line = "- [ ] \(text.trimmingCharacters(in: .whitespaces)) @\(person) ?discuss"
+        let updated = (existing.hasSuffix("\n") ? existing : existing + "\n") + line + "\n"
+        do {
+            try await store.writeString(updated, to: url)
+            try indexer.index(noteId: noteId, contents: updated, modifiedAt: nil)
+            knownMTimes[noteId] = nil
+            tasksVersion += 1
+            onNoteMutated?(noteId)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     func peopleTasks() -> [TaskRecord] {
         (try? database?.peopleTasks()) ?? []
     }
