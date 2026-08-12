@@ -239,15 +239,24 @@ struct MeetingsView: View {
                 }
             }
         }
-        .navigationTitle(person == Self.unassigned ? "Unassigned" : person)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+        // In-content header instead of .toolbar/.navigationTitle: the
+        // detail toolbar rendered as an opaque black bar over content
+        // under the custom shell (user screenshot, beta artifact).
+        .safeAreaInset(edge: .top, spacing: 0) {
+            HStack {
+                Text(person == Self.unassigned ? "Unassigned" : person)
+                    .font(.title2.weight(.semibold))
+                Spacer()
                 Button("Start Meeting", systemImage: "play.circle") {
                     runningOneOnOne = true
                 }
+                .buttonStyle(.borderedProminent)
                 .disabled(discuss.isEmpty || person == Self.unassigned)
                 .help("Run through the discussion queue and log the session")
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(.bar)
         }
         .overlay {
             if discuss.isEmpty, delegated.isEmpty, waiting.isEmpty, followups.isEmpty {
