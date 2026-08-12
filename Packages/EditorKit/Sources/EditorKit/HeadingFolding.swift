@@ -65,8 +65,11 @@ public enum HeadingFolding {
 
 /// Draws the fold chevron in the left margin of heading paragraphs:
 /// ▾ expanded, ▸ folded. The editor hit-tests margin clicks to toggle.
+/// The expanded chevron draws only while `hovered` (pointer over the
+/// line); the folded one always draws so hidden content stays visible.
 public final class HeadingFoldFragment: NSTextLayoutFragment {
     public var folded = false
+    public var hovered = false
     public var chevronColor: PlatformColor = .secondaryLabelCompat
 
     override public var renderingSurfaceBounds: CGRect {
@@ -77,6 +80,7 @@ public final class HeadingFoldFragment: NSTextLayoutFragment {
 
     override public func draw(at point: CGPoint, in context: CGContext) {
         super.draw(at: point, in: context)
+        guard folded || hovered else { return }
         guard let line = textLineFragments.first else { return }
         let bounds = line.typographicBounds
         let midY = point.y + bounds.midY

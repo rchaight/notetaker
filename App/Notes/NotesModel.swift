@@ -23,6 +23,21 @@ final class NotesModel {
     var notes: [VaultItem] = []
     /// Folder relative paths present on disk (the vault tree IS the scheme).
     var folders: [String] = []
+
+    /// Derived lookups, rebuilt once per `apply` rather than per SwiftUI body
+    /// pass. The list view asks for these many times per render (favorites,
+    /// recents, pinned, every folder group); recomputing them inline made
+    /// scrolling and selection visibly lag on a large vault.
+    /// Every note keyed by id.
+    private(set) var notesById: [VaultItem.ID: VaultItem] = [:]
+    /// Notes grouped by their containing folder ("" = vault root).
+    private(set) var notesByFolder: [String: [VaultItem]] = [:]
+    /// `notes` pre-sorted newest-first, for the "Recently modified" order.
+    private(set) var notesByModified: [VaultItem] = []
+    /// Bumped whenever a refresh finishes, so views can react.
+    private(set) var lastRefresh: Date?
+    /// True while a manual/periodic refresh is in flight (drives the spinner).
+    private(set) var refreshing = false
     /// Open note tabs, in open order (selection switches, ✕ closes).
     var openTabs: [VaultItem.ID] = []
     var selectedID: VaultItem.ID?
@@ -38,6 +53,14 @@ final class NotesModel {
     /// Recently opened notes, newest first (device-local UI state).
     private(set) var recents: [String] =
         UserDefaults.standard.stringArray(forKey: "recentNotes") ?? []
+    /// Recents AS DISPLAYED. The live list gains an entry the instant a note
+    /// opens, and because the Recents section sits above the vault list that
+    /// inserts a row and shifts every row below down by exactly one — so the
+    /// next click lands on the neighbour (user-reported "opens the wrong
+    /// note"). The displayed copy only catches up once clicking has stopped.
+    private(set) var displayedRecents: [String] =
+        UserDefaults.standard.stringArray(forKey: "recentNotes") ?? []
+    private var recentsSettleTask: Task<Void, Never>?
     private let store = VaultFileStore()
     private var observer: MetadataQueryObserver?
     private var observation: Task<Void, Never>?
@@ -131,9 +154,18 @@ final class NotesModel {
 
     /// Markdown files only, stable order; folder set captured alongside.
     private func apply(_ snapshot: [VaultItem]) {
-        notes = snapshot
+        let incoming = snapshot
             .filter { !$0.isDirectory && $0.relativePath.lowercased().hasSuffix(".md") }
             .sorted { $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending }
+        // Identical snapshots arrive constantly (every watcher tick, every
+        // periodic refresh). Reassigning would churn the List and can yank a
+        // row out from under an in-flight click, so only publish real changes.
+        // Folders are still recomputed below — an empty new folder changes
+        // the tree without changing any note.
+        if incoming != notes {
+            notes = incoming
+            rebuildLookups()
+        }
         var seen = Set(snapshot.filter(\.isDirectory).map(\.relativePath))
         // Folders implied by note paths count even if the dir entry is absent
         // from a partial snapshot.
@@ -145,10 +177,55 @@ final class NotesModel {
                 seen.insert(path)
             }
         }
-        folders = seen.filter { !$0.isEmpty }.sorted {
+        let incomingFolders = seen.filter { !$0.isEmpty }.sorted {
             $0.localizedStandardCompare($1) == .orderedAscending
         }
+        // Same reason as above: @Observable notifies on every assignment,
+        // equal value or not, and a churned folder list re-renders the tree.
+        if incomingFolders != folders {
+            folders = incomingFolders
+        }
         openTabs.removeAll { id in !notes.contains { $0.id == id } }
+    }
+
+    /// Lets the Recents section catch up only after clicking has settled, so
+    /// the list never grows a row while the user is still aiming at it.
+    private func scheduleRecentsSettle() {
+        recentsSettleTask?.cancel()
+        recentsSettleTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled, let self else { return }
+            if displayedRecents != recents {
+                displayedRecents = recents
+            }
+        }
+    }
+
+    private func rebuildLookups() {
+        notesById = Dictionary(uniqueKeysWithValues: notes.map { ($0.id, $0) })
+        notesByFolder = Dictionary(grouping: notes) {
+            $0.relativePath.split(separator: "/").dropLast().joined(separator: "/")
+        }
+        notesByModified = notes.sorted {
+            ($0.modificationDate ?? .distantPast) > ($1.modificationDate ?? .distantPast)
+        }
+    }
+
+    /// Re-reads the vault from disk and asks iCloud to materialize anything
+    /// that is a placeholder or known-stale, so "refresh" really does pull
+    /// from the server rather than just re-listing what is already local.
+    func refresh() async {
+        guard let root, !refreshing else { return }
+        refreshing = true
+        defer {
+            refreshing = false
+            lastRefresh = Date()
+        }
+        let snapshot = VaultEnumerator.snapshot(of: root)
+        for item in snapshot where !item.isDirectory && item.downloadState != .current {
+            try? store.startDownloading(item.url)
+        }
+        apply(snapshot)
     }
 
     /// Cross-tab jump: open a note and remember the source line so the
@@ -170,7 +247,30 @@ final class NotesModel {
     }
 
     private func performSelect(_ id: VaultItem.ID?) async {
-        await flushSave()
+        // Saving the note being left used to gate everything below, so a
+        // click waited on a coordinated write plus a possible title-rename
+        // before the new note appeared. Capture the outgoing note instead and
+        // let its write run alongside the load — except when it targets the
+        // very file we're about to read, which must be serialized.
+        let outgoing = capturePendingWrite()
+        saveTask?.cancel()
+        var outgoingWrite: Task<Void, Never>?
+        if let outgoing {
+            if outgoing.id == id {
+                await commit(outgoing, allowRename: true)
+            } else {
+                outgoingWrite = Task { [weak self] in
+                    await self?.commit(outgoing, allowRename: true)
+                }
+            }
+        }
+        await loadSelection(id)
+        // Bound the handoff: the write still finishes inside this selection,
+        // it just no longer stands in front of the note appearing.
+        await outgoingWrite?.value
+    }
+
+    private func loadSelection(_ id: VaultItem.ID?) async {
         selectedID = id
         if let id, !recents.contains(id) {
             // Insert-only: reordering existing entries makes the Recents
@@ -180,11 +280,12 @@ final class NotesModel {
                 recents.removeLast(recents.count - 8)
             }
             UserDefaults.standard.set(recents, forKey: "recentNotes")
+            scheduleRecentsSettle()
         }
         if let id, !openTabs.contains(id) {
             openTabs.append(id)
         }
-        guard let id, let item = notes.first(where: { $0.id == id }) else {
+        guard let id, let item = notesById[id] else {
             loadedURL = nil
             noteText = ""
             return
@@ -302,27 +403,45 @@ final class NotesModel {
     /// mutation's URL and the edit would silently vanish.
     func flushSave(allowRename: Bool = true) async {
         saveTask?.cancel()
-        guard dirty, let url = loadedURL else { return }
+        guard let pending = capturePendingWrite() else { return }
+        await commit(pending, allowRename: allowRename)
+    }
+
+    /// The editing state of the note being saved, captured at the moment the
+    /// save starts. Selection may move on while the write is in flight, so
+    /// the write cannot read `selectedID`/`noteText` when it lands.
+    private struct PendingWrite {
+        let id: String
+        let url: URL
+        let text: String
+    }
+
+    private func capturePendingWrite() -> PendingWrite? {
+        guard dirty, let url = loadedURL, let id = selectedID else { return nil }
+        return PendingWrite(id: id, url: url, text: noteText)
+    }
+
+    private func commit(_ pending: PendingWrite, allowRename: Bool) async {
         do {
             // Unlocked locked-notes re-encrypt on every save: plaintext
             // only ever exists in memory.
-            if let id = selectedID, let key = unlockedKeys[id] {
-                guard let contents = try? await store.readString(at: url) else { return }
+            if let key = unlockedKeys[pending.id] {
+                guard let contents = try? await store.readString(at: pending.url) else { return }
                 let document = MarkdownDocument(source: contents)
                 guard let envelope = LockedNoteFile.parse(
                     frontmatterValues: document.frontmatter?.values ?? [:], body: document.body
-                ), let sealed = try? NoteCrypto.encrypt(noteText, key: key) else { return }
+                ), let sealed = try? NoteCrypto.encrypt(pending.text, key: key) else { return }
                 let rendered = LockedNoteFile.render(
-                    title: id, salt: envelope.salt, rounds: envelope.rounds, ciphertext: sealed
+                    title: pending.id, salt: envelope.salt, rounds: envelope.rounds, ciphertext: sealed
                 )
-                try await store.writeString(rendered, to: url)
-                dirty = false
+                try await store.writeString(rendered, to: pending.url)
+                markClean(pending)
                 return
             }
-            try await store.writeString(noteText, to: url)
-            dirty = false
+            try await store.writeString(pending.text, to: pending.url)
+            markClean(pending)
             if allowRename {
-                await renameToMatchTitle()
+                await renameToMatchTitle(id: pending.id, url: pending.url, text: pending.text)
             }
         } catch {
             // Keep dirty; next debounce retries. Files are truth — never
@@ -330,11 +449,19 @@ final class NotesModel {
         }
     }
 
+    /// Clears the dirty flag only while the written note is still the one on
+    /// screen — a save that lands after the user moved on must not mark the
+    /// NEW note's unsaved edits as clean.
+    private func markClean(_ pending: PendingWrite) {
+        if loadedURL == pending.url {
+            dirty = false
+        }
+    }
+
     /// Obsidian-style title sync: when the note's first line is a heading,
     /// the file is named after it. Runs after each successful save.
-    private func renameToMatchTitle() async {
-        guard let url = loadedURL, let root, let currentId = selectedID,
-              let title = Self.headingTitle(of: noteText) else { return }
+    private func renameToMatchTitle(id currentId: String, url: URL, text: String) async {
+        guard let root, let title = Self.headingTitle(of: text) else { return }
         let sanitized = Self.sanitizeFileName(title)
         let current = url.deletingPathExtension().lastPathComponent
         guard !sanitized.isEmpty, sanitized != current else { return }
@@ -344,8 +471,13 @@ final class NotesModel {
         do {
             try await store.move(from: url, to: destination)
             let newId = VaultPath.relativePath(of: destination, in: root)
-            loadedURL = destination
-            selectedID = newId
+            // Retarget the live selection ONLY when the renamed note is still
+            // the one on screen. A save that completes after the user clicked
+            // another note must never drag them back to the old one.
+            if selectedID == currentId {
+                loadedURL = destination
+                selectedID = newId
+            }
             openTabs = openTabs.map { $0 == currentId ? newId : $0 }
             recents = recents.map { $0 == currentId ? newId : $0 }
             UserDefaults.standard.set(recents, forKey: "recentNotes")
@@ -405,6 +537,15 @@ final class NotesModel {
         return relative.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? relative
     }
 
+    /// Editable in Settings; {{date}}/{{time}} expand via TemplateExpansion,
+    /// {{weekday}} and {{meetings}} here.
+    static let defaultDailyTemplate = """
+    # {{date}}
+    {{weekday}}
+
+    {{meetings}}
+    """
+
     /// Opens (creating if needed) the daily note for `date` under Daily/.
     func openDailyNote(for date: Date = Date()) {
         guard let root else { return }
@@ -426,7 +567,15 @@ final class NotesModel {
                     at: root.appendingPathComponent("Daily", isDirectory: true)
                 )
                 let weekday = date.formatted(.dateTime.weekday(.wide).month(.wide).day().year())
-                try? await store.writeString("# \(day)\n\(weekday)\n\n", to: url)
+                let template = UserDefaults.standard.string(forKey: "dailyNoteTemplate")
+                    ?? Self.defaultDailyTemplate
+                let meetings = CalendarService.meetingsMarkdown(
+                    on: date, excludedCalendarIds: CalendarService.excludedCalendarIds()
+                )
+                let contents = TemplateExpansion.expand(template, title: day, now: date)
+                    .replacingOccurrences(of: "{{weekday}}", with: weekday)
+                    .replacingOccurrences(of: "{{meetings}}", with: meetings)
+                try? await store.writeString(contents, to: url)
                 apply(VaultEnumerator.snapshot(of: root))
             }
             await performSelect(relative)

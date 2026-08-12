@@ -8,6 +8,11 @@ import SwiftUI
 struct SettingsView: View {
     /// General / Notes
     @AppStorage("noteSortOrder") private var noteSortOrder = "name"
+    // Calendar
+    @AppStorage("dailyNoteTemplate") private var dailyTemplate = NotesModel.defaultDailyTemplate
+    @State private var calendarAccess = CalendarService.accessState()
+    @State private var calendarList: [(id: String, title: String, account: String)] = []
+    @State private var excludedIds: Set<String> = []
     // Editor
     @AppStorage("editorFontSize") private var editorFontSize = 16.0
     @AppStorage("editorFontDesign") private var editorFontDesign = "system"
@@ -54,6 +59,9 @@ struct SettingsView: View {
             Tab("Vault", systemImage: "externaldrive") {
                 vaultPane
             }
+            Tab("Calendar", systemImage: "calendar") {
+                calendarPane
+            }
             Tab("AI & Import", systemImage: "sparkles") {
                 aiPane
             }
@@ -67,6 +75,83 @@ struct SettingsView: View {
     }
 
     // MARK: - Panes
+
+    private var calendarPane: some View {
+        Form {
+            Section("Connection") {
+                switch calendarAccess {
+                case .granted:
+                    Label("Connected — meetings populate new daily notes", systemImage: "checkmark.circle")
+                        .foregroundStyle(.green)
+                case .denied:
+                    Label("Access denied", systemImage: "xmark.circle")
+                        .foregroundStyle(.red)
+                    Text("Enable in System Settings › Privacy & Security › Calendars.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                case .notRequested:
+                    Button("Connect Calendars…") {
+                        Task {
+                            _ = await CalendarService.requestAccess()
+                            calendarAccess = CalendarService.accessState()
+                            calendarList = CalendarService.availableCalendars()
+                        }
+                    }
+                }
+                Text(
+                    "Works with Apple, Google, and Outlook calendars — any account added to the system Calendar app (System Settings › Internet Accounts). Events are read on-device only."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+            if calendarAccess == .granted {
+                Section("Included calendars") {
+                    if calendarList.isEmpty {
+                        Text("No calendars found.").foregroundStyle(.secondary)
+                    }
+                    ForEach(calendarList, id: \.id) { entry in
+                        Toggle(
+                            "\(entry.title) — \(entry.account)",
+                            isOn: Binding(
+                                get: { !excludedIds.contains(entry.id) },
+                                set: { include in
+                                    CalendarService.setExcluded(entry.id, excluded: !include)
+                                    excludedIds = CalendarService.excludedCalendarIds()
+                                }
+                            )
+                        )
+                    }
+                }
+            }
+            Section("Daily note template") {
+                TextEditor(text: $dailyTemplate)
+                    .font(.body.monospaced())
+                    .frame(minHeight: 140)
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary))
+                HStack {
+                    Text("Placeholders: {{date}} {{weekday}} {{time}} {{meetings}}")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Reset to Default") {
+                        dailyTemplate = NotesModel.defaultDailyTemplate
+                    }
+                    .disabled(dailyTemplate == NotesModel.defaultDailyTemplate)
+                }
+                Text(
+                    "Each meeting renders as a top-level # heading with blank lines after it — room for notes under every event."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+        .onAppear {
+            calendarAccess = CalendarService.accessState()
+            calendarList = CalendarService.availableCalendars()
+            excludedIds = CalendarService.excludedCalendarIds()
+        }
+    }
 
     private var generalPane: some View {
         Form {

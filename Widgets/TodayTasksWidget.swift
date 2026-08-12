@@ -17,9 +17,7 @@ struct TaskSnapshot: Codable {
     var items: [Item]
 
     static func load() -> TaskSnapshot? {
-        guard let container = FileManager.default.containerURL(
-            forSecurityApplicationGroupIdentifier: "6A2NHN89Q8.com.rchaight.notetaker"
-        ) else { return nil }
+        guard let container = AppGroup.containerURL else { return nil }
         let url = container.appendingPathComponent("today-tasks.json")
         guard let data = try? Data(contentsOf: url) else { return nil }
         return try? JSONDecoder().decode(TaskSnapshot.self, from: data)

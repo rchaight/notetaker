@@ -329,9 +329,20 @@ struct TaskDetailView: View {
             Button("Save") { Task { await saveAll(task) } }
                 .disabled(extrasStore.state == .loading)
             Button("Save & Exit") {
+                // Dismiss as soon as the markdown line (the source of
+                // truth) is written — a slow iCloud round-trip for the
+                // extras must never hold the window open; it finishes in
+                // the background.
                 Task {
-                    await saveAll(task)
+                    await saveLine(task)
+                    var key = extrasKey
+                    if key == nil {
+                        key = await service.ensureStableId(task)
+                    }
                     dismiss()
+                    if let key {
+                        _ = await extrasStore.save(extras, for: key)
+                    }
                 }
             }
             .buttonStyle(.borderedProminent)
@@ -345,6 +356,11 @@ struct TaskDetailView: View {
     /// sequential single-field writes would invalidate each other's
     /// rawLine anchors.
     private func saveAll(_ task: TaskRecord) async {
+        await saveLine(task)
+        await saveExtras(task)
+    }
+
+    private func saveLine(_ task: TaskRecord) async {
         saveState = "Saving…"
         let base = baseline ?? task
         let newTitle = titleText.trimmingCharacters(in: .whitespaces)
@@ -386,7 +402,6 @@ struct TaskDetailView: View {
             }
             return rewritten
         }
-        await saveExtras(task)
     }
 
     private func rowLabel(_ text: String, _ icon: String) -> some View {

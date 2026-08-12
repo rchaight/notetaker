@@ -328,6 +328,15 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 - [x] People tab: per-person pages — To Discuss / Delegated / Waiting; detail-window Kind picker.
 - [x] Start 1:1 run mode + dated meeting log appended to People/<Name>.md (vault-native).
 
+### M9.7 — Calendars in daily notes (user /loop 2026-07-27)
+**Strategy:** EventKit first — Outlook/Google/Apple accounts added to the system Calendar all surface through one native API (no OAuth, no tokens, on-device). Direct Google/Graph OAuth = optional later phase for accounts not in system Calendar.
+
+- [x] CalendarService (EventKit): access request, day-window event fetch, calendar filter; entitlement + usage string.
+- [x] Daily-note template setting: editable in Settings ({{date}}, {{weekday}}, {{meetings}} placeholders, reset to default).
+- [x] Daily note creation populates the day's meetings: each event a top-level `# <time> — <title>` with three returns after.
+- [x] Settings › Calendar pane: connect button, status, include/exclude calendars.
+- [ ] (Later, optional) Direct Google/Microsoft OAuth for accounts outside system Calendar.
+
 ### M10 — Release / distribution
 **Goal:** macOS signed+notarized+stapled `.dmg`; iOS on TestFlight.
 **Steps:**

@@ -32,11 +32,26 @@ final class TaskExtrasStore {
     /// In-memory cache so reopening a detail window is instant.
     private var cache: [String: Extras] = [:]
 
+    /// CloudKit round-trips can stall for minutes on a bad connection, and
+    /// `.loading` disables the detail window's Save buttons — a watchdog
+    /// unblocks the UI even when the request never comes back. The late
+    /// reply (if any) still lands: state and cache update on completion.
+    private func unblockAfterTimeout() -> Task<Void, Never> {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(8))
+            if state == .loading {
+                state = .unavailable("iCloud is responding slowly — changes will sync on the next save.")
+            }
+        }
+    }
+
     func extras(for taskKey: String) async -> Extras {
         if let cached = cache[taskKey] {
             return cached
         }
         state = .loading
+        let watchdog = unblockAfterTimeout()
+        defer { watchdog.cancel() }
         do {
             let record = try await database.record(for: CKRecord.ID(recordName: taskKey))
             let extras = Extras(
@@ -61,6 +76,8 @@ final class TaskExtrasStore {
     @discardableResult
     func save(_ extras: Extras, for taskKey: String) async -> Bool {
         state = .loading
+        let watchdog = unblockAfterTimeout()
+        defer { watchdog.cancel() }
         do {
             let recordID = CKRecord.ID(recordName: taskKey)
             let record: CKRecord

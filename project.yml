@@ -29,6 +29,7 @@ targets:
     supportedDestinations: [iOS, macOS]
     sources:
       - Widgets
+      - Shared
     info:
       path: Widgets/Info.plist
       properties:
@@ -38,12 +39,21 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.rchaight.notetaker.widgets
+        # App-group IDs are spelled per-platform (iOS "group.", macOS
+        # team-ID prefix), so the entitlements file is SDK-conditional.
         CODE_SIGN_ENTITLEMENTS: Widgets/NotetakerWidgets.entitlements
+        CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]: Widgets/NotetakerWidgets-iOS.entitlements
+        CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]: Widgets/NotetakerWidgets-iOS.entitlements
   Notetaker:
     type: application
     supportedDestinations: [iOS, macOS]
+    # Declared so `xcodegen generate` emits a SHARED scheme. Left implicit
+    # it only ever existed in gitignored xcuserdata, so every regenerate
+    # destroyed it and broke `xcodebuild -scheme Notetaker`.
+    scheme: {}
     sources:
       - App
+      - Shared
     dependencies:
       - target: NotetakerWidgets
         embed: true
@@ -64,6 +74,7 @@ targets:
         LSApplicationCategoryType: public.app-category.productivity
         UILaunchScreen: {}
         NSLocalNetworkUsageDescription: Notetaker connects to your own homelab servers (Ollama, docling-serve) for AI and document conversion.
+        NSCalendarsFullAccessUsageDescription: Notetaker reads your calendars to list the day's meetings in daily notes. Nothing is stored or sent anywhere.
         NSUbiquitousContainers:
           iCloud.com.rchaight.notetaker:
             NSUbiquitousContainerIsDocumentScopePublic: true
@@ -75,3 +86,5 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_HARDENED_RUNTIME: YES
         CODE_SIGN_ENTITLEMENTS: App/Notetaker.entitlements
+        CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]: App/Notetaker-iOS.entitlements
+        CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]: App/Notetaker-iOS.entitlements

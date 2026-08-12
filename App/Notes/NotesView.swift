@@ -283,6 +283,17 @@ struct NotesView: View {
                 showingVaultImporter = true
             }
             Spacer()
+            if model.refreshing {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(width: 24, height: 24)
+                    .help("Refreshing from iCloud…")
+            } else {
+                actionIcon("arrow.clockwise", "Refresh notes from iCloud (⌘R)") {
+                    Task { await refreshVault() }
+                }
+                .keyboardShortcut("r", modifiers: .command)
+            }
             Menu {
                 Picker("Sort", selection: $noteSortOrder) {
                     Label("Name", systemImage: "textformat").tag("name")
@@ -375,9 +386,9 @@ struct NotesView: View {
                         }
                     }
                 }
-                if !model.recents.isEmpty {
+                if !model.displayedRecents.isEmpty {
                     Section("Recents") {
-                        ForEach(notes(withIds: Array(model.recents.prefix(5)))) { note in
+                        ForEach(notes(withIds: Array(model.displayedRecents.prefix(5)))) { note in
                             noteRow(note, showFolder: true, selectable: false, section: "recent")
                         }
                     }
@@ -491,6 +502,20 @@ struct NotesView: View {
             }
         }
         .onAppear { listSelection = model.selectedID }
+        // Pull down on the list to pull from iCloud (iOS gesture; on macOS
+        // the action bar's ⌘R button runs the same refresh).
+        .refreshable { await refreshVault() }
+        // Periodic catch-up. The metadata watcher already pushes most
+        // changes, but it can miss a device that syncs while the app is
+        // backgrounded, so poll as a backstop. `apply` drops no-op snapshots,
+        // so a tick with nothing new never disturbs the list or the selection.
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(120))
+                guard !Task.isCancelled else { return }
+                await refreshVault()
+            }
+        }
         .onChange(of: model.noteText) {
             guard let line = model.consumeJumpLine() else { return }
             let lines = splitLines(model.noteText)
@@ -1064,16 +1089,31 @@ struct NotesView: View {
         }
     }
 
-    private func notes(withIds ids: [String]) -> [VaultItem] {
-        let byId = Dictionary(uniqueKeysWithValues: model.notes.map { ($0.id, $0) })
-        return ids.compactMap { byId[$0] }
+    /// Re-lists the vault, asks iCloud to materialize anything stale or
+    /// placeholder-only, then reindexes so search/tasks match the files.
+    private func refreshVault() async {
+        await model.refresh()
+        await indexService.rescan()
     }
 
+    private func notes(withIds ids: [String]) -> [VaultItem] {
+        ids.compactMap { model.notesById[$0] }
+    }
+
+    /// Folder contents come from the model's prebuilt grouping. Filtering
+    /// `visibleNotes` here instead re-sorted the whole vault once PER FOLDER
+    /// on every render, which is what made the list feel sluggish.
     private func notes(in folder: String) -> [VaultItem] {
-        visibleNotes.filter {
-            let dir = $0.relativePath.split(separator: "/").dropLast().joined(separator: "/")
-            return dir == folder
+        let group = model.notesByFolder[folder] ?? []
+        guard searching || selectedTag != nil else {
+            return noteSortOrder == "modified"
+                ? group.sorted {
+                    ($0.modificationDate ?? .distantPast) > ($1.modificationDate ?? .distantPast)
+                }
+                : group
         }
+        let allowed = Set(visibleNotes.map(\.id))
+        return group.filter { allowed.contains($0.id) }
     }
 
     /// selectable: false renders rows as tap-to-open copies — a folder can
@@ -1165,6 +1205,9 @@ struct NotesView: View {
             Spacer()
             syncBadge(note)
         }
+        // Roomier rows: the default density put adjacent titles close enough
+        // that a slightly-off click landed on the neighbour (user-reported).
+        .padding(.vertical, 3)
         .contentShape(Rectangle())
         .draggable(note.id)
         // ONE context menu only: stacking a second .contextMenu shadows the
@@ -1266,17 +1309,14 @@ struct NotesView: View {
             return model.notes.filter { ids.contains($0.id) }
         }
         guard !searchText.trimmingCharacters(in: .whitespaces).isEmpty else {
-            if noteSortOrder == "modified" {
-                return model.notes.sorted {
-                    ($0.modificationDate ?? .distantPast) > ($1.modificationDate ?? .distantPast)
-                }
-            }
-            return model.notes
+            // Both orders are prebuilt by the model — sorting here ran on
+            // every body pass.
+            return noteSortOrder == "modified" ? model.notesByModified : model.notes
         }
         let ranked = indexService.searchNoteIds(searchText)
-        let merged = ranked + semanticIds.filter { !ranked.contains($0) }
-        let byId = Dictionary(uniqueKeysWithValues: model.notes.map { ($0.id, $0) })
-        return merged.compactMap { byId[$0] }
+        let rankedSet = Set(ranked)
+        let merged = ranked + semanticIds.filter { !rankedSet.contains($0) }
+        return merged.compactMap { model.notesById[$0] }
     }
 
     /// The selected note's folder — base for relative image paths.

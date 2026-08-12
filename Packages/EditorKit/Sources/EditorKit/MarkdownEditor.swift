@@ -138,13 +138,21 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             textView.textContentStorage?.delegate = context.coordinator
             // Custom fragment drawing (blockquote accent bar).
             textView.textLayoutManager?.delegate = context.coordinator
-            // Margin clicks fold/unfold headings.
-            let foldClick = NSClickGestureRecognizer(
-                target: context.coordinator,
-                action: #selector(Coordinator.handleFoldClick(_:))
-            )
-            foldClick.delegate = context.coordinator
-            textView.addGestureRecognizer(foldClick)
+            // Margin clicks fold/unfold headings. A click gesture cannot
+            // work here: NSTextView's mouseDown runs a modal tracking loop
+            // that swallows the mouseUp, so recognition never completes. A
+            // local monitor sees the mouseDown before dispatch and consumes
+            // it for margin clicks on heading lines only.
+            context.coordinator.installFoldClickMonitor(for: textView)
+            // Expanded chevrons draw hover-only — track the pointer so the
+            // hovered heading line can reveal its ▾.
+            textView.addTrackingArea(NSTrackingArea(
+                rect: .zero,
+                options: [.mouseMoved, .mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+                owner: context.coordinator,
+                userInfo: nil
+            ))
+            context.coordinator.hoverTextView = textView
             context.coordinator.livePreview = livePreview
             context.coordinator.focusMode = focusMode
             context.coordinator.imageBase = imageBase
@@ -213,7 +221,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
 
         @MainActor
         public final class Coordinator: NSObject, NSTextViewDelegate, @preconcurrency NSTextContentStorageDelegate,
-            @preconcurrency NSTextLayoutManagerDelegate, NSGestureRecognizerDelegate {
+            @preconcurrency NSTextLayoutManagerDelegate {
             var text: Binding<String>
             var theme: MarkdownTheme
             var livePreview = true
@@ -227,6 +235,8 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             var tagChipRanges: [(range: NSRange, color: PlatformColor)] = []
             var foldedKeys: Set<String> = []
             var headingInfos: [HeadingFolding.HeadingInfo] = []
+            var hoveredHeadingKey: String?
+            weak var hoverTextView: NSTextView?
             var revealRanges: [NSRange] = []
             var frontmatterLength = 0
             var lastCommandID: UUID?
@@ -348,40 +358,93 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                 storage.endEditing()
             }
 
-            @objc func handleFoldClick(_ gesture: NSClickGestureRecognizer) {
-                guard let textView = gesture.view as? NSTextView else { return }
-                let point = gesture.location(in: textView)
-                // Only the left margin folds — normal clicks edit.
-                guard point.x < textView.textContainerInset.width else { return }
+            private var foldClickMonitor: Any?
+
+            func installFoldClickMonitor(for textView: NSTextView) {
+                if let existing = foldClickMonitor {
+                    NSEvent.removeMonitor(existing)
+                }
+                foldClickMonitor = NSEvent.addLocalMonitorForEvents(
+                    matching: .leftMouseDown
+                ) { [weak self, weak textView] event in
+                    guard let self, let textView, event.window === textView.window
+                    else { return event }
+                    let point = textView.convert(event.locationInWindow, from: nil)
+                    // Only the left margin folds — normal clicks edit.
+                    guard textView.bounds.contains(point),
+                          point.x < textView.textContainerInset.width,
+                          let heading = heading(at: point, in: textView)
+                    else { return event }
+                    if foldedKeys.contains(heading.key) {
+                        foldedKeys.remove(heading.key)
+                    } else {
+                        foldedKeys.insert(heading.key)
+                    }
+                    restyle(textView)
+                    return nil
+                }
+            }
+
+            private func heading(
+                at point: NSPoint, in textView: NSTextView
+            ) -> HeadingFolding.HeadingInfo? {
+                // The view point includes textContainerInset; fragment
+                // hit-testing wants layout coordinates, which start below
+                // the inset — unconverted, every hit lands one line off.
+                let inset = textView.textContainerInset
+                let layoutPoint = NSPoint(x: point.x - inset.width, y: point.y - inset.height)
                 guard let layoutManager = textView.textLayoutManager,
                       let contentManager = layoutManager.textContentManager,
-                      let fragment = layoutManager.textLayoutFragment(for: point),
+                      let fragment = layoutManager.textLayoutFragment(for: layoutPoint),
                       let elementRange = fragment.textElement?.elementRange
-                else { return }
+                else { return nil }
                 let start = contentManager.offset(
                     from: contentManager.documentRange.location, to: elementRange.location
                 )
-                guard let heading = headingInfos.first(where: {
+                return headingInfos.first(where: {
                     ($0.range.location ..< NSMaxRange($0.range)).contains(start)
                         || (textView.string as NSString)
                         .paragraphRange(for: $0.range).location == start
-                }) else { return }
-                if foldedKeys.contains(heading.key) {
-                    foldedKeys.remove(heading.key)
-                } else {
-                    foldedKeys.insert(heading.key)
-                }
-                restyle(textView)
+                })
             }
 
-            public func gestureRecognizer(
-                _ gestureRecognizer: NSGestureRecognizer,
-                shouldAttemptToRecognizeWith event: NSEvent
-            ) -> Bool {
-                // Fail fast outside the margin so editing is untouched.
-                guard let textView = gestureRecognizer.view as? NSTextView else { return false }
+            /// Explicit selectors: AppKit messages the tracking-area owner
+            /// with `mouseMoved:`/`mouseExited:`; Swift would otherwise
+            /// export these as `mouseMovedWith:` and they'd never fire.
+            @objc(mouseMoved:) func mouseMoved(with event: NSEvent) {
+                guard let textView = hoverTextView, event.window === textView.window
+                else { return }
                 let point = textView.convert(event.locationInWindow, from: nil)
-                return point.x < textView.textContainerInset.width
+                setHoveredHeading(heading(at: point, in: textView)?.key, in: textView)
+            }
+
+            @objc(mouseExited:) func mouseExited(with _: NSEvent) {
+                guard let textView = hoverTextView else { return }
+                setHoveredHeading(nil, in: textView)
+            }
+
+            private func setHoveredHeading(_ key: String?, in textView: NSTextView) {
+                guard key != hoveredHeadingKey else { return }
+                let previous = hoveredHeadingKey
+                hoveredHeadingKey = key
+                for changed in Set([previous, key].compactMap(\.self)) {
+                    invalidateHeadingParagraph(changed, in: textView)
+                }
+            }
+
+            /// Re-lays-out one heading paragraph so its fold fragment is
+            /// rebuilt with the current hover state. Direct
+            /// invalidateLayout never repaints TextKit 2 fragment surfaces;
+            /// an attributes-changed edit routes through the same pipeline
+            /// keystrokes use, which reliably recreates the fragment.
+            private func invalidateHeadingParagraph(_ key: String, in textView: NSTextView) {
+                guard let heading = headingInfos.first(where: { $0.key == key }),
+                      let storage = textView.textStorage else { return }
+                let paragraph = (textView.string as NSString).paragraphRange(for: heading.range)
+                guard NSMaxRange(paragraph) <= storage.length else { return }
+                storage.beginEditing()
+                storage.edited(.editedAttributes, range: paragraph, changeInLength: 0)
+                storage.endEditing()
             }
 
             public func textDidChange(_ notification: Notification) {
@@ -587,6 +650,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                             textElement: textElement, range: textElement.elementRange
                         )
                         fragment.folded = foldedKeys.contains(heading.key)
+                        fragment.hovered = heading.key == hoveredHeadingKey
                         return fragment
                     }
                     let chipHits = tagChipRanges.filter {
@@ -972,6 +1036,8 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                             textElement: textElement, range: textElement.elementRange
                         )
                         fragment.folded = foldedKeys.contains(heading.key)
+                        // Touch has no hover — chevrons stay visible on iOS.
+                        fragment.hovered = true
                         return fragment
                     }
                     let chipHits = tagChipRanges.filter {

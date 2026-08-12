@@ -199,9 +199,7 @@ final class VaultIndexService {
     /// Today-tasks snapshot for the widget, via the app-group container.
     /// Fails silently when the group isn't provisioned (ad-hoc dev builds).
     private func publishWidgetSnapshot() {
-        guard let container = FileManager.default.containerURL(
-            forSecurityApplicationGroupIdentifier: "6A2NHN89Q8.com.rchaight.notetaker"
-        ) else { return }
+        guard let container = AppGroup.containerURL else { return }
         let open = (try? database?.openTasks()) ?? []
         let buckets = Dictionary(grouping: open) {
             SmartBuckets.bucket(dueDate: $0.dueDate, startDate: $0.startDate)
