@@ -337,7 +337,10 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 - [x] Settings › Calendar pane: connect button, status, include/exclude calendars.
 - [ ] (Later, optional) Direct Google/Microsoft OAuth for accounts outside system Calendar.
 
-### M10 — Release / distribution
+### M9.9 — Ongoing shakedown (current phase, 2026-08-17)
+**The user is driving daily:** using the app day-by-day, reporting issues and improvement requests as they surface. Reported items jump the queue; each fix follows the usual gate-and-commit loop. M10 starts only on the user's explicit go — do not begin release work proactively.
+
+### M10 — DEFERRED (user decision 2026-08-17) — Release / distribution
 **Goal:** macOS signed+notarized+stapled `.dmg`; iOS on TestFlight.
 **Steps:**
 - [ ] **macOS:** Developer ID Application signing of the `.app` (+ embedded XPC helper/extensions) with Hardened Runtime; `codesign --deep` verification.
