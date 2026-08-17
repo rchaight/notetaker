@@ -544,7 +544,27 @@ final class NotesModel {
     {{weekday}}
 
     {{meetings}}
+    # To-Do This Week
+    {{weektodos}}
+
+    # Continuous Efforts:
+    {{continuous}}
+
+    # On the Horizon:
+    {{horizon}}
+
     """
+
+    /// Pre-2026-08 default, recognized so stored copies auto-upgrade.
+    private static let legacyDailyTemplate = """
+    # {{date}}
+    {{weekday}}
+
+    {{meetings}}
+    """
+
+    /// Wired by AppShell: index-backed planning sections.
+    var dailySectionsProvider: (() -> (week: String, continuous: String, horizon: String))?
 
     /// Opens (creating if needed) the daily note for `date` under Daily/.
     func openDailyNote(for date: Date = Date()) {
@@ -567,14 +587,24 @@ final class NotesModel {
                     at: root.appendingPathComponent("Daily", isDirectory: true)
                 )
                 let weekday = date.formatted(.dateTime.weekday(.wide).month(.wide).day().year())
-                let template = UserDefaults.standard.string(forKey: "dailyNoteTemplate")
+                var template = UserDefaults.standard.string(forKey: "dailyNoteTemplate")
                     ?? Self.defaultDailyTemplate
+                if template == Self.legacyDailyTemplate {
+                    // Stored by merely opening Settings before the new
+                    // sections existed — upgrade in place.
+                    template = Self.defaultDailyTemplate
+                }
                 let meetings = CalendarService.meetingsMarkdown(
                     on: date, excludedCalendarIds: CalendarService.excludedCalendarIds()
                 )
+                let sections = dailySectionsProvider?()
+                    ?? (week: "", continuous: "", horizon: "")
                 let contents = TemplateExpansion.expand(template, title: day, now: date)
                     .replacingOccurrences(of: "{{weekday}}", with: weekday)
                     .replacingOccurrences(of: "{{meetings}}", with: meetings)
+                    .replacingOccurrences(of: "{{weektodos}}", with: sections.week)
+                    .replacingOccurrences(of: "{{continuous}}", with: sections.continuous)
+                    .replacingOccurrences(of: "{{horizon}}", with: sections.horizon)
                 try? await store.writeString(contents, to: url)
                 apply(VaultEnumerator.snapshot(of: root))
             }

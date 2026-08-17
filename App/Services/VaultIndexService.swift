@@ -889,6 +889,53 @@ final class VaultIndexService {
         Dictionary(grouping: (try? database?.openSubtasks()) ?? []) { $0.parentId ?? "" }
     }
 
+    /// Daily-note planning sections. Plain bullets ON PURPOSE — checkbox
+    /// lines here would index as duplicate tasks.
+    func dailySections() -> (week: String, continuous: String, horizon: String) {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        let today = formatter.string(from: Date())
+        let weekEnd = formatter.string(
+            from: Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
+        )
+        let open = openTasks()
+
+        func bullet(_ task: TaskRecord, suffix: String = "") -> String {
+            let note = URL(fileURLWithPath: task.noteId)
+                .deletingPathExtension().lastPathComponent
+            return "- \(task.text)\(suffix) · \(note)"
+        }
+
+        let week = open
+            .filter { task in
+                guard let due = task.dueDate else { return false }
+                return due <= weekEnd && task.kind != "someday"
+            }
+            .sorted { ($0.dueDate ?? "") < ($1.dueDate ?? "") }
+            .map { task in
+                let due = task.dueDate ?? ""
+                let marker = due < today ? " (overdue \(due))" : " (due \(due))"
+                return bullet(task, suffix: marker)
+            }
+            .joined(separator: "\n")
+
+        let continuous = open
+            .filter { $0.recurrence != nil }
+            .map { bullet($0, suffix: " (\($0.recurrence ?? ""))") }
+            .joined(separator: "\n")
+
+        let somedayLines = open
+            .filter { $0.kind == "someday" }
+            .map { bullet($0) }
+        let plannedProjects = projects()
+            .filter { ($0.projectStatus ?? "") == "planned" }
+            .map { "- 📁 \($0.title)" }
+        let horizon = (plannedProjects + somedayLines).joined(separator: "\n")
+
+        return (week, continuous, horizon)
+    }
+
     /// Adds a discussion item for an audience. Home note = their meeting
     /// note (Meetings/<Name>.md), created on first use — so ad-hoc agenda
     /// items don't need an open note to live in.

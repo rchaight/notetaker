@@ -108,6 +108,9 @@ struct AppShell: View {
                     guard let notesModel, notesModel.selectedID == noteId else { return }
                     await notesModel.flushSave(allowRename: false)
                 }
+                notesModel.dailySectionsProvider = { [weak indexService = indexService] in
+                    indexService?.dailySections() ?? (week: "", continuous: "", horizon: "")
+                }
                 await indexService.start()
             }
         #if os(macOS)

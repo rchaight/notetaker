@@ -129,9 +129,11 @@ struct SettingsView: View {
                     .frame(minHeight: 140)
                     .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary))
                 HStack {
-                    Text("Placeholders: {{date}} {{weekday}} {{time}} {{meetings}}")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Text(
+                        "Placeholders: {{date}} {{weekday}} {{time}} {{meetings}} {{weektodos}} {{continuous}} {{horizon}}"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                     Spacer()
                     Button("Reset to Default") {
                         dailyTemplate = NotesModel.defaultDailyTemplate
