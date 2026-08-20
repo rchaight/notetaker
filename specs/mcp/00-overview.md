@@ -69,3 +69,22 @@ after each merge; fable critic on the combined diff (Phase 3, max 3 rounds).
 3. Any appetite for one safe write tool in v1 (`add_task` → Inbox.md), or
    strictly read-only until the read path proves itself? (Spec assumes
    strictly read-only.)
+
+## Deferred follow-ups (from the post-merge critique, 2026-08-20 — none blocking)
+
+1. `regenerateIndexFiles` re-reads every note body per debounced pass (~1136
+   coordinated reads); cache summaries by contentHash or scope to changed
+   folders if daily use feels sluggish.
+2. Consolidate near-duplicate IndexKit queries: `IndexFileQueries.allNoteRecords()`
+   vs `IndexDatabase.allNotes()`.
+3. `list_folder`'s computed fallback listing should call `IndexFileRenderer`
+   for format parity with real `_index.md` files (cosmetic; JSON carries the data).
+4. Add an index-path variant of `searchNeverQuotesALockedNote` (only the scan
+   path is tested; the `entry()` guard is code-correct but untested).
+5. Spec 01 criteria 2–3 (mtime-stable second launch, observed regeneration
+   quiescence) are mechanism-verified but not yet observed live — one manual
+   check during daily use closes them.
+6. Undownloaded iCloud notes render summary-less in `_index.md` until
+   downloaded (self-corrects); `isLocked`'s 4KB peek requires exactly
+   `locked: true` (fine for app-written frontmatter; body paths use the full
+   parse regardless).
