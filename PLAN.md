@@ -340,9 +340,9 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 ### M9.8 — Claude/MCP integration (2026-08-20)
 **Goal:** the vault becomes a first-class knowledge source for Claude Code/Desktop, via app-maintained context files (works everywhere, no server) plus an optional bundled read-only MCP server (macOS only). Read-only in v1 — see `specs/mcp/` for the full spec set.
 
-- [ ] `_index.md` per folder + root `CLAUDE.md` seed, generated from `IndexFileRenderer` (IndexKit), driven by `VaultIndexService`, gated on `claudeIndexFiles` (default on); excluded from the notes list/search/To-Do at the `VaultFileStore` enumeration choke point.
-- [ ] `Packages/MCPKit` + bundled `notetaker-mcp` stdio executable (official MCP Swift SDK): `vault_overview`/`list_folder`/`read_note`/`search`/`tasks` tools over a read-only `IndexDatabase.openReadOnly()` with scan fallback; locked notes redacted to title-only.
-- [ ] Settings › AI & Import "Claude integration" section: toggle for the context files, resolved MCP binary path + copyable `claude mcp add` command (macOS only) — the app never writes to `~/.claude.json` or Claude Desktop's config.
+- [x] `_index.md` per folder + root `CLAUDE.md` seed, generated from `IndexFileRenderer` (IndexKit), driven by `VaultIndexService`, gated on `claudeIndexFiles` (default on); excluded from the notes list/search/To-Do at the `VaultFileStore` enumeration choke point.
+- [x] `Packages/MCPKit` + bundled `notetaker-mcp` stdio executable (official MCP Swift SDK): `vault_overview`/`list_folder`/`read_note`/`search`/`tasks` tools over a read-only `IndexDatabase.openReadOnly()` with scan fallback; locked notes redacted to title-only.
+- [x] Settings › AI & Import "Claude integration" section: toggle for the context files, resolved MCP binary path + copyable `claude mcp add` command (macOS only) — the app never writes to `~/.claude.json` or Claude Desktop's config.
 
 ### M9.9 — Ongoing shakedown (current phase, 2026-08-17)
 **The user is driving daily:** using the app day-by-day, reporting issues and improvement requests as they surface. Reported items jump the queue; each fix follows the usual gate-and-commit loop. M10 starts only on the user's explicit go — do not begin release work proactively.
