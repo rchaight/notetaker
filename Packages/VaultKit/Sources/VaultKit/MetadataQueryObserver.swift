@@ -59,11 +59,18 @@ public final class MetadataQueryObserver {
                 .value(forAttribute: NSMetadataUbiquitousItemHasUnresolvedConflictsKey) as? Bool ?? false
             let modified = result.value(forAttribute: NSMetadataItemFSContentChangeDateKey) as? Date
             let contentType = result.value(forAttribute: NSMetadataItemContentTypeKey) as? String
+            let isDirectory = contentType == "public.folder" || url.hasDirectoryPath
+            let relativePath = VaultPath.relativePath(of: url, in: root)
+            // App-owned per-folder TOC: never a note (see VaultFileStore.isIndexFile).
+            // Still a valid trigger — this snapshot is dropped, not the change event.
+            if !isDirectory, VaultFileStore.isIndexFile(relativePath) {
+                continue
+            }
 
             items.append(VaultItem(
                 url: url,
-                relativePath: VaultPath.relativePath(of: url, in: root),
-                isDirectory: contentType == "public.folder" || url.hasDirectoryPath,
+                relativePath: relativePath,
+                isDirectory: isDirectory,
                 modificationDate: modified,
                 downloadState: VaultItem.DownloadState(ubiquitousStatus: status),
                 isUploading: uploading,

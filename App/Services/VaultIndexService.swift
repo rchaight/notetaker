@@ -26,6 +26,11 @@ final class VaultIndexService {
         case failed(String)
     }
 
+    /// @AppStorage key gating `_index.md` generation (spec 03 owns the
+    /// Settings toggle; this constant is the shared contract). Default true
+    /// when the key is absent — see `indexFilesEnabled()`.
+    static let indexFilesKey = "claudeIndexFiles"
+
     var state: State = .starting
     var isLocalFallback = false
     /// Bumped whenever indexed tasks may have changed — views refetch on it.
@@ -45,6 +50,8 @@ final class VaultIndexService {
     private var started = false
     private let embeddings = AppleEmbeddingProvider()
     private var embeddingTasks: [String: Task<Void, Never>] = [:]
+    /// Debounced `_index.md` regeneration, rescheduled on every settle.
+    private var indexFilesTask: Task<Void, Never>?
 
     func start() async {
         // Multiple views call start(); only the first proceeds (the state
@@ -81,6 +88,7 @@ final class VaultIndexService {
             database = db
             indexer = NoteIndexer(database: db)
 
+            await seedClaudeMdIfNeeded(root: resolved)
             await reindexFromDisk()
             state = .ready
             startObservers(root: resolved)
@@ -98,6 +106,7 @@ final class VaultIndexService {
         for task in observationTasks {
             task.cancel()
         }
+        indexFilesTask?.cancel()
     }
 
     private func startObservers(root: URL) {
@@ -194,6 +203,7 @@ final class VaultIndexService {
         // changed (favorites/pins read the db before it opened otherwise).
         tasksVersion += 1
         publishWidgetSnapshot()
+        scheduleIndexFileRegeneration()
     }
 
     /// Today-tasks snapshot for the widget, via the app-group container.
@@ -238,6 +248,174 @@ final class VaultIndexService {
             #endif
         }
     }
+
+    /// True unless the user explicitly turned generation off (Settings,
+    /// spec 03) — the key defaults to true, but a raw `UserDefaults` read
+    /// (unlike `@AppStorage`) sees `false` for an absent key, so an absent
+    /// key must be treated as true here.
+    static func indexFilesEnabled() -> Bool {
+        (UserDefaults.standard.object(forKey: indexFilesKey) as? Bool) ?? true
+    }
+
+    /// Reschedules the debounced `_index.md` regeneration pass — called
+    /// after every `reindexFromDisk()` settle. ~2s debounce: a burst of
+    /// file changes (import, tag rename across many notes) collapses into
+    /// one regeneration instead of one per file.
+    private func scheduleIndexFileRegeneration() {
+        indexFilesTask?.cancel()
+        indexFilesTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            await self?.regenerateIndexFiles()
+        }
+    }
+
+    /// Rebuilds every folder's `_index.md` from the current index + a fresh
+    /// read of each note's body (for the summary line and lock detection —
+    /// neither is stored in the derived index). Compare-before-write is the
+    /// loop breaker: a write here touches the folder, which re-triggers
+    /// `reindexFromDisk()`, but `_index.md` itself never enters the index
+    /// (VaultFileStore.isIndexFile), so that pass changes nothing and
+    /// regenerates byte-identical content — no write, no further trigger.
+    private func regenerateIndexFiles() async {
+        guard Self.indexFilesEnabled(), let root, let database else { return }
+        guard let allNotes = try? database.allNoteRecords() else { return }
+        let openTaskCounts = (try? database.openTaskCountsByNoteId()) ?? [:]
+        let tagsByNote = (try? database.tagsByNoteId()) ?? [:]
+
+        var notesByFolder: [String: [NoteRecord]] = [:]
+        for note in allNotes {
+            notesByFolder[note.folder, default: []].append(note)
+        }
+
+        // Every folder that must have an _index.md: folders holding notes
+        // directly, plus their ancestors (so navigation never dead-ends on
+        // an intermediate folder that only has subfolders).
+        var folders: Set<String> = []
+        for folder in notesByFolder.keys {
+            folders.insert(folder)
+            var path = ""
+            for component in folder.split(separator: "/") {
+                path = path.isEmpty ? String(component) : path + "/" + component
+                folders.insert(path)
+            }
+        }
+
+        // Direct child folder NAMES, keyed by parent path.
+        var subfoldersByFolder: [String: [String]] = [:]
+        for folder in folders where !folder.isEmpty {
+            let components = folder.split(separator: "/")
+            let name = String(components.last!)
+            let parent = components.dropLast().joined(separator: "/")
+            subfoldersByFolder[parent, default: []].append(name)
+        }
+
+        for folder in folders {
+            var entries: [IndexFileRenderer.NoteEntry] = []
+            for note in notesByFolder[folder] ?? [] {
+                let url = root.appendingPathComponent(note.id)
+                let contents = await (try? store.readString(at: url)) ?? ""
+                let document = MarkdownDocument(source: contents)
+                let locked = document.frontmatter?.values["locked"] == "true"
+                entries.append(IndexFileRenderer.NoteEntry(
+                    noteId: note.id,
+                    title: note.title,
+                    modifiedAt: note.modifiedAt,
+                    openTaskCount: openTaskCounts[note.id] ?? 0,
+                    tags: tagsByNote[note.id] ?? [],
+                    isLocked: locked,
+                    summary: locked ? nil : IndexFileRenderer.extractSummary(fromBody: document.body)
+                ))
+            }
+            let rendered = IndexFileRenderer.render(
+                folderPath: folder, notes: entries, subfolders: subfoldersByFolder[folder] ?? []
+            )
+            await writeIndexFileIfChanged(rendered, folder: folder, root: root)
+        }
+
+        await deleteStaleIndexFiles(keeping: folders, root: root)
+    }
+
+    /// `root.appendingPathComponent("_index.md")` for the vault root
+    /// (folder == ""), or `<folder>/_index.md` otherwise.
+    private func indexFileURL(forFolder folder: String, root: URL) -> URL {
+        let folderURL = folder.isEmpty ? root : root.appendingPathComponent(folder, isDirectory: true)
+        return folderURL.appendingPathComponent(VaultFileStore.indexFileName)
+    }
+
+    private func writeIndexFileIfChanged(_ rendered: String, folder: String, root: URL) async {
+        let url = indexFileURL(forFolder: folder, root: root)
+        let existing = try? await store.readString(at: url)
+        guard existing != rendered else { return }
+        try? await store.writeString(rendered, to: url)
+    }
+
+    /// Deletes `_index.md` in any directory that no longer belongs in
+    /// `liveFolders` — a folder whose notes all moved or were deleted.
+    /// Walks real directories (not the note-filtered enumerator) since it
+    /// must be able to find the very files that enumeration hides.
+    private func deleteStaleIndexFiles(keeping liveFolders: Set<String>, root: URL) async {
+        let directories = VaultEnumerator.snapshot(of: root).filter(\.isDirectory).map(\.relativePath)
+        for folder in Set(directories).union([""]) where !liveFolders.contains(folder) {
+            let url = indexFileURL(forFolder: folder, root: root)
+            guard FileManager.default.fileExists(atPath: url.path) else { continue }
+            try? await store.delete(at: url)
+        }
+    }
+
+    /// Seeds a starter `CLAUDE.md` at the vault root, once. Never
+    /// overwrites an existing file — including an undownloaded iCloud
+    /// placeholder, which `VaultNaming.isTaken` also catches.
+    private func seedClaudeMdIfNeeded(root: URL) async {
+        let url = root.appendingPathComponent("CLAUDE.md")
+        guard !VaultNaming.isTaken(url) else { return }
+        try? await store.writeString(Self.claudeMdSeed, to: url)
+    }
+
+    private static let claudeMdSeed = """
+    # Notetaker vault
+
+    This is a Notetaker vault: markdown notes with inline todos, stored as
+    plain `.md` files. The files ARE the data — the app derives a search
+    index from them, but the files are always the source of truth.
+
+    Read `_index.md` in a folder before opening its notes; the root
+    `_index.md` maps the whole vault.
+
+    ## Task syntax
+
+    Inline todos use one grammar everywhere:
+
+    ```
+    - [ ] text >due !p1 #tag @person ?kind &every … ^id blockedby:^id ✅date
+    ```
+
+    | token | meaning |
+    |---|---|
+    | `>date` | due date |
+    | `!p1`…`!p4` | priority, 1 highest |
+    | `#tag` | label |
+    | `@person` | assignee / audience |
+    | `?kind` | `discuss`, `waiting`, `next`, `someday`, or `followup` |
+    | `&every …` / `&after …` | recurrence rule |
+    | `^id`, `blockedby:^id` | block id + dependency reference |
+    | `✅yyyy-mm-dd` | completed day |
+
+    ## Conventions
+
+    - Daily notes: `Daily/yyyy-MM-dd.md`.
+    - Meeting notes: `Meetings/<Name>.md`.
+    - `Inbox.md` at the root — quick-add lands here.
+    - Projects are notes with `project: true` in frontmatter.
+
+    ## Working with this vault
+
+    Prefer the `notetaker` MCP tools (search, tasks) when available; fall
+    back to reading files directly when they aren't. Never edit `_index.md`
+    — it's auto-generated and any changes are overwritten. Locked notes are
+    marked 🔒 in `_index.md` listings; they are private — do not attempt to
+    read them.
+    """
 
     /// ".Note.md.icloud" (possibly nested in folders) → "Note.md".
     static func placeholderNoteId(_ relativePath: String) -> String? {

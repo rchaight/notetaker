@@ -4,6 +4,21 @@ import Foundation
 /// NSFileCoordinator so it is safe against the iCloud daemon, Finder, and
 /// other processes touching the same files.
 public struct VaultFileStore: Sendable {
+    /// App-owned, per-folder table-of-contents file name (see
+    /// `VaultIndexService` in the App target). Never surfaced as a note:
+    /// both live enumeration sources — `VaultEnumerator.snapshot(of:)` and
+    /// `MetadataQueryObserver` — filter it via `isIndexFile` at their single
+    /// production point, so every downstream consumer (indexer, notes list,
+    /// recents, search, task extraction) skips it automatically. The vault
+    /// root's `CLAUDE.md` is NOT filtered — it stays a normal indexed note.
+    public static let indexFileName = "_index.md"
+
+    /// True when `relativePath` names the app's own auto-generated index
+    /// file, regardless of which folder it lives in.
+    public static func isIndexFile(_ relativePath: String) -> Bool {
+        relativePath.split(separator: "/").last.map(String.init) == indexFileName
+    }
+
     public init() {}
 
     /// Coordinated read; blocks (off-executor) until a placeholder finishes

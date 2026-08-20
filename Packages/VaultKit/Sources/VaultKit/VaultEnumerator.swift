@@ -23,10 +23,16 @@ public enum VaultEnumerator {
         for case let url as URL in enumerator {
             // Attributes can fail if the item vanished mid-scan — skip it.
             guard let values = try? url.resourceValues(forKeys: Set(keys)) else { continue }
+            let isDirectory = values.isDirectory ?? false
+            let relativePath = VaultPath.relativePath(of: url, in: root)
+            // App-owned per-folder TOC: never a note (see VaultFileStore.isIndexFile).
+            if !isDirectory, VaultFileStore.isIndexFile(relativePath) {
+                continue
+            }
             items.append(VaultItem(
                 url: url,
-                relativePath: VaultPath.relativePath(of: url, in: root),
-                isDirectory: values.isDirectory ?? false,
+                relativePath: relativePath,
+                isDirectory: isDirectory,
                 modificationDate: values.contentModificationDate,
                 downloadState: .current
             ))
