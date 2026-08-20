@@ -519,6 +519,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             }
 
             public func textViewDidChangeSelection(_ notification: Notification) {
+                (notification.object as? NSTextView).map(updateTableTracking)
                 guard livePreview || focusMode, let textView = notification.object as? NSTextView else { return }
                 let cursor = cursorParagraph(textView)
                 guard cursor != lastCursorLine else { return }
@@ -540,6 +541,59 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                 }
             }
 
+            // MARK: Table auto-align
+
+            /// The table the cursor is inside: where it starts, plus its
+            /// text as of the moment we entered. Leaving a table whose text
+            /// changed while we were in it re-aligns the pipes; nothing is
+            /// ever rewritten while the cursor is still in the table,
+            /// because that would shove the caret around mid-edit.
+            private var tableAnchor: Int?
+            private var tableSnapshot: String?
+
+            private func updateTableTracking(_ textView: NSTextView) {
+                let location = textView.selectedRange().location
+                let region = tableRegions.first {
+                    location >= $0.range.location && location <= NSMaxRange($0.range)
+                }
+                guard region?.range.location != tableAnchor else { return }
+                let leaving = tableAnchor
+                let snapshot = tableSnapshot
+                tableAnchor = region?.range.location
+                tableSnapshot = region.map { (textView.string as NSString).substring(with: $0.range) }
+                guard let leaving, let snapshot else { return }
+                alignTable(anchoredAt: leaving, changedFrom: snapshot, in: textView)
+            }
+
+            /// One step out of the selection notification: mutating text
+            /// from inside a delegate callback re-enters that same
+            /// callback, and the hop lets the click that moved the cursor
+            /// settle first.
+            private func alignTable(
+                anchoredAt anchor: Int, changedFrom snapshot: String, in textView: NSTextView
+            ) {
+                Task { @MainActor [weak textView] in
+                    guard let textView else { return }
+                    let ns = textView.string as NSString
+                    let cursor = textView.selectedRange().location
+                    guard let region = TableEditing.regions(in: textView.string)
+                        .first(where: { $0.range.location == anchor }),
+                        NSMaxRange(region.range) <= ns.length,
+                        ns.substring(with: region.range) != snapshot,
+                        cursor < region.range.location || cursor > NSMaxRange(region.range),
+                        let edit = TableEditing.align(
+                            in: textView.string, region: region, selection: textView.selectedRange()
+                        )
+                    else { return }
+                    // One undo group: the align is a single ⌘Z away and
+                    // never coalesces with whatever gets typed next.
+                    textView.undoManager?.beginUndoGrouping()
+                    textView.insertText(edit.replacement, replacementRange: edit.range)
+                    textView.setSelectedRange(edit.selection)
+                    textView.undoManager?.endUndoGrouping()
+                }
+            }
+
             public func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
                 let selection = textView.selectedRange()
                 func apply(_ edit: EditResult) -> Bool {
@@ -547,12 +601,42 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                     textView.setSelectedRange(edit.selection)
                     return true
                 }
+                /// Tab/Shift-Tab inside a table: select the target cell, or
+                /// apply the edit that had to grow the table first.
+                func tableMove(_ move: TableEditing.CellMove?) -> Bool {
+                    switch move {
+                    case let .select(range):
+                        textView.setSelectedRange(range)
+                        return true
+                    case let .edit(edit):
+                        return apply(edit)
+                    case nil:
+                        return false
+                    }
+                }
+                // Tab/Return in a table move between cells instead of
+                // indenting or breaking the line — but only a pipe on the
+                // cursor's line unlocks the parse, so list and prose typing
+                // costs nothing.
+                let inTable = TableEditing.lineCouldBeTableRow(
+                    in: textView.string, location: selection.location
+                )
                 switch commandSelector {
                 case #selector(NSResponder.insertNewline(_:)):
+                    if inTable, let edit = TableEditing.edit(
+                        for: .tableInsertRow, in: textView.string, selection: selection
+                    ) {
+                        return apply(edit)
+                    }
                     if let edit = MarkdownEditing.newlineContinuation(in: textView.string, selection: selection) {
                         return apply(edit)
                     }
                 case #selector(NSResponder.insertTab(_:)):
+                    if inTable, tableMove(
+                        TableEditing.nextCell(in: textView.string, selection: selection)
+                    ) {
+                        return true
+                    }
                     if let edit = MarkdownEditing.indentListItems(
                         in: textView.string,
                         selection: selection,
@@ -561,6 +645,11 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                         return apply(edit)
                     }
                 case #selector(NSResponder.insertBacktab(_:)):
+                    if inTable, tableMove(
+                        TableEditing.previousCell(in: textView.string, selection: selection)
+                    ) {
+                        return true
+                    }
                     if let edit = MarkdownEditing.indentListItems(
                         in: textView.string,
                         selection: selection,

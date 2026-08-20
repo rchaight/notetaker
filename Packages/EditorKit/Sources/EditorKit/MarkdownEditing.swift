@@ -15,6 +15,14 @@ public enum EditorCommand: Equatable, Sendable {
     /// the cursor's, blank-line separated; cursor lands `cursorOffset` into
     /// the block (or after it when nil).
     case insertBlock(String, cursorOffset: Int?)
+    /// Table structure at the cursor — every case is a no-op when the
+    /// selection is not inside a pipe table, so the menu items can stay
+    /// enabled. See `TableEditing`.
+    case tableInsertRow
+    case tableInsertColumn
+    case tableDeleteRow
+    case tableDeleteColumn
+    case tableAlign
 }
 
 /// A one-shot command request: the UUID lets the editor execute exactly
@@ -55,6 +63,8 @@ public enum MarkdownEditing {
             return setHeading(level, in: ns, selection: selection)
         case let .insertBlock(block, cursorOffset):
             return insertBlock(block, cursorOffset: cursorOffset, in: ns, selection: selection)
+        case .tableInsertRow, .tableInsertColumn, .tableDeleteRow, .tableDeleteColumn, .tableAlign:
+            return TableEditing.edit(for: command, in: text, selection: selection)
         case .link:
             let selected = ns.substring(with: selection)
             let label = selected.isEmpty ? "link text" : selected

@@ -660,6 +660,25 @@ struct NotesView: View {
                     Button("Horizontal Rule", systemImage: "minus") {
                         editorCommand = EditorCommandRequest(.insertBlock("---", cursorOffset: nil))
                     }
+                    // Table structure: every item is a no-op when the
+                    // cursor is not in a table, so none of them disable.
+                    Section("Table") {
+                        Button("Add Row Below") {
+                            editorCommand = EditorCommandRequest(.tableInsertRow)
+                        }
+                        Button("Add Column After") {
+                            editorCommand = EditorCommandRequest(.tableInsertColumn)
+                        }
+                        Button("Delete Row") {
+                            editorCommand = EditorCommandRequest(.tableDeleteRow)
+                        }
+                        Button("Delete Column") {
+                            editorCommand = EditorCommandRequest(.tableDeleteColumn)
+                        }
+                        Button("Align Table") {
+                            editorCommand = EditorCommandRequest(.tableAlign)
+                        }
+                    }
                 } label: {
                     Image(systemName: "plus.square")
                         .frame(width: 26, height: 22)
