@@ -11,6 +11,12 @@ public enum EditorCommand: Equatable, Sendable {
     case setHeading(Int)
     /// [selection](url-placeholder) with the cursor on the placeholder.
     case link
+    /// Rewrite an existing `[text](url)` span at `range` — the link-edit
+    /// popover's Save action. `range` comes from `SelectionContext.link`,
+    /// captured when the popover opened.
+    case editLink(range: NSRange, text: String, url: String)
+    /// Unwrap an existing link at `range` back to plain `text`.
+    case removeLink(range: NSRange, text: String)
     /// Insert a block (table, image line, rule) on its own paragraph after
     /// the cursor's, blank-line separated; cursor lands `cursorOffset` into
     /// the block (or after it when nil).
@@ -73,6 +79,19 @@ public enum MarkdownEditing {
             return EditResult(
                 range: selection, replacement: replacement,
                 selection: NSRange(location: urlStart, length: 3)
+            )
+        case let .editLink(range, text, url):
+            guard NSMaxRange(range) <= ns.length else { return nil }
+            let replacement = "[\(text)](\(url))"
+            return EditResult(
+                range: range, replacement: replacement,
+                selection: NSRange(location: range.location + (replacement as NSString).length, length: 0)
+            )
+        case let .removeLink(range, text):
+            guard NSMaxRange(range) <= ns.length else { return nil }
+            return EditResult(
+                range: range, replacement: text,
+                selection: NSRange(location: range.location, length: (text as NSString).length)
             )
         }
     }

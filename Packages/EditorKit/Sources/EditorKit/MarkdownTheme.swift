@@ -275,8 +275,9 @@ public struct MarkdownTheme: @unchecked Sendable {
     }
 
     /// Vertical room reserved under a standalone image line for its
-    /// drawn thumbnail (thumbnail max height + gap).
-    public static let imageThumbnailHeight: CGFloat = 140
+    /// drawn thumbnail (thumbnail max height + gap). Large images cap here
+    /// rather than blowing out the line — aspect ratio is preserved.
+    public static let imageThumbnailHeight: CGFloat = 280
     public var imageParagraphStyle: NSParagraphStyle {
         let style = NSMutableParagraphStyle()
         style.paragraphSpacing = Self.imageThumbnailHeight + 10

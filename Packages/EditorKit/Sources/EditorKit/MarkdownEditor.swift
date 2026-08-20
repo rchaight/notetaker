@@ -43,6 +43,12 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
         var mentionCandidates: [String]
         var findSignal: Int
         var importAttachments: (([AttachmentDrop]) async -> [String])?
+        /// Fires on caret/selection change with the format bar's active
+        /// state — never re-parses; reuses the coordinator's style ranges.
+        var onSelectionContext: ((SelectionContext) -> Void)?
+        /// Fires with an image fragment's raw markdown source when the user
+        /// clicks a rendered thumbnail.
+        var onOpenAttachment: ((String) -> Void)?
 
         public init(
             text: Binding<String>,
@@ -56,7 +62,9 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             linkCandidates: [String] = [],
             mentionCandidates: [String] = [],
             findSignal: Int = 0,
-            importAttachments: (([AttachmentDrop]) async -> [String])? = nil
+            importAttachments: (([AttachmentDrop]) async -> [String])? = nil,
+            onSelectionContext: ((SelectionContext) -> Void)? = nil,
+            onOpenAttachment: ((String) -> Void)? = nil
         ) {
             _text = text
             _scrollTarget = scrollTarget
@@ -70,6 +78,8 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             self.mentionCandidates = mentionCandidates
             self.findSignal = findSignal
             self.importAttachments = importAttachments
+            self.onSelectionContext = onSelectionContext
+            self.onOpenAttachment = onOpenAttachment
         }
 
         /// One cached editor per process: tab switches tear the SwiftUI
@@ -199,6 +209,8 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             context.coordinator.tagCandidates = tagCandidates
             context.coordinator.linkCandidates = linkCandidates
             context.coordinator.mentionCandidates = mentionCandidates
+            context.coordinator.onSelectionContext = onSelectionContext
+            context.coordinator.onOpenAttachment = onOpenAttachment
             if textView.string != text {
                 textView.string = text
                 context.coordinator.restyle(textView)
@@ -263,6 +275,13 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             var lastTextLength = 0
             var findWatcher: Task<Void, Never>?
             var lastFindTerm = ""
+            var onSelectionContext: ((SelectionContext) -> Void)?
+            var onOpenAttachment: ((String) -> Void)?
+            /// Style ranges from the last restyle pass — SelectionContext
+            /// reuses these on every caret move instead of re-parsing.
+            private var currentStyledRanges: [StyledRange] = []
+            private var lastPublishedContext: SelectionContext?
+            private var imageClickMonitor: Any?
             private var lastCursorLine: NSRange?
             private var pendingRestyle: Task<Void, Never>?
 
@@ -277,6 +296,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
 
             func restyle(_ textView: NSTextView) {
                 guard let storage = textView.textStorage else { return }
+                installImageClickMonitorIfNeeded(for: textView)
                 let cursor = cursorParagraph(textView)
                 lastCursorLine = cursor
                 let prepass = MarkdownStyler.styleRanges(in: textView.string)
@@ -307,6 +327,8 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                     }
                 }
                 frontmatterLength = MarkdownDocument(source: textView.string).bodyUTF16Offset
+                currentStyledRanges = styled
+                publishSelectionContext(for: textView)
             }
 
             private func scheduleRestyle(_ textView: NSTextView) {
@@ -538,8 +560,13 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             }
 
             public func textViewDidChangeSelection(_ notification: Notification) {
-                (notification.object as? NSTextView).map(updateTableTracking)
-                guard livePreview || focusMode, let textView = notification.object as? NSTextView else { return }
+                guard let textView = notification.object as? NSTextView else { return }
+                updateTableTracking(textView)
+                // Format-bar state tracks the caret independent of live
+                // preview / focus mode — publish first, then fall through to
+                // the (mode-gated) layout-restyle decision below.
+                publishSelectionContext(for: textView)
+                guard livePreview || focusMode else { return }
                 let cursor = cursorParagraph(textView)
                 guard cursor != lastCursorLine else { return }
                 // Full restyle reflows text under the click (markers reveal
@@ -611,6 +638,49 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                     textView.setSelectedRange(edit.selection)
                     textView.undoManager?.endUndoGrouping()
                 }
+            }
+
+            /// Computed from the ranges the last restyle already produced —
+            /// never a fresh parse — and skipped when unchanged so the
+            /// format bar doesn't republish on every no-op caret tick.
+            private func publishSelectionContext(for textView: NSTextView) {
+                guard let onSelectionContext else { return }
+                let context = SelectionContext.at(textView.selectedRange(), ranges: currentStyledRanges)
+                guard context != lastPublishedContext else { return }
+                lastPublishedContext = context
+                onSelectionContext(context)
+            }
+
+            /// Images aren't NSLinks, so clicks on their rendered thumbnail
+            /// need their own hit test — mirrors the fold-click monitor's
+            /// approach (NSTextView's mouseDown runs a modal tracking loop
+            /// that swallows a click gesture's mouseUp).
+            private func installImageClickMonitorIfNeeded(for textView: NSTextView) {
+                guard imageClickMonitor == nil else { return }
+                imageClickMonitor = NSEvent.addLocalMonitorForEvents(
+                    matching: .leftMouseDown
+                ) { [weak self, weak textView] event in
+                    guard let self, let textView, event.window === textView.window,
+                          let onOpenAttachment,
+                          let source = imageSource(at: event, in: textView)
+                    else { return event }
+                    onOpenAttachment(source)
+                    return nil
+                }
+            }
+
+            private func imageSource(at event: NSEvent, in textView: NSTextView) -> String? {
+                let point = textView.convert(event.locationInWindow, from: nil)
+                guard textView.bounds.contains(point) else { return nil }
+                let inset = textView.textContainerInset
+                let layoutPoint = NSPoint(x: point.x - inset.width, y: point.y - inset.height)
+                guard let layoutManager = textView.textLayoutManager,
+                      let fragment = layoutManager.textLayoutFragment(for: layoutPoint) as? ImageLayoutFragment,
+                      let source = fragment.source
+                else { return nil }
+                let origin = fragment.layoutFragmentFrame.origin
+                let localPoint = NSPoint(x: layoutPoint.x - origin.x, y: layoutPoint.y - origin.y)
+                return fragment.hitTestsImage(at: localPoint) ? source : nil
             }
 
             public func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
@@ -848,6 +918,12 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
         var mentionCandidates: [String]
         var findSignal: Int
         var importAttachments: (([AttachmentDrop]) async -> [String])?
+        /// Mirrors the macOS callback (cheap: reuses ranges from the last
+        /// restyle). Bar UI is macOS-first but nothing here is iOS-unsafe.
+        var onSelectionContext: ((SelectionContext) -> Void)?
+        /// Unused on iOS this pass — kept for API parity with macOS so
+        /// callers don't need platform-conditional construction.
+        var onOpenAttachment: ((String) -> Void)?
 
         public init(
             text: Binding<String>,
@@ -861,7 +937,9 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             linkCandidates: [String] = [],
             mentionCandidates: [String] = [],
             findSignal: Int = 0,
-            importAttachments: (([AttachmentDrop]) async -> [String])? = nil
+            importAttachments: (([AttachmentDrop]) async -> [String])? = nil,
+            onSelectionContext: ((SelectionContext) -> Void)? = nil,
+            onOpenAttachment: ((String) -> Void)? = nil
         ) {
             _text = text
             _scrollTarget = scrollTarget
@@ -875,6 +953,8 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             self.mentionCandidates = mentionCandidates
             self.findSignal = findSignal
             self.importAttachments = importAttachments
+            self.onSelectionContext = onSelectionContext
+            self.onOpenAttachment = onOpenAttachment
         }
 
         public func makeCoordinator() -> Coordinator {
@@ -935,6 +1015,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             context.coordinator.tagCandidates = tagCandidates
             context.coordinator.linkCandidates = linkCandidates
             context.coordinator.mentionCandidates = mentionCandidates
+            context.coordinator.onSelectionContext = onSelectionContext
             if textView.text != text {
                 textView.text = text
                 context.coordinator.restyle(textView)
@@ -985,6 +1066,9 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             var lastCommandID: UUID?
             var lastFindSignal = 0
             var lastTextLength = 0
+            var onSelectionContext: ((SelectionContext) -> Void)?
+            private var currentStyledRanges: [StyledRange] = []
+            private var lastPublishedContext: SelectionContext?
             private var lastCursorLine: NSRange?
             private var pendingRestyle: Task<Void, Never>?
 
@@ -1027,6 +1111,8 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                     }
                 }
                 frontmatterLength = MarkdownDocument(source: textView.text ?? "").bodyUTF16Offset
+                currentStyledRanges = styled
+                publishSelectionContext(for: textView)
             }
 
             private func scheduleRestyle(_ textView: UITextView) {
@@ -1204,6 +1290,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             }
 
             public func textViewDidChangeSelection(_ textView: UITextView) {
+                publishSelectionContext(for: textView)
                 guard livePreview || focusMode else { return }
                 let cursor = cursorParagraph(textView)
                 guard cursor != lastCursorLine else { return }
@@ -1219,6 +1306,14 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                     NSIntersectionRange(range, new).length > 0
                         || old.map { NSIntersectionRange(range, $0).length > 0 } ?? false
                 }
+            }
+
+            private func publishSelectionContext(for textView: UITextView) {
+                guard let onSelectionContext else { return }
+                let context = SelectionContext.at(textView.selectedRange, ranges: currentStyledRanges)
+                guard context != lastPublishedContext else { return }
+                lastPublishedContext = context
+                onSelectionContext(context)
             }
 
             // MARK: Checkbox taps

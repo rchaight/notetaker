@@ -42,6 +42,13 @@ public final class ImageLayoutFragment: NSTextLayoutFragment {
         super.renderingSurfaceBounds.union(imageRect)
     }
 
+    /// Click-to-open hit test: `point` is fragment-local (the click point
+    /// minus `layoutFragmentFrame.origin`). Only the drawn thumbnail is
+    /// clickable, not the whole paragraph line.
+    public func hitTestsImage(at point: CGPoint) -> Bool {
+        !imageRect.isEmpty && imageRect.contains(point)
+    }
+
     override public func draw(at point: CGPoint, in context: CGContext) {
         super.draw(at: point, in: context)
         guard let (image, _) = resolvedImage else { return }

@@ -1,4 +1,7 @@
 import AIKit
+#if os(macOS)
+    import AppKit
+#endif
 import ConversionKit
 import EditorKit
 import MarkdownKit
@@ -45,6 +48,16 @@ struct NotesView: View {
     @State private var scrollTarget: NSRange?
     @State private var editorCommand: EditorCommandRequest?
     @State private var findSignal = 0
+    /// Format-bar active state — published by the editor on every caret
+    /// move, macOS-first (see EditorKit.SelectionContext).
+    @State private var selectionContext = SelectionContext()
+    @State private var showingLinkPopover = false
+    /// The link's full `[text](url)` range, captured when the popover
+    /// opened — Save/Remove target this, not a fresh caret lookup, so a
+    /// stray click while the popover is open can't retarget the edit.
+    @State private var linkEditRange: NSRange?
+    @State private var linkPopoverText = ""
+    @State private var linkPopoverURL = ""
     @State private var showingGraph = false
     @State private var showingLockSheet = false
     @State private var showingUnlockSheet = false
@@ -619,33 +632,59 @@ struct NotesView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 2) {
                 Menu {
-                    Button("Title") { editorCommand = EditorCommandRequest(.setHeading(1)) }
-                    Button("Heading") { editorCommand = EditorCommandRequest(.setHeading(2)) }
-                    Button("Subheading") { editorCommand = EditorCommandRequest(.setHeading(3)) }
+                    headingMenuItem("Title", level: 1)
+                    headingMenuItem("Heading", level: 2)
+                    headingMenuItem("Subheading", level: 3)
                     Divider()
-                    Button("Body") { editorCommand = EditorCommandRequest(.setHeading(0)) }
+                    headingMenuItem("Body", level: 0)
                 } label: {
-                    Image(systemName: "textformat.size")
+                    if selectionContext.headingLevel > 0 {
+                        Text("H\(selectionContext.headingLevel)")
+                            .font(.system(size: 12, weight: .semibold))
+                            .frame(width: 26, height: 22)
+                    } else {
+                        Image(systemName: "textformat.size")
+                            .frame(width: 26, height: 22)
+                    }
                 }
                 .menuIndicator(.hidden)
                 .help("Text style")
                 Divider().frame(height: 16)
-                formatButton("bold", "Bold (⌘B)") { .wrap(prefix: "**", suffix: "**") }
+                formatButton(
+                    "bold", "Bold (⌘B)",
+                    isActive: selectionContext.bold, dimmed: selectionContext.inCodeBlock
+                ) { .wrap(prefix: "**", suffix: "**") }
                     .keyboardShortcut("b", modifiers: [.command])
-                formatButton("italic", "Italic (⌘⇧I)") { .wrap(prefix: "*", suffix: "*") }
+                formatButton(
+                    "italic", "Italic (⌘⇧I)",
+                    isActive: selectionContext.italic, dimmed: selectionContext.inCodeBlock
+                ) { .wrap(prefix: "*", suffix: "*") }
                     .keyboardShortcut("i", modifiers: [.command, .shift])
-                formatButton("strikethrough", "Strikethrough") { .wrap(prefix: "~~", suffix: "~~") }
-                formatButton("chevron.left.forwardslash.chevron.right", "Code (⌘E)") { .wrap(prefix: "`", suffix: "`") }
+                formatButton(
+                    "strikethrough", "Strikethrough",
+                    isActive: selectionContext.strikethrough, dimmed: selectionContext.inCodeBlock
+                ) { .wrap(prefix: "~~", suffix: "~~") }
+                formatButton(
+                    "chevron.left.forwardslash.chevron.right", "Code (⌘E)",
+                    isActive: selectionContext.code, dimmed: selectionContext.inCodeBlock
+                ) { .wrap(prefix: "`", suffix: "`") }
                     .keyboardShortcut("e", modifiers: [.command])
                 Divider().frame(height: 16)
-                formatButton("list.bullet", "Bullet list") { .toggleLinePrefix("- ") }
-                formatButton("list.number", "Numbered list") { .toggleLinePrefix("1. ") }
-                formatButton("checklist", "To-do (⌘⇧T)") { .toggleLinePrefix("- [ ] ") }
+                formatButton(
+                    "list.bullet", "Bullet list", isActive: selectionContext.inList
+                ) { .toggleLinePrefix("- ") }
+                formatButton(
+                    "list.number", "Numbered list", isActive: selectionContext.inList
+                ) { .toggleLinePrefix("1. ") }
+                formatButton(
+                    "checklist", "To-do (⌘⇧T)", isActive: selectionContext.inList
+                ) { .toggleLinePrefix("- [ ] ") }
                     .keyboardShortcut("t", modifiers: [.command, .shift])
-                formatButton("quote.opening", "Quote") { .toggleLinePrefix("> ") }
+                formatButton(
+                    "quote.opening", "Quote", isActive: selectionContext.inQuote
+                ) { .toggleLinePrefix("> ") }
                 Divider().frame(height: 16)
-                formatButton("link", "Link (⇧⌘K)") { .link }
-                    .keyboardShortcut("k", modifiers: [.command, .shift])
+                linkButton
                 Divider().frame(height: 16)
                 Menu {
                     Button("Table", systemImage: "tablecells") {
@@ -721,7 +760,9 @@ struct NotesView: View {
     }
 
     private func formatButton(
-        _ icon: String, _ help: String, _ command: @escaping () -> EditorCommand
+        _ icon: String, _ help: String,
+        isActive: Bool = false, dimmed: Bool = false,
+        _ command: @escaping () -> EditorCommand
     ) -> some View {
         Button {
             editorCommand = EditorCommandRequest(command())
@@ -730,6 +771,107 @@ struct NotesView: View {
                 .frame(width: 26, height: 22)
         }
         .help(help)
+        .background(
+            isActive ? AnyShapeStyle(.selection) : AnyShapeStyle(.clear),
+            in: Capsule()
+        )
+        // Markdown syntax is inert inside a code block — wrap buttons stay
+        // visible (so the bar doesn't jump around) but read as disabled.
+        .opacity(dimmed ? 0.35 : 1)
+        .disabled(dimmed)
+    }
+
+    private func headingMenuItem(_ title: String, level: Int) -> some View {
+        Button {
+            editorCommand = EditorCommandRequest(.setHeading(level))
+        } label: {
+            HStack {
+                Text(title)
+                if selectionContext.headingLevel == level {
+                    Spacer()
+                    Image(systemName: "checkmark")
+                }
+            }
+        }
+    }
+
+    /// ⇧⌘K: caret in an existing link opens an edit popover pre-filled with
+    /// its text/destination; otherwise falls through to the insert command
+    /// (placeholder text + URL, cursor on the URL) as before.
+    private var linkButton: some View {
+        Button {
+            if let link = selectionContext.link {
+                linkEditRange = link.range
+                linkPopoverText = linkLabel(range: link.range, in: model.noteText)
+                linkPopoverURL = link.destination
+                showingLinkPopover = true
+            } else {
+                editorCommand = EditorCommandRequest(.link)
+            }
+        } label: {
+            Image(systemName: "link")
+                .frame(width: 26, height: 22)
+        }
+        .help("Link (⇧⌘K)")
+        .keyboardShortcut("k", modifiers: [.command, .shift])
+        .popover(isPresented: $showingLinkPopover) { linkEditPopover }
+    }
+
+    private var linkEditPopover: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Edit Link").font(.headline)
+            TextField("Text", text: $linkPopoverText)
+                .textFieldStyle(.roundedBorder)
+            TextField("URL", text: $linkPopoverURL)
+                .textFieldStyle(.roundedBorder)
+            HStack {
+                Button("Remove Link", role: .destructive) {
+                    if let range = linkEditRange {
+                        editorCommand = EditorCommandRequest(.removeLink(range: range, text: linkPopoverText))
+                    }
+                    showingLinkPopover = false
+                }
+                Spacer()
+                Button("Save") {
+                    if let range = linkEditRange {
+                        editorCommand = EditorCommandRequest(
+                            .editLink(range: range, text: linkPopoverText, url: linkPopoverURL)
+                        )
+                    }
+                    showingLinkPopover = false
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+                .disabled(linkPopoverText.isEmpty || linkPopoverURL.isEmpty)
+            }
+        }
+        .padding(16)
+        .frame(width: 260)
+    }
+
+    /// The display text between `[` and `](` in a link's full markdown
+    /// span — the range/destination come from SelectionContext, which
+    /// doesn't carry the label itself.
+    private func linkLabel(range: NSRange, in text: String) -> String {
+        let ns = text as NSString
+        guard NSMaxRange(range) <= ns.length else { return "" }
+        let full = ns.substring(with: range)
+        guard full.hasPrefix("["), let closeBracket = full.range(of: "](") else { return full }
+        return String(full[full.index(after: full.startIndex) ..< closeBracket.lowerBound])
+    }
+
+    /// Vault-relative image sources resolve against the note's folder (the
+    /// same base the thumbnail itself was drawn against); remote URLs open
+    /// as URLs. No-op on iOS this pass.
+    private func openAttachment(_ source: String) {
+        #if os(macOS)
+            if let url = ImageThumbnails.resolveLocalURL(source, base: selectedNoteFolder) {
+                NSWorkspace.shared.open(url)
+            } else if let url = URL(string: source), let scheme = url.scheme,
+                      scheme == "http" || scheme == "https" {
+                NSWorkspace.shared.open(url)
+            }
+        #endif
     }
 
     /// The editor's paste/drop image importer: copies each drop into the
@@ -826,7 +968,9 @@ struct NotesView: View {
                 linkCandidates: model.notes.map(noteTitle),
                 mentionCandidates: indexService.allAssignees(),
                 findSignal: findSignal,
-                importAttachments: importPastedAttachments
+                importAttachments: importPastedAttachments,
+                onSelectionContext: { selectionContext = $0 },
+                onOpenAttachment: { openAttachment($0) }
             )
             .safeAreaInset(edge: .top, spacing: 0) { formatBar }
             .background(

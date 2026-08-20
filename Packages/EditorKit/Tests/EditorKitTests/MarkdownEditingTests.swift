@@ -77,6 +77,27 @@ struct MarkdownEditingTests {
         #expect((text as NSString).substring(with: selection) == "url")
     }
 
+    @Test func linkEditRewritesExistingLink() throws {
+        let text = "See [my link](http://old.com) now"
+        let linkRange = (text as NSString).range(of: "[my link](http://old.com)")
+        let (updated, selection) = try #require(run(
+            .editLink(range: linkRange, text: "new label", url: "http://new.com"),
+            text, NSRange(location: 0, length: 0)
+        ))
+        #expect(updated == "See [new label](http://new.com) now")
+        #expect(selection.length == 0)
+    }
+
+    @Test func linkRemoveUnwrapsToPlainText() throws {
+        let text = "See [my link](http://old.com) now"
+        let linkRange = (text as NSString).range(of: "[my link](http://old.com)")
+        let (updated, selection) = try #require(run(
+            .removeLink(range: linkRange, text: "my link"), text, NSRange(location: 0, length: 0)
+        ))
+        #expect(updated == "See my link now")
+        #expect((updated as NSString).substring(with: selection) == "my link")
+    }
+
     @Test func indentedLinesKeepIndent() throws {
         let (text, _) = try #require(run(.toggleLinePrefix("- [ ] "), "  nested item", NSRange(location: 4, length: 0)))
         #expect(text == "  - [ ] nested item")
