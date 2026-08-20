@@ -23,7 +23,24 @@ packages:
   AIKit: { path: Packages/AIKit }
   SecurityKit: { path: Packages/SecurityKit }
   AppIntentsKit: { path: Packages/AppIntentsKit }
+  MCPKit: { path: Packages/MCPKit }
 targets:
+  # Read-only MCP server Claude Code/Desktop spawn over stdio. macOS only —
+  # iOS can't host a spawnable CLI — and bundled inside Notetaker.app so a
+  # single install gives the user a server to point Claude at.
+  NotetakerMCP:
+    type: tool
+    supportedDestinations: [macOS]
+    sources:
+      - MCPServer
+    dependencies:
+      - package: MCPKit
+    settings:
+      base:
+        PRODUCT_NAME: notetaker-mcp
+        PRODUCT_BUNDLE_IDENTIFIER: com.rchaight.notetaker.mcp
+        ENABLE_HARDENED_RUNTIME: YES
+        SWIFT_VERSION: "6.0"
   NotetakerWidgets:
     type: app-extension
     supportedDestinations: [iOS, macOS]
@@ -57,6 +74,15 @@ targets:
     dependencies:
       - target: NotetakerWidgets
         embed: true
+      # Into Contents/MacOS/, not the frameworks embed — it's an executable
+      # the user (and Claude) launch by path. macOS-only so the iOS build
+      # graph never sees the tool target.
+      - target: NotetakerMCP
+        embed: true
+        codeSign: true
+        destinationFilters: [macOS]
+        copy:
+          destination: executables
       - package: VaultKit
       - package: MarkdownKit
       - package: EditorKit

@@ -40,6 +40,37 @@ public final class IndexDatabase: Sendable {
         return (IndexDatabase(queue: queue), wiped)
     }
 
+    /// Read-only open for OUT-OF-PROCESS readers (the bundled MCP server).
+    /// Deliberately NOT `open(path:)`: that one migrates and wipes on a
+    /// version mismatch, which a second process must never do to the app's
+    /// index. This one opens read-only, waits at most a second on a busy
+    /// database, and throws rather than touching anything it doesn't
+    /// recognise — callers fall back to scanning the vault files.
+    public static func openReadOnly(path: String) throws -> IndexDatabase {
+        var configuration = Configuration()
+        configuration.readonly = true
+        configuration.busyMode = .timeout(1.0)
+        let queue = try DatabaseQueue(path: path, configuration: configuration)
+        let storedVersion = try queue.read { db in
+            try Int.fetchOne(db, sql: "PRAGMA user_version") ?? 0
+        }
+        guard storedVersion == schemaVersion else {
+            throw ReadOnlyOpenError.schemaVersionMismatch(found: storedVersion, expected: schemaVersion)
+        }
+        return IndexDatabase(queue: queue)
+    }
+
+    public enum ReadOnlyOpenError: Error, CustomStringConvertible {
+        case schemaVersionMismatch(found: Int, expected: Int)
+
+        public var description: String {
+            switch self {
+            case let .schemaVersionMismatch(found, expected):
+                "index schema version \(found) does not match \(expected) — open Notetaker to rebuild it"
+            }
+        }
+    }
+
     private init(queue: DatabaseQueue) {
         self.queue = queue
     }
@@ -245,6 +276,50 @@ public extension IndexDatabase {
             }
         }
         return best.sorted { $0.value > $1.value }.prefix(limit).map { ($0.key, $0.value) }
+    }
+
+    /// Like `semanticSearch`, but also returns the chunk that matched — the
+    /// MCP server quotes it as the result snippet, so it must not have to
+    /// reach into GRDB itself.
+    func semanticMatches(query: [Float], limit: Int = 10) throws -> [(noteId: String, score: Float, text: String)] {
+        let rows = try queue.read { db in
+            try Row.fetchAll(db, sql: "SELECT noteId, text, embedding FROM noteChunk")
+        }
+        var best: [String: (score: Float, text: String)] = [:]
+        for row in rows {
+            guard let noteId: String = row["noteId"],
+                  let text: String = row["text"],
+                  let blob: Data = row["embedding"] else { continue }
+            let vector: [Float] = blob.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
+            guard vector.count == query.count else { continue }
+            let score = Self.cosine(vector, query)
+            if score > (best[noteId]?.score ?? -1) {
+                best[noteId] = (score, text)
+            }
+        }
+        return best.sorted { $0.value.score > $1.value.score }
+            .prefix(limit)
+            .map { ($0.key, $0.value.score, $0.value.text) }
+    }
+
+    /// Every indexed note, title order — the read-only server's cheap
+    /// "what's in this vault" answer.
+    func allNotes() throws -> [NoteRecord] {
+        try queue.read { db in
+            try NoteRecord.order(Column("id")).fetchAll(db)
+        }
+    }
+
+    /// Every task in the vault, file order. Filtering happens in the caller;
+    /// a personal vault's task table is small.
+    func allTasks(includingCompleted: Bool) throws -> [TaskRecord] {
+        try queue.read { db in
+            var request = TaskRecord.order(Column("noteId"), Column("line"))
+            if !includingCompleted {
+                request = request.filter(Column("checked") == false)
+            }
+            return try request.fetchAll(db)
+        }
     }
 
     static func cosine(_ a: [Float], _ b: [Float]) -> Float {
