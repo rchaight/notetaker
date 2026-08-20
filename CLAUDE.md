@@ -30,6 +30,7 @@ Packages:
 - `Packages/AIKit` — `AIProvider` protocol: FoundationModels | Ollama | None. Private/on-device by default.
 - `Packages/SecurityKit` — app lock (LocalAuthentication), per-note locking, Keychain.
 - `Packages/AppIntentsKit` — App Intents (Add Task / Create Note) feeding Siri/Shortcuts/widgets.
+- `Packages/MCPKit` + the `notetaker-mcp` target (macOS only) — bundled read-only stdio MCP server (Claude Code/Desktop) over the vault + GRDB index, with scan fallback and locked-note redaction.
 
 Dependencies point downward only (App → packages; packages never import App). Pure packages (MarkdownKit, TaskEngine) must stay I/O-free.
 
@@ -78,6 +79,7 @@ Automatic signing, `DEVELOPMENT_TEAM 6A2NHN89Q8`. Apple Development certs are in
 - **macOS beta toolbar bridge.** Under the custom macOS shell, `.toolbar` / `.navigationTitle` / `.searchable` / `.inspector` on detail panes crash or render as an opaque black strip over content. The working pattern: build the header in-content (plain VStack, opaque window background + Divider, no translucent material, no `safeAreaInset`) and hide the split view's residual toolbar strip. Don't reach for the SwiftUI modifier and hope.
 - **iCloud xattrs vs codesign** — see Build & verify rule 2.
 - **`Notetaker 2/3/4.xcodeproj`** are iCloud sync duplicates that got committed. Ignore them; only `Notetaker.xcodeproj` is real — and it is generated.
+- **`_index.md` files are app-generated.** Written per-folder by `VaultIndexService` as machine-readable tables of contents for AI assistants; treat them as derived output, never edit by hand, and never add them to the notes list, search, or the To-Do index — they're excluded at the `VaultFileStore` enumeration choke point on purpose.
 
 ## Current phase
 

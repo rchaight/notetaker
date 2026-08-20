@@ -2,6 +2,9 @@ import AIKit
 import ConversionKit
 import SecurityKit
 import SwiftUI
+#if os(macOS)
+    import AppKit
+#endif
 
 /// Settings, organized into panes (M9.5 buildout): every persistent knob
 /// in the app is discoverable here, grouped by surface.
@@ -41,6 +44,12 @@ struct SettingsView: View {
     @AppStorage("ollamaModel") private var ollamaModel = ""
     @State private var ollamaModels: [String] = []
     @State private var ollamaProbe: String?
+    // Claude / MCP integration. Key is shared with VaultIndexService, which
+    // owns the actual _index.md / CLAUDE.md generation (M9.8 spec 01).
+    @AppStorage("claudeIndexFiles") private var claudeIndexFiles = true
+    #if os(macOS)
+        @State private var mcpCopyFeedback: String?
+    #endif
 
     var body: some View {
         TabView {
@@ -436,9 +445,93 @@ struct SettingsView: View {
                     }
                 }
             }
+            Section("Claude integration") {
+                Toggle(
+                    "Maintain _index.md tables of contents and a CLAUDE.md guide in the vault for AI assistants",
+                    isOn: $claudeIndexFiles
+                )
+                if !claudeIndexFiles {
+                    Text("Existing files are left in place but no longer updated.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                #if os(macOS)
+                    mcpServerBlock
+                #else
+                    Text("The bundled MCP server is macOS-only; on iOS only the vault context files above apply.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                #endif
+            }
         }
         .formStyle(.grouped)
     }
+
+    #if os(macOS)
+        /// Resolved path to the MCP server bundled as a sibling executable
+        /// (`Contents/MacOS/notetaker-mcp`, embedded by spec 02's copy-files
+        /// build phase — not a framework, so `Bundle.main` alone won't find it).
+        private var mcpBinaryURL: URL {
+            Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/notetaker-mcp")
+        }
+
+        private var mcpInstallCommand: String {
+            "claude mcp add notetaker -- \"\(mcpBinaryURL.path)\""
+        }
+
+        @ViewBuilder
+        private var mcpServerBlock: some View {
+            let binaryExists = FileManager.default.fileExists(atPath: mcpBinaryURL.path)
+            LabeledContent("Bundled server binary") {
+                if binaryExists {
+                    Text(mcpBinaryURL.path)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                } else {
+                    Label("Not found in this build", systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+            }
+            if binaryExists {
+                HStack {
+                    Text(mcpInstallCommand)
+                        .font(.caption.monospaced())
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                    Spacer()
+                    Button("Copy") {
+                        let pasteboard = NSPasteboard.general
+                        pasteboard.clearContents()
+                        pasteboard.setString(mcpInstallCommand, forType: .string)
+                        mcpCopyFeedback = "Copied to clipboard"
+                    }
+                    .controlSize(.small)
+                }
+                if let mcpCopyFeedback {
+                    Text(mcpCopyFeedback)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Text("Rebuild the app with the notetaker-mcp target embedded to enable this.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Text(
+                "Using Claude Desktop instead of Claude Code? Add the path above as a new server in its MCP settings (Settings › Developer)."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            Text(
+                "Read-only access to your vault; works even while Notetaker is closed. Locked notes are never exposed."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+    #endif
 }
 
 #Preview {

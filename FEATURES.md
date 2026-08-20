@@ -186,6 +186,16 @@ Tiered MVP (v0.1) → v1.0 → v2.0+. Each feature is one line.
 
 ---
 
+## 3.5 Claude / MCP integration
+
+Notetaker's vault is a first-class knowledge source for Claude (Claude Code / Claude Desktop), via two complementary layers — no server required for the first, and both honor the One Invariant (everything is derivable from the plain files):
+
+1. **Vault context files (app-maintained, zero moving parts).** When enabled (Settings › AI & Import, on by default), the app writes a machine-generated `_index.md` table of contents into every folder that contains notes, plus a `CLAUDE.md` guide seeded once at the vault root (never overwritten if the user edits it). Any agent pointed at the vault folder — with no MCP server running at all — reads `CLAUDE.md`, follows `_index.md` links, and opens only the notes it needs. `_index.md` files are fully app-owned (regenerated on every relevant change, excluded from the notes list/search/To-Do); `CLAUDE.md` is a normal, indexed, user-editable note.
+2. **`notetaker-mcp` — a bundled, read-only stdio MCP server.** A small executable embedded inside `Notetaker.app` (`Contents/MacOS/notetaker-mcp`) that Claude Code/Desktop launches on demand via `claude mcp add`. It works even while Notetaker itself is closed, since it reads the vault files and index directly — no port, no auth surface, macOS only (the app is unsandboxed on the Developer ID path, so the bundled CLI can reach the iCloud container and index DB unaided). Read-only in v1: tools retrieve (`vault_overview`, `list_folder`, `read_note`, `search` — hybrid FTS5 keyword + semantic/embedding, `tasks`); nothing writes into the vault.
+   - **Index is an accelerator, never a requirement.** The server opens the GRDB index read-only and never migrates it; on any failure (missing, busy, schema mismatch) every index-backed tool falls back to scanning the `.md` files directly, so the server works even against a stale or deleted index.
+   - **Locked notes never leak.** Bodies are already AES-GCM encrypted on disk; the server additionally detects `locked: true` frontmatter and returns title-only (no body, no snippet) for any locked note, and `_index.md` lists them as title + 🔒.
+   - **The app never writes Claude's own configuration.** `~/.claude.json` and Claude Desktop's config can hold secrets and are never touched programmatically; Settings instead shows a copyable `claude mcp add notetaker -- "<path>"` command for the user to run themselves.
+
 ## 4. Explicitly out of scope
 
 Deliberate non-goals. Each protects focus, sustainability, or the core architecture.
