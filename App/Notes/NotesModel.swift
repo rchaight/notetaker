@@ -537,6 +537,40 @@ final class NotesModel {
         return relative.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? relative
     }
 
+    /// Same contract as `attachImage(from:)` above, for raw image data
+    /// (a pasted screenshot, a dropped file the caller already read into
+    /// memory) rather than a source `URL` — writes through a temp file so
+    /// it can reuse the same coordinated `store.copy` path.
+    func attachImage(data: Data, suggestedName: String) async -> String? {
+        guard let root else { return nil }
+        let attachments = root.appendingPathComponent("Attachments", isDirectory: true)
+        try? await store.createFolder(at: attachments)
+        let ext = (suggestedName as NSString).pathExtension.isEmpty
+            ? "png" : (suggestedName as NSString).pathExtension
+        let base = (suggestedName as NSString).deletingPathExtension
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension(ext)
+        do {
+            try data.write(to: tempURL)
+        } catch {
+            return nil
+        }
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let name = VaultNaming.uniqueFileName(
+            base: base.isEmpty ? "image" : base, ext: ext, in: attachments
+        )
+        do {
+            try await store.copy(from: tempURL, to: attachments.appendingPathComponent(name))
+        } catch {
+            return nil
+        }
+        let noteDepth = (selectedID ?? "").split(separator: "/").count - 1
+        let up = String(repeating: "../", count: max(noteDepth, 0))
+        let relative = up + "Attachments/" + name
+        return relative.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? relative
+    }
+
     /// Editable in Settings; {{date}}/{{time}} expand via TemplateExpansion,
     /// {{weekday}} and {{meetings}} here.
     static let defaultDailyTemplate = """

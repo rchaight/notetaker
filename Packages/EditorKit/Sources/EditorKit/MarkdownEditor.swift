@@ -42,6 +42,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
         var linkCandidates: [String]
         var mentionCandidates: [String]
         var findSignal: Int
+        var importAttachments: (([AttachmentDrop]) async -> [String])?
 
         public init(
             text: Binding<String>,
@@ -54,7 +55,8 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             tagCandidates: [String] = [],
             linkCandidates: [String] = [],
             mentionCandidates: [String] = [],
-            findSignal: Int = 0
+            findSignal: Int = 0,
+            importAttachments: (([AttachmentDrop]) async -> [String])? = nil
         ) {
             _text = text
             _scrollTarget = scrollTarget
@@ -67,6 +69,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             self.linkCandidates = linkCandidates
             self.mentionCandidates = mentionCandidates
             self.findSignal = findSignal
+            self.importAttachments = importAttachments
         }
 
         /// One cached editor per process: tab switches tear the SwiftUI
@@ -93,7 +96,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
         public func makeNSView(context: Context) -> NSScrollView {
             if let cached = SharedEditorCache.scrollView,
                cached.superview == nil, cached.window == nil,
-               let textView = cached.documentView as? NSTextView,
+               let textView = cached.documentView as? MarkdownTextView,
                context.coordinator === SharedEditorCache.coordinator {
                 context.coordinator.livePreview = livePreview
                 context.coordinator.focusMode = focusMode
@@ -101,14 +104,29 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                 context.coordinator.tagCandidates = tagCandidates
                 context.coordinator.linkCandidates = linkCandidates
                 context.coordinator.mentionCandidates = mentionCandidates
+                textView.importAttachments = importAttachments
                 if textView.string != text {
                     textView.string = text
                     context.coordinator.restyle(textView)
                 }
                 return cached
             }
-            let scrollView = NSTextView.scrollableTextView()
-            let textView = scrollView.documentView as! NSTextView
+            // Build via the stock factory for its default configuration
+            // (scrollers, TextKit 2 container/layout-manager stack), then
+            // swap in our subclass on the same container — paste/drop
+            // ownership needs to live on the text view AppKit actually
+            // dispatches to.
+            let stockScrollView = NSTextView.scrollableTextView()
+            guard let stockTextView = stockScrollView.documentView as? NSTextView,
+                  let container = stockTextView.textContainer
+            else {
+                fatalError("NSTextView.scrollableTextView() didn't produce a text container")
+            }
+            let textView = MarkdownTextView(frame: stockTextView.frame, textContainer: container)
+            textView.autoresizingMask = stockTextView.autoresizingMask
+            stockScrollView.documentView = textView
+            let scrollView = stockScrollView
+            textView.importAttachments = importAttachments
             textView.delegate = context.coordinator
             textView.allowsUndo = true
             textView.isRichText = false
@@ -168,6 +186,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
 
         public func updateNSView(_ scrollView: NSScrollView, context: Context) {
             guard let textView = scrollView.documentView as? NSTextView else { return }
+            (textView as? MarkdownTextView)?.importAttachments = importAttachments
             let modeChanged = context.coordinator.livePreview != livePreview
                 || context.coordinator.focusMode != focusMode
                 || context.coordinator.theme.baseFontSize != theme.baseFontSize
@@ -828,6 +847,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
         var linkCandidates: [String]
         var mentionCandidates: [String]
         var findSignal: Int
+        var importAttachments: (([AttachmentDrop]) async -> [String])?
 
         public init(
             text: Binding<String>,
@@ -840,7 +860,8 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             tagCandidates: [String] = [],
             linkCandidates: [String] = [],
             mentionCandidates: [String] = [],
-            findSignal: Int = 0
+            findSignal: Int = 0,
+            importAttachments: (([AttachmentDrop]) async -> [String])? = nil
         ) {
             _text = text
             _scrollTarget = scrollTarget
@@ -853,6 +874,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             self.linkCandidates = linkCandidates
             self.mentionCandidates = mentionCandidates
             self.findSignal = findSignal
+            self.importAttachments = importAttachments
         }
 
         public func makeCoordinator() -> Coordinator {
@@ -861,7 +883,8 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
 
         public func makeUIView(context: Context) -> UITextView {
             // usingTextLayoutManager: TextKit 2 storage/layout.
-            let textView = UITextView(usingTextLayoutManager: true)
+            let textView = MarkdownUITextView(usingTextLayoutManager: true)
+            textView.importAttachments = importAttachments
             textView.delegate = context.coordinator
             textView.autocorrectionType = .default
             textView.smartQuotesType = .no
@@ -896,6 +919,7 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
         }
 
         public func updateUIView(_ textView: UITextView, context: Context) {
+            (textView as? MarkdownUITextView)?.importAttachments = importAttachments
             if findSignal != context.coordinator.lastFindSignal {
                 context.coordinator.lastFindSignal = findSignal
                 textView.findInteraction?.presentFindNavigator(showingReplace: false)

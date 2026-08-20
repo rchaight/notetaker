@@ -732,6 +732,27 @@ struct NotesView: View {
         .help(help)
     }
 
+    /// The editor's paste/drop image importer: copies each drop into the
+    /// vault's Attachments/ folder via NotesModel and returns markdown-ready
+    /// paths, index-aligned with `drops` (empty string = that one failed —
+    /// see RichPaste.AttachmentDrop's doc comment).
+    private func importPastedAttachments(_ drops: [AttachmentDrop]) async -> [String] {
+        var paths: [String] = []
+        for drop in drops {
+            let path: String? = switch drop.source {
+            case let .fileURL(url):
+                await model.attachImage(from: url)
+            case let .data(data):
+                await model.attachImage(data: data, suggestedName: drop.suggestedName)
+            }
+            paths.append(path ?? "")
+        }
+        if paths.allSatisfy(\.isEmpty) {
+            importStatus = "Image attach failed"
+        }
+        return paths
+    }
+
     private var tabStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 4) {
@@ -804,7 +825,8 @@ struct NotesView: View {
                 tagCandidates: allTags.map(\.tag),
                 linkCandidates: model.notes.map(noteTitle),
                 mentionCandidates: indexService.allAssignees(),
-                findSignal: findSignal
+                findSignal: findSignal,
+                importAttachments: importPastedAttachments
             )
             .safeAreaInset(edge: .top, spacing: 0) { formatBar }
             .background(
