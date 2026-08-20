@@ -19,4 +19,4 @@ Native macOS + iOS markdown notes, todos, and project management — plain `.md`
 
 ## Status
 
-Pre-alpha: M0 (repo bootstrap) in progress. See [PROGRESS.md](PROGRESS.md).
+Alpha, in daily use. Milestones M1–M9.7 are built — vault + editor, todo engine, projects/Gantt, import pipeline, on-device AI, app lock, App Intents, widgets, and meeting/daily notes. Current phase is **M9.9 ongoing shakedown**: the app is driven day-to-day and reported issues jump the queue. M10 (release/distribution) is deferred pending an explicit go. See [PROGRESS.md](PROGRESS.md).

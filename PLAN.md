@@ -1,6 +1,6 @@
 # Notetaker — Implementation Plan (PLAN.md)
 
-> Native macOS 27 + iOS 27 universal SwiftUI app. Markdown-first notes stored as real `.md` files in iCloud, with an inline-todo → master-task engine, an import/conversion pipeline reusing File-Parser/Docling, a private-by-default AI layer, and a project/Gantt view on top. This document is the build order for a solo developer working with Claude Code. Today: 2026-07-10. Repo: `rchaight/notetaker` (empty).
+> Native macOS 26+/iOS 26+ universal SwiftUI app, built with the Xcode 27 beta SDKs. Markdown-first notes stored as real `.md` files in iCloud, with an inline-todo → master-task engine, an import/conversion pipeline reusing File-Parser/Docling, a private-by-default AI layer, and a project/Gantt view on top. This document is the build order for a solo developer working with Claude Code. Today: 2026-07-10. Repo: `rchaight/notetaker` (empty).
 
 ---
 
@@ -10,18 +10,18 @@ The order of the sections below matters: storage is decided first because it is 
 
 ### 1.1 Chosen architecture (one-paragraph summary)
 
-One universal SwiftUI **app target** for macOS 27 + iOS 27 (NavigationSplitView shell — NOT `DocumentGroup`), plus a **macOS-only XPC helper target** that hosts the Python/Docling conversion engine, plus a set of **local Swift packages** for the reusable subsystems. Notes are plain CommonMark/GFM **`.md` files** living in the app's **iCloud Drive ubiquity container under `Documents/`** (made user-visible in Files.app/Finder via the `NSUbiquitousContainers` Info.plist key) — the single source of truth. A **local, disposable GRDB + FTS5 index** derives todos, tags, backlinks, projects and Gantt schedule from those files and is fully rebuildable by re-scanning the vault. All AI runs through a **provider protocol** (Apple Foundation Models → Ollama → deterministic None), on-device by default.
+One universal SwiftUI **app target** for macOS 26+/iOS 26+ (NavigationSplitView shell — NOT `DocumentGroup`), plus a **macOS-only XPC helper target** that hosts the Python/Docling conversion engine, plus a set of **local Swift packages** for the reusable subsystems. Notes are plain CommonMark/GFM **`.md` files** living in the app's **iCloud Drive ubiquity container under `Documents/`** (made user-visible in Files.app/Finder via the `NSUbiquitousContainers` Info.plist key) — the single source of truth. A **local, disposable GRDB + FTS5 index** derives todos, tags, backlinks, projects and Gantt schedule from those files and is fully rebuildable by re-scanning the vault. All AI runs through a **provider protocol** (Apple Foundation Models → Ollama → deterministic None), on-device by default.
 
 ### 1.2 App targets & platforms
 
 | Target | Type | Platforms | Purpose |
 |---|---|---|---|
-| `Notetaker` | App | macOS 27, iOS 27, iPadOS 27 (visionOS via iPad compat, no native work) | The universal SwiftUI app shell + all UI. |
+| `Notetaker` | App | macOS 26+, iOS 26+, iPadOS 26+ (visionOS via iPad compat, no native work) | The universal SwiftUI app shell + all UI. |
 | `NotetakerShareExtension` | App Extension | macOS, iOS | Share sheet → new/append note or import inbox. |
 | `NotetakerWidgets` | WidgetKit ext | macOS, iOS | Today's Tasks, Quick Note, Control Center control (later milestones). |
 | `ConversionHelper` | XPC service (bundled) | **macOS only** | Sandboxed, network-denied host for the Docling/Python engine (import safety). |
 
-Single app target with `#if os(macOS)` / `#if os(iOS)` conditionals; no separate Mac/iOS codebases. Deployment targets: macOS 27.0, iOS/iPadOS 27.0 (Foundation Models, SpeechAnalyzer, Vision `RecognizeDocumentsRequest`, Liquid Glass, App Intents 2.0 all require the 26/27 baseline — do not attempt to support older OSes).
+Single app target with `#if os(macOS)` / `#if os(iOS)` conditionals; no separate Mac/iOS codebases. Deployment targets: macOS 26.0, iOS/iPadOS 26.0, built with the macOS 27 / iOS 27 SDKs — raise the floor to 27.0 only when a 27-only API is required (Foundation Models, SpeechAnalyzer, Vision `RecognizeDocumentsRequest`, Liquid Glass, App Intents 2.0 all require the 26/27 baseline — do not attempt to support older OSes).
 
 ### 1.3 Storage design — `.md` in iCloud + derived index, kept consistent
 

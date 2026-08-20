@@ -8,12 +8,23 @@ Native macOS 26+/iOS 26+ universal SwiftUI app: markdown notes + inline todos + 
 
 ## Architecture / module boundaries
 
-- `App/` — app target: shell (adaptive TabView + NavigationSplitView), scenes, composition root. No business logic.
+App target:
+
+- `App/` — shell, feature surfaces, and the wiring that composes packages. Domain logic belongs in a package; what lives here should be UI or glue.
+  - `Shell/` — `AppShell` (adaptive TabView + NavigationSplitView), command palette, global hotkey, menu-bar quick add, Settings.
+  - `Notes/`, `Todo/` (incl. Meetings), `Projects/` — the feature surfaces.
+  - `Services/` — app-level services: `VaultIndexService`, `VaultRegistry`, `CalendarService` (EventKit), headless vault writer, task/tag extras stores.
+  - `Intents/`, `Debug/`.
+- `Shared/` — app-group constants shared with the widget extension.
+- `Widgets/` — `NotetakerWidgets` WidgetKit extension (Today's Tasks).
+
+Packages:
+
 - `Packages/VaultKit` — iCloud Drive file layer: NSFileCoordinator/NSFilePresenter, NSMetadataQuery observation, conflict detection. Owns ALL file I/O.
-- `Packages/MarkdownKit` — swift-markdown parsing/AST, frontmatter, todo/tag/wikilink extraction. Pure; no I/O.
-- `Packages/EditorKit` — TextKit 2 live-preview editor (NS/UIViewRepresentable), Liquid Glass chrome.
+- `Packages/MarkdownKit` — swift-markdown parsing/AST, frontmatter, todo/tag/wikilink extraction, style ranges. Pure; no I/O.
+- `Packages/EditorKit` — TextKit 2 live-preview editor (NS/UIViewRepresentable), Liquid Glass chrome, heading folding.
 - `Packages/IndexKit` — GRDB derived index + FTS5. Rebuildable; schema-version guard drops + rescans.
-- `Packages/TaskEngine` — dates, priorities, recurrence (ONE engine for every surface), filters. Pure; no I/O.
+- `Packages/TaskEngine` — dates, priorities, recurrence, token parsing (ONE engine for every surface), filters. Pure; no I/O.
 - `Packages/ProjectKit` — projects/Gantt/dependencies as views over TaskEngine + IndexKit data.
 - `Packages/ConversionKit` — import pipeline (Vision/Speech native paths; Docling via File-Parser on macOS).
 - `Packages/AIKit` — `AIProvider` protocol: FoundationModels | Ollama | None. Private/on-device by default.
@@ -21,6 +32,27 @@ Native macOS 26+/iOS 26+ universal SwiftUI app: markdown notes + inline todos + 
 - `Packages/AppIntentsKit` — App Intents (Add Task / Create Note) feeding Siri/Shortcuts/widgets.
 
 Dependencies point downward only (App → packages; packages never import App). Pure packages (MarkdownKit, TaskEngine) must stay I/O-free.
+
+## Task syntax — the domain vocabulary
+
+`TaskEngine/TaskTokenParser.swift` is the ONE parser for inline task tokens. Every surface (editor, quick add, master list, widgets, intents) goes through it — never re-regex tokens locally.
+
+```
+- [ ] text >friday !p1 #tag @person ?discuss &every 2 weeks ^id blockedby:^other ✅2026-07-14
+```
+
+| token | meaning |
+|---|---|
+| `>date` | due date; `>today` / `>tomorrow` / `>friday` NL shortcuts |
+| `!p1`…`!p4` | priority, 1 highest |
+| `#tag` | label — stays in `cleanText`, it reads as content |
+| `@person` | assignee / audience; the Meetings surface groups by this |
+| `?kind` | **closed vocabulary**: `discuss waiting next someday followup` |
+| `&every …` / `&after …` | recurrence rule |
+| `^id`, `blockedby:^id` / `depends:^id` | block id + dependencies |
+| `✅yyyy-mm-dd` | completed day (Logbook) |
+
+Adding a `?kind` means touching parser, rewriter, style ranges, chips, autocomplete pool, and tests together — the vocabulary is duplicated across those regexes by design, so change them in one pass.
 
 ## Build & verify
 
@@ -37,10 +69,20 @@ Two hard environment rules:
 - **Full verify gate (run before every commit): `scripts/verify.sh 3 --install`** — all package tests ×3, both builds, launch check. Cross-module flows belong in IndexKit's PipelineIntegrationTests.
 - Deployment floor is 26.0 (runs on 26 and 27, built with the 27 SDK). Raise to 27.0 only when a 27-only API is required — check CI runner Xcode availability first.
 
-## Current signing state
+## Signing & entitlements
 
-Ad-hoc (`CODE_SIGN_IDENTITY: "-"`, team 6A2NHN89Q8). No Apple Development cert on this machine yet — the user must sign into Xcode before the iCloud container entitlement (M1) can be enabled. Developer ID cert exists for eventual .dmg distribution (M10).
+Automatic signing, `DEVELOPMENT_TEAM 6A2NHN89Q8`. Apple Development certs are installed on this machine and the iCloud container `iCloud.com.rchaight.notetaker` (CloudDocuments + CloudKit) is enabled in both app entitlement files — M1's old ad-hoc/no-cert blocker is gone. A Developer ID Application cert exists for eventual .dmg distribution (M10, deferred).
+
+## Known traps
+
+- **macOS beta toolbar bridge.** Under the custom macOS shell, `.toolbar` / `.navigationTitle` / `.searchable` / `.inspector` on detail panes crash or render as an opaque black strip over content. The working pattern: build the header in-content (plain VStack, opaque window background + Divider, no translucent material, no `safeAreaInset`) and hide the split view's residual toolbar strip. Don't reach for the SwiftUI modifier and hope.
+- **iCloud xattrs vs codesign** — see Build & verify rule 2.
+- **`Notetaker 2/3/4.xcodeproj`** are iCloud sync duplicates that got committed. Ignore them; only `Notetaker.xcodeproj` is real — and it is generated.
+
+## Current phase
+
+M1–M9.7 are built. **M10 (release) is deferred by user decision** — the project is in the **M9.9 ongoing shakedown** phase: the user drives it from day-to-day use, and their bug reports and requests jump the queue. Pick up PLAN.md milestone steps only when nothing is reported and the user asks for plan work; release work waits for an explicit go.
 
 ## Build-loop conventions
 
-One PLAN.md checkbox step per pass: implement → verify (build/test/launch, not just compile) → one commit containing the code AND the checked box AND a PROGRESS.md pass-log row. Break at milestone boundaries for user review. Commit messages start with `M<n>.<step>:`.
+One step per pass: implement → verify (build/test/launch, not just compile) → one commit containing the code AND a PROGRESS.md pass-log row (plus the checked PLAN.md box, for plan steps). Break at milestone boundaries for user review. Plan-step commits start with `M<n>.<step>:`; shakedown work uses a descriptive prefix (`Editor:`, `Meetings:`, `FIX:`).

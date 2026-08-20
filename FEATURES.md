@@ -1,6 +1,6 @@
 # Notetaker — Feature Outline (FEATURES.md)
 
-> Native macOS 27 + iOS 27 universal SwiftUI app. Markdown-first notes stored as real `.md` files in iCloud, with an inline-todo → master-task engine and a project/Gantt layer on top. This document drives the implementation plan.
+> Native macOS 26+/iOS 26+ universal SwiftUI app, built with the Xcode 27 beta SDKs. Markdown-first notes stored as real `.md` files in iCloud, with an inline-todo → master-task engine and a project/Gantt layer on top. This document drives the implementation plan.
 
 ---
 
