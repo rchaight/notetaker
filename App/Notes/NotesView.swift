@@ -82,73 +82,6 @@ struct NotesView: View {
             sidebar
                 .navigationSplitViewColumnWidth(min: 200, ideal: 260, max: 420)
                 .navigationTitle("Notes")
-                .toolbar {
-                    ToolbarItemGroup(placement: .primaryAction) {
-                        Button("New Note", systemImage: "square.and.pencil") {
-                            model.createNote()
-                        }
-                        .keyboardShortcut("n", modifiers: [.command])
-                        Button("New Folder", systemImage: "folder.badge.plus") {
-                            newFolderParent = ""
-                            showingNewFolder = true
-                        }
-                        if !model.templates.isEmpty {
-                            Menu {
-                                ForEach(model.templates) { template in
-                                    Button(noteTitle(template)) {
-                                        model.createNote(fromTemplate: template)
-                                    }
-                                }
-                            } label: {
-                                Label("New from Template", systemImage: "doc.badge.plus")
-                            }
-                            .help("New note from a Templates/ file ({{title}}, {{date}}, {{time}})")
-                        }
-                        Button("Today", systemImage: "calendar") {
-                            model.openDailyNote()
-                        }
-                        .keyboardShortcut("d", modifiers: [.command, .shift])
-                        .help("Open today's daily note (⇧⌘D)")
-                        #if os(macOS)
-                            Menu {
-                                Button {
-                                    activeVault = VaultRegistry.iCloudId
-                                } label: {
-                                    if activeVault == VaultRegistry.iCloudId {
-                                        Label("iCloud Vault", systemImage: "checkmark")
-                                    } else {
-                                        Text("iCloud Vault")
-                                    }
-                                }
-                                ForEach(VaultRegistry.entries) { entry in
-                                    Button {
-                                        activeVault = entry.id
-                                    } label: {
-                                        if activeVault == entry.id {
-                                            Label(entry.name, systemImage: "checkmark")
-                                        } else {
-                                            Text(entry.name)
-                                        }
-                                    }
-                                }
-                                Divider()
-                                Button("Add Folder Vault…", systemImage: "folder.badge.plus") {
-                                    showingVaultPicker = true
-                                }
-                            } label: {
-                                Label("Vault", systemImage: "externaldrive")
-                            }
-                            .help("Switch between vaults or add a folder vault")
-                            .fileImporter(
-                                isPresented: $showingVaultPicker, allowedContentTypes: [.folder]
-                            ) { outcome in
-                                guard case let .success(url) = outcome,
-                                      let entry = VaultRegistry.add(url: url) else { return }
-                                activeVault = entry.id
-                            }
-                        #endif
-                    }
-                }
                 .fileImporter(
                     isPresented: $showingImporter,
                     allowedContentTypes: [
@@ -292,6 +225,8 @@ struct NotesView: View {
             actionIcon("square.and.pencil", "New note (⌘N)") {
                 model.createNote()
             }
+            .keyboardShortcut("n", modifiers: [.command])
+            sidebarMoreMenu
             actionIcon("square.and.arrow.down", "Import a document (convert to markdown)") {
                 showingImporter = true
             }
@@ -331,6 +266,85 @@ struct NotesView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
+    }
+
+    /// New Folder / templates / daily note / vault switching. These lived
+    /// in the sidebar's `.toolbar`; the window toolbar is hidden on macOS
+    /// (its strip drew over the editor's format bar — user report), so
+    /// everything it carried lives in-content now.
+    private var sidebarMoreMenu: some View {
+        Menu {
+            Button("New Folder…", systemImage: "folder.badge.plus") {
+                newFolderParent = ""
+                showingNewFolder = true
+            }
+            if !model.templates.isEmpty {
+                Menu("New from Template") {
+                    ForEach(model.templates) { template in
+                        Button(noteTitle(template)) {
+                            model.createNote(fromTemplate: template)
+                        }
+                    }
+                }
+            }
+            Button("Today's Daily Note (⇧⌘D)", systemImage: "calendar") {
+                model.openDailyNote()
+            }
+            #if os(macOS)
+                Divider()
+                Menu("Vault") {
+                    Button {
+                        activeVault = VaultRegistry.iCloudId
+                    } label: {
+                        if activeVault == VaultRegistry.iCloudId {
+                            Label("iCloud Vault", systemImage: "checkmark")
+                        } else {
+                            Text("iCloud Vault")
+                        }
+                    }
+                    ForEach(VaultRegistry.entries) { entry in
+                        Button {
+                            activeVault = entry.id
+                        } label: {
+                            if activeVault == entry.id {
+                                Label(entry.name, systemImage: "checkmark")
+                            } else {
+                                Text(entry.name)
+                            }
+                        }
+                    }
+                    Divider()
+                    Button("Add Folder Vault…", systemImage: "folder.badge.plus") {
+                        showingVaultPicker = true
+                    }
+                }
+            #endif
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
+        }
+        .menuIndicator(.hidden)
+        .buttonStyle(.plain)
+        .help("New folder, templates, daily note, vaults")
+        // The shortcut rides a hidden button, not the menu item: menu-item
+        // key equivalents only register while the menu's host is mounted.
+        .background(
+            Button("") { model.openDailyNote() }
+                .keyboardShortcut("d", modifiers: [.command, .shift])
+                .hidden()
+        )
+        #if os(macOS)
+        .fileImporter(
+            isPresented: $showingVaultPicker, allowedContentTypes: [.folder]
+        ) { outcome in
+            guard case let .success(url) = outcome,
+                  let entry = VaultRegistry.add(url: url) else { return }
+            activeVault = entry.id
+        }
+        #endif
     }
 
     private func actionIcon(
@@ -631,6 +645,104 @@ struct NotesView: View {
     }
 
     /// WYSIWYG affordances over plain markdown: every button writes syntax.
+    /// One opaque in-content row above the editor: scrolling formatting
+    /// controls on the left, fixed note actions on the right. Nothing here
+    /// may use `.safeAreaInset` or a window toolbar — both let editor text
+    /// slide underneath a translucent strip on the beta (user report ×3).
+    private var editorHeader: some View {
+        HStack(spacing: 0) {
+            formatBar
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Divider().frame(height: 18)
+            noteActionBar
+        }
+        .background(Color.headerBackground)
+    }
+
+    /// Note-level actions, formerly the detail pane's `.toolbar` items.
+    private var noteActionBar: some View {
+        HStack(spacing: 4) {
+            if let day = model.openDailyNoteDate {
+                actionIcon("chevron.backward", "Previous day") {
+                    model.openDailyNote(
+                        for: Calendar.current.date(byAdding: .day, value: -1, to: day) ?? day
+                    )
+                }
+                actionIcon("chevron.forward", "Next day") {
+                    model.openDailyNote(
+                        for: Calendar.current.date(byAdding: .day, value: 1, to: day) ?? day
+                    )
+                }
+            }
+            Menu {
+                Button("Summarize Note", systemImage: "text.append") {
+                    runAI(summarize: true)
+                }
+                Button("Extract Action Items", systemImage: "checklist") {
+                    runAI(summarize: false)
+                }
+                if let aiStatus {
+                    Divider()
+                    Text(aiStatus)
+                }
+            } label: {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .menuIndicator(.hidden)
+            .buttonStyle(.plain)
+            .disabled(aiStatus?.hasSuffix("…") == true)
+            .help("Summarize the note or extract its action items")
+            if model.selectedID != nil, !model.lockedPlaceholder {
+                actionIcon(
+                    model.selectedIsLockable ? "lock.open" : "lock",
+                    model.selectedIsLockable
+                        ? "Decrypt this note back to plain markdown"
+                        : "Encrypt this note with a passphrase (unrecoverable if forgotten)"
+                ) {
+                    if model.selectedIsLockable {
+                        Task { await model.removeLockFromSelected() }
+                    } else {
+                        lockPassphrase = ""
+                        lockConfirm = ""
+                        lockError = nil
+                        showingLockSheet = true
+                    }
+                }
+            }
+            if let id = model.selectedID {
+                let isProject = indexService.isProject(id)
+                actionIcon(
+                    "calendar.day.timeline.left",
+                    isProject
+                        ? "This note is a project — click to remove the project flag"
+                        : "Turn this note into a project (adds project: true frontmatter)"
+                ) {
+                    Task {
+                        await indexService.setNoteFlag(id, key: "project", value: !isProject)
+                    }
+                }
+            }
+            actionIcon("point.3.connected.trianglepath.dotted", "Link graph of your vault") {
+                showingGraph = true
+            }
+            actionIcon(
+                focusMode ? "circle.circle.fill" : "circle.circle",
+                focusMode ? "Focus mode on — dims other paragraphs" : "Focus mode"
+            ) {
+                focusMode.toggle()
+            }
+            actionIcon("sidebar.right", "Outline, backlinks & mentions (⌥⌘0)") {
+                showInspector.toggle()
+            }
+            .keyboardShortcut("0", modifiers: [.command, .option])
+        }
+        .padding(.trailing, 8)
+    }
+
     private var formatBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 2) {
@@ -972,8 +1084,7 @@ struct NotesView: View {
             // bar (user-reported — same beta family as the Meetings header;
             // this is that view's proven layout).
             VStack(spacing: 0) {
-                formatBar
-                    .background(Color.headerBackground)
+                editorHeader
                 Divider()
                 MarkdownEditor(
                     text: Binding(
@@ -1013,85 +1124,17 @@ struct NotesView: View {
                     .glassEffect(.regular, in: .capsule)
                     .padding(12)
             }
-            .toolbar {
-                ToolbarItemGroup(placement: .primaryAction) {
-                    Menu {
-                        Button("Summarize Note", systemImage: "text.append") {
-                            runAI(summarize: true)
-                        }
-                        Button("Extract Action Items", systemImage: "checklist") {
-                            runAI(summarize: false)
-                        }
-                        if let aiStatus {
-                            Divider()
-                            Text(aiStatus)
-                        }
-                    } label: {
-                        Label("AI", systemImage: "sparkles")
-                    }
-                    .disabled(aiStatus?.hasSuffix("…") == true)
-                    if model.selectedID != nil, !model.lockedPlaceholder {
-                        Button(
-                            model.selectedIsLockable ? "Remove Lock" : "Lock Note…",
-                            systemImage: model.selectedIsLockable ? "lock.open" : "lock"
-                        ) {
-                            if model.selectedIsLockable {
-                                Task { await model.removeLockFromSelected() }
-                            } else {
-                                lockPassphrase = ""
-                                lockConfirm = ""
-                                lockError = nil
-                                showingLockSheet = true
-                            }
-                        }
-                        .help(model.selectedIsLockable
-                            ? "Decrypt this note back to plain markdown"
-                            : "Encrypt this note with a passphrase (unrecoverable if forgotten)")
-                    }
-                    if let id = model.selectedID {
-                        let isProject = indexService.isProject(id)
-                        Button(
-                            isProject ? "Remove from Projects" : "Make Project",
-                            systemImage: isProject ? "calendar.day.timeline.left" : "calendar.day.timeline.left"
-                        ) {
-                            Task {
-                                await indexService.setNoteFlag(id, key: "project", value: !isProject)
-                            }
-                        }
-                        .help(isProject
-                            ? "This note is a project — click to remove the project flag"
-                            : "Turn this note into a project (adds project: true frontmatter)")
-                    }
-                    Button("Graph", systemImage: "point.3.connected.trianglepath.dotted") {
-                        showingGraph = true
-                    }
-                    .help("Link graph of your vault")
-                    Button("Info", systemImage: "sidebar.right") {
-                        showInspector.toggle()
-                    }
-                    .keyboardShortcut("0", modifiers: [.command, .option])
-                    .help("Outline, backlinks & mentions (⌥⌘0)")
-                    if let day = model.openDailyNoteDate {
-                        Button("Previous Day", systemImage: "chevron.backward") {
-                            model.openDailyNote(
-                                for: Calendar.current.date(byAdding: .day, value: -1, to: day) ?? day
-                            )
-                        }
-                        Button("Next Day", systemImage: "chevron.forward") {
-                            model.openDailyNote(
-                                for: Calendar.current.date(byAdding: .day, value: 1, to: day) ?? day
-                            )
-                        }
-                    }
-                    Button("Focus", systemImage: focusMode ? "circle.circle.fill" : "circle.circle") {
-                        focusMode.toggle()
-                    }
-                    .help(focusMode ? "Focus mode on — dims other paragraphs" : "Focus mode")
-                }
-            }
+            // The detail pane's .toolbar/.navigationTitle render as a
+            // translucent strip OVER the top of the content under the beta
+            // toolbar bridge (user report ×3: Meetings twice, the editor's
+            // format bar once). Every note action lives in `editorHeader`
+            // instead, and the residual strip is hidden outright — the
+            // same cure MeetingsView already runs.
+            #if os(macOS)
+            .toolbar(.hidden, for: .windowToolbar)
+            #else
             .navigationTitle(selectedTitle)
-            #if os(iOS)
-                .navigationBarTitleDisplayMode(.inline)
+            .navigationBarTitleDisplayMode(.inline)
             #endif
         }
     }
