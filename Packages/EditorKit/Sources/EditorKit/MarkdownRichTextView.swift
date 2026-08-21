@@ -31,6 +31,33 @@ import UniformTypeIdentifiers
             fatalError("init(coder:) is not used by MarkdownEditor")
         }
 
+        /// The TextKit 2 stack this view was built on. The view's public
+        /// accessors reach it through weak links (container →
+        /// layoutManager → contentManager), so the factory parks a strong
+        /// reference here to keep the storage alive.
+        private var ownedContentStorage: NSTextContentStorage?
+
+        /// TextKit 2 construction. NSTextView's `usingTextLayoutManager`
+        /// convenience initializer is not inherited by subclasses, so this
+        /// builds the same stack that initializer does — fresh storage →
+        /// layout manager → container — and adopts the container before it
+        /// ever belongs to another view. (Adopting a container swapped off
+        /// an existing view leaves that view as the render target: notes
+        /// opened blank.)
+        public static func makeTextKit2() -> MarkdownTextView {
+            let contentStorage = NSTextContentStorage()
+            let layoutManager = NSTextLayoutManager()
+            contentStorage.addTextLayoutManager(layoutManager)
+            contentStorage.primaryTextLayoutManager = layoutManager
+            let container = NSTextContainer(
+                size: NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+            )
+            layoutManager.textContainer = container
+            let view = MarkdownTextView(frame: .zero, textContainer: container)
+            view.ownedContentStorage = contentStorage
+            return view
+        }
+
         // MARK: - Paste decision ladder
 
         override public func paste(_ sender: Any?) {

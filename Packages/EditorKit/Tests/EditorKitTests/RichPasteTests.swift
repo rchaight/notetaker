@@ -7,6 +7,11 @@
 import Foundation
 import Testing
 
+/// @MainActor like every AppKit-touching suite here: the fixtures carry
+/// NSFont attribute values, and enumerating them on Swift Testing's
+/// cooperative threads segfaulted intermittently (production always runs
+/// the converter on the main thread — the paste path).
+@MainActor
 struct RichPasteTests {
     // MARK: - Fixture builders
 
@@ -187,3 +192,30 @@ private func + (lhs: NSAttributedString, rhs: NSAttributedString) -> NSAttribute
     result.append(rhs)
     return result
 }
+
+#if canImport(AppKit)
+    /// Regression for the blank-note bug: the factory-then-swap
+    /// construction left the layout manager rendering into a detached
+    /// stock view. These assert the factory's stack is wired to THIS view
+    /// end to end — storage sync AND layout production.
+    @MainActor
+    struct MarkdownTextViewFactoryTests {
+        @Test func factoryBuildsARenderableTextKit2Stack() throws {
+            let view = MarkdownTextView.makeTextKit2()
+            let layoutManager = try #require(view.textLayoutManager)
+            let contentStorage = try #require(view.textContentStorage)
+            view.string = "# Hello\n\nWorld"
+            #expect(contentStorage.textStorage?.string == "# Hello\n\nWorld")
+            layoutManager.ensureLayout(for: layoutManager.documentRange)
+            var fragments = 0
+            layoutManager.enumerateTextLayoutFragments(
+                from: layoutManager.documentRange.location
+            ) { _ in
+                fragments += 1
+                return true
+            }
+            #expect(fragments > 0)
+            #expect(layoutManager.textContainer === view.textContainer)
+        }
+    }
+#endif

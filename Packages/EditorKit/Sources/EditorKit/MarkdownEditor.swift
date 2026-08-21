@@ -121,21 +121,21 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                 }
                 return cached
             }
-            // Build via the stock factory for its default configuration
-            // (scrollers, TextKit 2 container/layout-manager stack), then
-            // swap in our subclass on the same container — paste/drop
-            // ownership needs to live on the text view AppKit actually
-            // dispatches to.
-            let stockScrollView = NSTextView.scrollableTextView()
-            guard let stockTextView = stockScrollView.documentView as? NSTextView,
-                  let container = stockTextView.textContainer
-            else {
-                fatalError("NSTextView.scrollableTextView() didn't produce a text container")
-            }
-            let textView = MarkdownTextView(frame: stockTextView.frame, textContainer: container)
-            textView.autoresizingMask = stockTextView.autoresizingMask
-            stockScrollView.documentView = textView
-            let scrollView = stockScrollView
+            // Construct the subclass on its own fresh TextKit 2 stack. The
+            // earlier factory-then-swap approach reattached the stock
+            // view's text container to a new view, but the layout manager
+            // kept rendering into the detached original — notes opened
+            // blank (user-reported).
+            let textView = MarkdownTextView.makeTextKit2()
+            textView.minSize = .zero
+            textView.maxSize = NSSize(
+                width: CGFloat.greatestFiniteMagnitude,
+                height: CGFloat.greatestFiniteMagnitude
+            )
+            textView.isVerticallyResizable = true
+            let scrollView = NSScrollView()
+            scrollView.hasVerticalScroller = true
+            scrollView.documentView = textView
             textView.importAttachments = importAttachments
             textView.delegate = context.coordinator
             textView.allowsUndo = true

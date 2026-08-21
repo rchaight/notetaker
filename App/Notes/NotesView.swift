@@ -967,30 +967,38 @@ struct NotesView: View {
             }
             .sheet(isPresented: $showingUnlockSheet) { unlockSheet }
         } else if true {
-            MarkdownEditor(
-                text: Binding(
-                    get: { model.noteText },
-                    set: { model.noteText = $0; model.textChanged() }
-                ),
-                scrollTarget: $scrollTarget,
-                command: $editorCommand,
-                theme: .default.customized(
-                    baseFontSize: CGFloat(editorFontSize),
-                    fontDesign: editorFontDesign,
-                    findHighlight: findHighlightColor
-                ),
-                livePreview: livePreview,
-                focusMode: focusMode,
-                imageBase: selectedNoteFolder,
-                tagCandidates: allTags.map(\.tag),
-                linkCandidates: model.notes.map(noteTitle),
-                mentionCandidates: indexService.allAssignees(),
-                findSignal: findSignal,
-                importAttachments: importPastedAttachments,
-                onSelectionContext: { selectionContext = $0 },
-                onOpenAttachment: { openAttachment($0) }
-            )
-            .safeAreaInset(edge: .top, spacing: 0) { formatBar }
+            // In-content bar over an opaque background, NOT .safeAreaInset:
+            // editor content scrolled visibly through the translucent inset
+            // bar (user-reported — same beta family as the Meetings header;
+            // this is that view's proven layout).
+            VStack(spacing: 0) {
+                formatBar
+                    .background(Color.headerBackground)
+                Divider()
+                MarkdownEditor(
+                    text: Binding(
+                        get: { model.noteText },
+                        set: { model.noteText = $0; model.textChanged() }
+                    ),
+                    scrollTarget: $scrollTarget,
+                    command: $editorCommand,
+                    theme: .default.customized(
+                        baseFontSize: CGFloat(editorFontSize),
+                        fontDesign: editorFontDesign,
+                        findHighlight: findHighlightColor
+                    ),
+                    livePreview: livePreview,
+                    focusMode: focusMode,
+                    imageBase: selectedNoteFolder,
+                    tagCandidates: allTags.map(\.tag),
+                    linkCandidates: model.notes.map(noteTitle),
+                    mentionCandidates: indexService.allAssignees(),
+                    findSignal: findSignal,
+                    importAttachments: importPastedAttachments,
+                    onSelectionContext: { selectionContext = $0 },
+                    onOpenAttachment: { openAttachment($0) }
+                )
+            }
             .background(
                 Button("") { findSignal += 1 }
                     .keyboardShortcut("f", modifiers: [.command])
