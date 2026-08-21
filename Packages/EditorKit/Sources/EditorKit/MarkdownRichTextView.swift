@@ -112,7 +112,15 @@ import UniformTypeIdentifiers
             ) as? [URL], !urls.isEmpty {
                 return urls.map { AttachmentDrop(source: .fileURL($0), suggestedName: $0.lastPathComponent) }
             }
-            if let data = pasteboard.data(forType: .tiff) ?? pasteboard.data(forType: .png) {
+            // Raw bitmap data only counts when no text flavor rides along:
+            // Office apps put a TIFF rendition next to their string/RTF/HTML,
+            // and importing that would hijack a text paste into an image.
+            // A bare screenshot (TIFF only) still imports.
+            let hasTextFlavor = pasteboard.string(forType: .string) != nil
+                || pasteboard.data(forType: .html) != nil
+                || pasteboard.data(forType: .rtf) != nil
+            if !hasTextFlavor,
+               let data = pasteboard.data(forType: .tiff) ?? pasteboard.data(forType: .png) {
                 return [AttachmentDrop(source: .data(data), suggestedName: "pasted-image.png")]
             }
             return []

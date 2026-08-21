@@ -52,10 +52,13 @@ struct NotesView: View {
     /// move, macOS-first (see EditorKit.SelectionContext).
     @State private var selectionContext = SelectionContext()
     @State private var showingLinkPopover = false
-    /// The link's full `[text](url)` range, captured when the popover
-    /// opened — Save/Remove target this, not a fresh caret lookup, so a
-    /// stray click while the popover is open can't retarget the edit.
+    /// The link's full `[text](url)` range AND its exact source text,
+    /// captured when the editor sheet opened — Save/Remove target the
+    /// range only while the document still holds that source there (the
+    /// note can change underneath an open sheet via sync), so a drifted
+    /// document makes the edit a no-op instead of a mid-word rewrite.
     @State private var linkEditRange: NSRange?
+    @State private var linkEditSource = ""
     @State private var linkPopoverText = ""
     @State private var linkPopoverURL = ""
     @State private var showingGraph = false
@@ -800,8 +803,10 @@ struct NotesView: View {
     /// (placeholder text + URL, cursor on the URL) as before.
     private var linkButton: some View {
         Button {
-            if let link = selectionContext.link {
+            if let link = selectionContext.link,
+               NSMaxRange(link.range) <= (model.noteText as NSString).length {
                 linkEditRange = link.range
+                linkEditSource = (model.noteText as NSString).substring(with: link.range)
                 linkPopoverText = linkLabel(range: link.range, in: model.noteText)
                 linkPopoverURL = link.destination
                 showingLinkPopover = true
@@ -814,7 +819,11 @@ struct NotesView: View {
         }
         .help("Link (⇧⌘K)")
         .keyboardShortcut("k", modifiers: [.command, .shift])
-        .popover(isPresented: $showingLinkPopover) { linkEditPopover }
+        // A sheet, not .popover: the format bar lives in a safeAreaInset,
+        // and popovers anchored inside inset bars are in the same beta
+        // bridge family as the toolbar traps — sheets are the pattern this
+        // app has already proven (palette, lock/unlock).
+        .sheet(isPresented: $showingLinkPopover) { linkEditPopover }
     }
 
     private var linkEditPopover: some View {
@@ -827,15 +836,24 @@ struct NotesView: View {
             HStack {
                 Button("Remove Link", role: .destructive) {
                     if let range = linkEditRange {
-                        editorCommand = EditorCommandRequest(.removeLink(range: range, text: linkPopoverText))
+                        editorCommand = EditorCommandRequest(
+                            .removeLink(range: range, expected: linkEditSource, text: linkPopoverText)
+                        )
                     }
                     showingLinkPopover = false
                 }
                 Spacer()
+                Button("Cancel", role: .cancel) {
+                    showingLinkPopover = false
+                }
+                .keyboardShortcut(.cancelAction)
                 Button("Save") {
                     if let range = linkEditRange {
                         editorCommand = EditorCommandRequest(
-                            .editLink(range: range, text: linkPopoverText, url: linkPopoverURL)
+                            .editLink(
+                                range: range, expected: linkEditSource,
+                                text: linkPopoverText, url: linkPopoverURL
+                            )
                         )
                     }
                     showingLinkPopover = false

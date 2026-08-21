@@ -344,6 +344,28 @@ struct TableEditingTests {
             #expect((textView.string as NSString).substring(with: textView.selectedRange()) == "Role")
         }
 
+        /// tableRegions refreshes in restyle, which runs AFTER the selection
+        /// notification — deleting through the end of a table hands the
+        /// handler a stale region reaching past the text. Regression: this
+        /// used to substring the stale range and throw NSRangeException.
+        @Test func selectionChangeToleratesStaleTableRegions() {
+            let (textView, coordinator) = editor(table)
+            let cut = location(of: "| Ada", in: table)
+            textView.insertText(
+                "", replacementRange: NSRange(location: cut, length: (table as NSString).length - cut)
+            )
+            textView.setSelectedRange(NSRange(location: (textView.string as NSString).length, length: 0))
+            // Assign the stale regions LAST so nothing the mutation above
+            // triggered can refresh them before the handler under test runs.
+            coordinator.tableRegions = TableGrid.regions(
+                in: table, styled: MarkdownStyler.styleRanges(in: table)
+            )
+            coordinator.textViewDidChangeSelection(
+                Notification(name: NSTextView.didChangeSelectionNotification, object: textView)
+            )
+            #expect(textView.string.hasPrefix("| Name | Role |"))
+        }
+
         @Test func tabInTheLastCellGrowsTheTable() {
             let (textView, coordinator) = editor(table)
             textView.setSelectedRange(NSRange(location: location(of: "Engineer", in: table), length: 8))

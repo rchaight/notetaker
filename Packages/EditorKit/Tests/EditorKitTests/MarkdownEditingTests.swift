@@ -79,9 +79,10 @@ struct MarkdownEditingTests {
 
     @Test func linkEditRewritesExistingLink() throws {
         let text = "See [my link](http://old.com) now"
-        let linkRange = (text as NSString).range(of: "[my link](http://old.com)")
+        let source = "[my link](http://old.com)"
+        let linkRange = (text as NSString).range(of: source)
         let (updated, selection) = try #require(run(
-            .editLink(range: linkRange, text: "new label", url: "http://new.com"),
+            .editLink(range: linkRange, expected: source, text: "new label", url: "http://new.com"),
             text, NSRange(location: 0, length: 0)
         ))
         #expect(updated == "See [new label](http://new.com) now")
@@ -90,12 +91,34 @@ struct MarkdownEditingTests {
 
     @Test func linkRemoveUnwrapsToPlainText() throws {
         let text = "See [my link](http://old.com) now"
-        let linkRange = (text as NSString).range(of: "[my link](http://old.com)")
+        let source = "[my link](http://old.com)"
+        let linkRange = (text as NSString).range(of: source)
         let (updated, selection) = try #require(run(
-            .removeLink(range: linkRange, text: "my link"), text, NSRange(location: 0, length: 0)
+            .removeLink(range: linkRange, expected: source, text: "my link"),
+            text, NSRange(location: 0, length: 0)
         ))
         #expect(updated == "See my link now")
         #expect((updated as NSString).substring(with: selection) == "my link")
+    }
+
+    @Test func linkEditRefusesADriftedDocument() {
+        // The range was captured before the note changed underneath the
+        // open editor (e.g. iCloud sync) — the rewrite must no-op rather
+        // than clobber whatever now sits at those offsets.
+        let original = "See [my link](http://old.com) now"
+        let source = "[my link](http://old.com)"
+        let linkRange = (original as NSString).range(of: source)
+        let drifted = "Prefix inserted. See [my link](http://old.com) now"
+        let edit = MarkdownEditing.apply(
+            .editLink(range: linkRange, expected: source, text: "new", url: "http://new.com"),
+            to: drifted, selection: NSRange(location: 0, length: 0)
+        )
+        #expect(edit == nil)
+        let removal = MarkdownEditing.apply(
+            .removeLink(range: linkRange, expected: source, text: "my link"),
+            to: drifted, selection: NSRange(location: 0, length: 0)
+        )
+        #expect(removal == nil)
     }
 
     @Test func indentedLinesKeepIndent() throws {

@@ -35,3 +35,21 @@ PROGRESS.md rows written by the orchestrator at merge.
   existing extensions (wikilinks, ==highlight==, tokens).
 - iOS: must keep building and keep current behavior; new interactions are
   macOS-first, brought to iOS only where the spec says so.
+
+## Deferred follow-ups (from the post-merge critique round 1 — fixed items excluded)
+
+1. Async image-import race: caret captured at paste, insertion after the
+   await — typing during a slow Attachments write lands `![...]` at a stale
+   offset or drops it via the bounds guard.
+2. imageClickMonitor binds the first text view per process-cached
+   coordinator — image clicks dead in a second window (mirror of the fold
+   monitor's inverted variant; consolidate the two monitors' rebind story).
+3. iOS hand-rolled paste undo uses absolute ranges — silently no-ops if the
+   stack ever desyncs (bounds-guarded, no crash).
+4. Fixed 290pt paragraph reservation under standalone images doubles the
+   gap below small images now that the cap is 280pt — track drawn size.
+5. linkWrapping doesn't escape `]`/newlines in the selection — malformed
+   (but content-preserving) link markdown on exotic selections.
+6. Live-UI verification of table Tab flow, paste variants, link sheet, and
+   image click still owed by daily use — builders and orchestrator ran
+   headless.

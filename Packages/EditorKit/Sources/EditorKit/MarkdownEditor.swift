@@ -598,15 +598,20 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             private var tableSnapshot: String?
 
             private func updateTableTracking(_ textView: NSTextView) {
+                let ns = textView.string as NSString
                 let location = textView.selectedRange().location
+                // tableRegions refreshes in restyle, which runs AFTER this
+                // notification (and debounced on large notes) — after a
+                // deletion a stale region can reach past the current text.
                 let region = tableRegions.first {
-                    location >= $0.range.location && location <= NSMaxRange($0.range)
+                    NSMaxRange($0.range) <= ns.length
+                        && location >= $0.range.location && location <= NSMaxRange($0.range)
                 }
                 guard region?.range.location != tableAnchor else { return }
                 let leaving = tableAnchor
                 let snapshot = tableSnapshot
                 tableAnchor = region?.range.location
-                tableSnapshot = region.map { (textView.string as NSString).substring(with: $0.range) }
+                tableSnapshot = region.map { ns.substring(with: $0.range) }
                 guard let leaving, let snapshot else { return }
                 alignTable(anchoredAt: leaving, changedFrom: snapshot, in: textView)
             }

@@ -12,11 +12,13 @@ public enum EditorCommand: Equatable, Sendable {
     /// [selection](url-placeholder) with the cursor on the placeholder.
     case link
     /// Rewrite an existing `[text](url)` span at `range` — the link-edit
-    /// popover's Save action. `range` comes from `SelectionContext.link`,
-    /// captured when the popover opened.
-    case editLink(range: NSRange, text: String, url: String)
-    /// Unwrap an existing link at `range` back to plain `text`.
-    case removeLink(range: NSRange, text: String)
+    /// UI's Save action. `range` and `expected` (the link's exact source
+    /// text) are captured when the UI opens; apply refuses the rewrite if
+    /// the document no longer holds `expected` at `range`.
+    case editLink(range: NSRange, expected: String, text: String, url: String)
+    /// Unwrap an existing link at `range` back to plain `text`, guarded by
+    /// the same `expected` source check.
+    case removeLink(range: NSRange, expected: String, text: String)
     /// Insert a block (table, image line, rule) on its own paragraph after
     /// the cursor's, blank-line separated; cursor lands `cursorOffset` into
     /// the block (or after it when nil).
@@ -80,15 +82,21 @@ public enum MarkdownEditing {
                 range: selection, replacement: replacement,
                 selection: NSRange(location: urlStart, length: 3)
             )
-        case let .editLink(range, text, url):
-            guard NSMaxRange(range) <= ns.length else { return nil }
+        case let .editLink(range, expected, text, url):
+            // The range was captured when the edit UI opened; the note may
+            // have changed underneath it (sync, concurrent edit). Rewrite
+            // only if the captured link source is still exactly there —
+            // otherwise no-op rather than clobber an unrelated span.
+            guard NSMaxRange(range) <= ns.length,
+                  ns.substring(with: range) == expected else { return nil }
             let replacement = "[\(text)](\(url))"
             return EditResult(
                 range: range, replacement: replacement,
                 selection: NSRange(location: range.location + (replacement as NSString).length, length: 0)
             )
-        case let .removeLink(range, text):
-            guard NSMaxRange(range) <= ns.length else { return nil }
+        case let .removeLink(range, expected, text):
+            guard NSMaxRange(range) <= ns.length,
+                  ns.substring(with: range) == expected else { return nil }
             return EditResult(
                 range: range, replacement: text,
                 selection: NSRange(location: range.location, length: (text as NSString).length)
