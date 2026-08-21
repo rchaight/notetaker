@@ -53,3 +53,12 @@ PROGRESS.md rows written by the orchestrator at merge.
 6. Live-UI verification of table Tab flow, paste variants, link sheet, and
    image click still owed by daily use — builders and orchestrator ran
    headless.
+7. Browser "Copy Image" on macOS now degrades to pasting the image URL as
+   text (browsers put the URL string next to the bitmap, which trips the
+   Office-paste flavor gate). Deliberate trade; if reported, refine the
+   gate to import when the string flavor is a lone image URL.
+8. The flavor gate is macOS-only — iOS paste is still image-first; mirror
+   the gate when iOS paste gets its shakedown.
+9. "Remove Link" unwraps to the current Text-field value rather than the
+   link's original label — kept as a feature, but it was a decision made
+   in review, not in the spec.
