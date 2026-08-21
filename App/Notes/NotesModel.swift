@@ -202,7 +202,9 @@ final class NotesModel {
     }
 
     private func rebuildLookups() {
-        notesById = Dictionary(uniqueKeysWithValues: notes.map { ($0.id, $0) })
+        // Ids are unique by construction (relative paths), but a trapping
+        // initializer turns any future enumeration slip into a crash.
+        notesById = Dictionary(notes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         notesByFolder = Dictionary(grouping: notes) {
             $0.relativePath.split(separator: "/").dropLast().joined(separator: "/")
         }

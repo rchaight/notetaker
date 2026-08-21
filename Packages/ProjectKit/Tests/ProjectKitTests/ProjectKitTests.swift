@@ -92,3 +92,29 @@ struct ProjectScheduleTests {
         #expect(ProjectSchedule.dayOffset("garbage", from: "2026-07-12") == nil)
     }
 }
+
+/// Duplicate ids reach the scheduler whenever a user copies a task line
+/// (`^id` is hand-editable markdown). A trapping dictionary turned that
+/// into a crash; these lock in graceful handling.
+struct DuplicateIdTests {
+    @Test func topologicalOrderSurvivesDuplicateIds() {
+        let nodes = [
+            TaskNode(id: "t-1", title: "First"),
+            TaskNode(id: "t-1", title: "Copy of first"),
+            TaskNode(id: "t-2", title: "Second"),
+        ]
+        // Must not trap. Order may drop the collided duplicate; what
+        // matters is that a real vault can't crash the Projects tab.
+        let ordered = ProjectSchedule.topologicalOrder(nodes)
+        #expect(ordered != nil)
+    }
+
+    @Test func scheduleSurvivesDuplicateIds() {
+        let nodes = [
+            TaskNode(id: "t-1", title: "First", startDay: 0, dueDay: 2),
+            TaskNode(id: "t-1", title: "Copy", startDay: 1, dueDay: 3),
+            TaskNode(id: "t-2", title: "Second", dependsOn: ["t-1"]),
+        ]
+        #expect(ProjectSchedule.schedule(nodes) != nil)
+    }
+}

@@ -17,7 +17,14 @@ struct GraphView: View {
     }
 
     private func layout(in size: CGSize) -> [Node] {
-        let byTitle = Dictionary(uniqueKeysWithValues: notes.map { ($0.title.lowercased(), $0.id) })
+        // Two notes in different folders can share a title, so every
+        // title-keyed lookup here must resolve collisions rather than trap
+        // (`uniqueKeysWithValues` crashed the app on a real vault).
+        // First wins: `notes` arrives in a stable order, so the graph
+        // doesn't reshuffle between renders.
+        let byTitle = Dictionary(
+            notes.map { ($0.title.lowercased(), $0.id) }, uniquingKeysWith: { first, _ in first }
+        )
         var degree: [String: Int] = [:]
         for link in links {
             degree[link.from, default: 0] += 1
@@ -48,9 +55,11 @@ struct GraphView: View {
     var body: some View {
         GeometryReader { geo in
             let nodes = layout(in: geo.size)
-            let byId = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0) })
+            let byId = Dictionary(
+                nodes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }
+            )
             let byTitle = Dictionary(
-                uniqueKeysWithValues: nodes.map { ($0.title.lowercased(), $0) }
+                nodes.map { ($0.title.lowercased(), $0) }, uniquingKeysWith: { first, _ in first }
             )
             ZStack {
                 Canvas { context, _ in

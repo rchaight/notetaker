@@ -85,7 +85,9 @@ public enum ProjectSchedule {
             }
         }
         guard order.count == nodes.count else { return nil }
-        let byId = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0) })
+        // `^id` block ids are hand-editable markdown text — copy a task
+        // line and two nodes share one id. Resolve rather than trap.
+        let byId = Dictionary(nodes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         return order.compactMap { byId[$0] }
     }
 
