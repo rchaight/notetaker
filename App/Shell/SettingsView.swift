@@ -21,6 +21,8 @@ struct SettingsView: View {
     @AppStorage("editorFontDesign") private var editorFontDesign = "system"
     @AppStorage("findHighlightColor") private var findHighlightColor = "yellow"
     @AppStorage("editorFocusMode") private var focusMode = false
+    @AppStorage("editorMode") private var editorMode = EditorMode.live
+    @AppStorage("sourceModeMonospace") private var sourceModeMonospace = true
     // To-Do
     @AppStorage("todoDensity") private var todoDensity = "comfortable"
     @AppStorage("showStreaks") private var showStreaks = false
@@ -214,6 +216,17 @@ struct SettingsView: View {
                         .disabled(editorFontSize == 16)
                 }
                 Text("Applies to body text; headings scale proportionally. Code blocks stay monospaced.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Section("View mode") {
+                Picker("Default mode for notes", selection: $editorMode) {
+                    ForEach(EditorMode.allCases, id: \.self) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                Toggle("Source mode uses a monospaced font", isOn: $sourceModeMonospace)
+                Text("⌘E cycles Source → Live Preview → Reading. ⌘/ flips between Source and Live Preview.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

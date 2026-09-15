@@ -18,6 +18,20 @@ enum TaskChipStyle {
         }
     }
 
+    /// `?kind` chip tint — the meeting vocabulary's colors, shared with
+    /// Reading mode so a `?waiting` token is orange everywhere. nil kind
+    /// (a bare `@person` item) reads as delegated.
+    static func kindColor(_ kind: String?) -> Color {
+        switch kind {
+        case "discuss": .teal
+        case "waiting": .orange
+        case "next": .green
+        case "someday": .gray
+        case "followup": .blue
+        default: .indigo
+        }
+    }
+
     static func labelColor(_ label: String) -> Color {
         if let index = overrides()[label], palette.indices.contains(index) {
             return palette[index]
@@ -66,14 +80,7 @@ struct MeetingChip: View {
     let kind: String?
 
     private var tint: Color {
-        switch kind {
-        case "discuss": .teal
-        case "waiting": .orange
-        case "next": .green
-        case "someday": .gray
-        case "followup": .blue
-        default: .indigo
-        }
+        TaskChipStyle.kindColor(kind)
     }
 
     var body: some View {

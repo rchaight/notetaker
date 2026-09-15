@@ -16,6 +16,7 @@ packages:
   VaultKit: { path: Packages/VaultKit }
   MarkdownKit: { path: Packages/MarkdownKit }
   EditorKit: { path: Packages/EditorKit }
+  ReadingKit: { path: Packages/ReadingKit }
   IndexKit: { path: Packages/IndexKit }
   TaskEngine: { path: Packages/TaskEngine }
   ProjectKit: { path: Packages/ProjectKit }
@@ -86,6 +87,7 @@ targets:
       - package: VaultKit
       - package: MarkdownKit
       - package: EditorKit
+      - package: ReadingKit
       - package: IndexKit
       - package: TaskEngine
       - package: ProjectKit

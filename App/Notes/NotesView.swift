@@ -4,11 +4,58 @@ import AIKit
 #endif
 import ConversionKit
 import EditorKit
+import IndexKit
 import MarkdownKit
+import ReadingKit
 import SecurityKit
 import SwiftUI
 import UniformTypeIdentifiers
 import VaultKit
+
+/// How the open note is shown. Three modes, Obsidian's vocabulary:
+/// Source is strict markdown, Live Preview hides syntax off the caret line,
+/// Reading is the rendered read-only view (ReadingKit). The packages know
+/// nothing about "modes" — EditorKit still takes `livePreview: Bool`.
+enum EditorMode: String, CaseIterable {
+    case source, live, reading
+
+    /// ⌘E order: Source → Live → Reading → Source.
+    var next: EditorMode {
+        switch self {
+        case .source: .live
+        case .live: .reading
+        case .reading: .source
+        }
+    }
+
+    var isEditing: Bool {
+        self != .reading
+    }
+
+    var symbol: String {
+        switch self {
+        case .source: "chevron.left.forwardslash.chevron.right"
+        case .live: "eye"
+        case .reading: "book"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .source: "Source"
+        case .live: "Live Preview"
+        case .reading: "Reading"
+        }
+    }
+}
+
+/// Reading mode's top-visible line, kept OUTSIDE SwiftUI state: it changes
+/// on every scroll frame and a `@State` write would re-run the whole detail
+/// pane's body each time. Only the mode switch ever reads it.
+@MainActor
+final class ReadingPositionBox {
+    var topLine = 0
+}
 
 /// The Notes tab: vault note list on the left, live markdown editor on the
 /// right. Every edit autosaves (debounced, coordinated) to the .md file.
@@ -17,7 +64,15 @@ struct NotesView: View {
     /// Owned by AppShell: tab switches must not reset vault/tab/selection
     /// state (a fresh model also re-blocks on cold container resolution).
     let model: NotesModel
-    @State private var livePreview = true
+    /// Remembered globally (Obsidian's default); per-note memory is a
+    /// deliberate non-goal for now.
+    @AppStorage("editorMode") private var editorMode = EditorMode.live
+    /// Source mode is the "strict markdown" view — a monospaced face makes
+    /// that read like source instead of like prose.
+    @AppStorage("sourceModeMonospace") private var sourceModeMonospace = true
+    /// One-shot scroll target for Reading mode (line), consumed by the view.
+    @State private var readingScrollLine: Int?
+    @State private var readingPosition = ReadingPositionBox()
     @AppStorage("editorFocusMode") private var focusMode = false
     @AppStorage("editorFontSize") private var editorFontSize = 16.0
     @AppStorage("editorFontDesign") private var editorFontDesign = "system"
@@ -654,9 +709,30 @@ struct NotesView: View {
             formatBar
                 .frame(maxWidth: .infinity, alignment: .leading)
             Divider().frame(height: 18)
+            // Outside the scrolling format bar on purpose: the mode picker
+            // must never scroll out of reach.
+            modePicker
+                .padding(.horizontal, 8)
+            Divider().frame(height: 18)
             noteActionBar
         }
         .background(Color.headerBackground)
+    }
+
+    /// Source / Live Preview / Reading. Replaces the old single eye/code
+    /// toggle; ⌘E cycles it, ⌘/ still flips Source↔Live.
+    private var modePicker: some View {
+        Picker("Editor mode", selection: modeBinding) {
+            ForEach(EditorMode.allCases, id: \.self) { mode in
+                Image(systemName: mode.symbol)
+                    .help(mode.title)
+                    .tag(mode)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .frame(width: 108)
+        .help("Source / Live Preview / Reading — ⌘E cycles, ⌘/ toggles Source and Live")
     }
 
     /// Note-level actions, formerly the detail pane's `.toolbar` items.
@@ -746,132 +822,130 @@ struct NotesView: View {
     private var formatBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 2) {
-                Menu {
-                    headingMenuItem("Title", level: 1)
-                    headingMenuItem("Heading", level: 2)
-                    headingMenuItem("Subheading", level: 3)
-                    Divider()
-                    headingMenuItem("Body", level: 0)
-                } label: {
-                    if selectionContext.headingLevel > 0 {
-                        Text("H\(selectionContext.headingLevel)")
-                            .font(.system(size: 12, weight: .semibold))
-                            .frame(width: 26, height: 22)
-                    } else {
-                        Image(systemName: "textformat.size")
-                            .frame(width: 26, height: 22)
-                    }
+                // Reading mode has nothing to format, so the whole cluster
+                // goes away; the note-action cluster and the mode picker
+                // (both in editorHeader) stay put.
+                if editorMode.isEditing {
+                    formattingControls
                 }
-                .menuIndicator(.hidden)
-                .help("Text style")
-                Divider().frame(height: 16)
-                formatButton(
-                    "bold", "Bold (⌘B)",
-                    isActive: selectionContext.bold, dimmed: selectionContext.inCodeBlock
-                ) { .wrap(prefix: "**", suffix: "**") }
-                    .keyboardShortcut("b", modifiers: [.command])
-                formatButton(
-                    "italic", "Italic (⌘⇧I)",
-                    isActive: selectionContext.italic, dimmed: selectionContext.inCodeBlock
-                ) { .wrap(prefix: "*", suffix: "*") }
-                    .keyboardShortcut("i", modifiers: [.command, .shift])
-                formatButton(
-                    "strikethrough", "Strikethrough",
-                    isActive: selectionContext.strikethrough, dimmed: selectionContext.inCodeBlock
-                ) { .wrap(prefix: "~~", suffix: "~~") }
-                formatButton(
-                    "chevron.left.forwardslash.chevron.right", "Code (⌘E)",
-                    isActive: selectionContext.code, dimmed: selectionContext.inCodeBlock
-                ) { .wrap(prefix: "`", suffix: "`") }
-                    .keyboardShortcut("e", modifiers: [.command])
-                Divider().frame(height: 16)
-                formatButton(
-                    "list.bullet", "Bullet list", isActive: selectionContext.inList
-                ) { .toggleLinePrefix("- ") }
-                formatButton(
-                    "list.number", "Numbered list", isActive: selectionContext.inList
-                ) { .toggleLinePrefix("1. ") }
-                formatButton(
-                    "checklist", "To-do (⌘⇧T)", isActive: selectionContext.inList
-                ) { .toggleLinePrefix("- [ ] ") }
-                    .keyboardShortcut("t", modifiers: [.command, .shift])
-                formatButton(
-                    "quote.opening", "Quote", isActive: selectionContext.inQuote
-                ) { .toggleLinePrefix("> ") }
-                Divider().frame(height: 16)
-                linkButton
-                Divider().frame(height: 16)
-                Menu {
-                    Button("Table", systemImage: "tablecells") {
-                        editorCommand = EditorCommandRequest(.insertBlock(
-                            "| Column 1 | Column 2 |\n| --- | --- |\n|  |  |",
-                            cursorOffset: 2
-                        ))
-                    }
-                    Button("Image…", systemImage: "photo") {
-                        showingImagePicker = true
-                    }
-                    Button("Horizontal Rule", systemImage: "minus") {
-                        editorCommand = EditorCommandRequest(.insertBlock("---", cursorOffset: nil))
-                    }
-                    // Table structure: every item is a no-op when the
-                    // cursor is not in a table, so none of them disable.
-                    Section("Table") {
-                        Button("Add Row Below") {
-                            editorCommand = EditorCommandRequest(.tableInsertRow)
-                        }
-                        Button("Add Column After") {
-                            editorCommand = EditorCommandRequest(.tableInsertColumn)
-                        }
-                        Button("Delete Row") {
-                            editorCommand = EditorCommandRequest(.tableDeleteRow)
-                        }
-                        Button("Delete Column") {
-                            editorCommand = EditorCommandRequest(.tableDeleteColumn)
-                        }
-                        Button("Align Table") {
-                            editorCommand = EditorCommandRequest(.tableAlign)
-                        }
-                    }
-                } label: {
-                    Image(systemName: "plus.square")
-                        .frame(width: 26, height: 22)
-                }
-                .menuIndicator(.hidden)
-                .help("Insert a table, image, or divider")
-                .fileImporter(
-                    isPresented: $showingImagePicker, allowedContentTypes: [.image]
-                ) { outcome in
-                    guard case let .success(url) = outcome else { return }
-                    Task {
-                        guard let path = await model.attachImage(from: url) else {
-                            importStatus = "Image attach failed"
-                            return
-                        }
-                        let alt = url.deletingPathExtension().lastPathComponent
-                        editorCommand = EditorCommandRequest(.insertBlock(
-                            "![\(alt)](\(path))", cursorOffset: nil
-                        ))
-                    }
-                }
-                Spacer()
-                Button {
-                    livePreview.toggle()
-                } label: {
-                    Image(systemName: livePreview
-                        ? "chevron.left.forwardslash.chevron.right" : "eye")
-                        .frame(width: 26, height: 22)
-                }
-                .keyboardShortcut("/", modifiers: [.command])
-                .help(livePreview
-                    ? "Show all markdown syntax (⌘/)"
-                    : "Hide syntax except on the current line (⌘/)")
             }
             .buttonStyle(.borderless)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
         }
         .background(.bar)
+    }
+
+    @ViewBuilder private var formattingControls: some View {
+        Menu {
+            headingMenuItem("Title", level: 1)
+            headingMenuItem("Heading", level: 2)
+            headingMenuItem("Subheading", level: 3)
+            Divider()
+            headingMenuItem("Body", level: 0)
+        } label: {
+            if selectionContext.headingLevel > 0 {
+                Text("H\(selectionContext.headingLevel)")
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(width: 26, height: 22)
+            } else {
+                Image(systemName: "textformat.size")
+                    .frame(width: 26, height: 22)
+            }
+        }
+        .menuIndicator(.hidden)
+        .help("Text style")
+        Divider().frame(height: 16)
+        formatButton(
+            "bold", "Bold (⌘B)",
+            isActive: selectionContext.bold, dimmed: selectionContext.inCodeBlock
+        ) { .wrap(prefix: "**", suffix: "**") }
+            .keyboardShortcut("b", modifiers: [.command])
+        formatButton(
+            "italic", "Italic (⌘⇧I)",
+            isActive: selectionContext.italic, dimmed: selectionContext.inCodeBlock
+        ) { .wrap(prefix: "*", suffix: "*") }
+            .keyboardShortcut("i", modifiers: [.command, .shift])
+        formatButton(
+            "strikethrough", "Strikethrough",
+            isActive: selectionContext.strikethrough, dimmed: selectionContext.inCodeBlock
+        ) { .wrap(prefix: "~~", suffix: "~~") }
+        // ⌥⌘C, not ⌘E: ⌘E cycles the three view modes now.
+        formatButton(
+            "chevron.left.forwardslash.chevron.right", "Code (⌥⌘C)",
+            isActive: selectionContext.code, dimmed: selectionContext.inCodeBlock
+        ) { .wrap(prefix: "`", suffix: "`") }
+            .keyboardShortcut("c", modifiers: [.command, .option])
+        Divider().frame(height: 16)
+        formatButton(
+            "list.bullet", "Bullet list", isActive: selectionContext.inList
+        ) { .toggleLinePrefix("- ") }
+        formatButton(
+            "list.number", "Numbered list", isActive: selectionContext.inList
+        ) { .toggleLinePrefix("1. ") }
+        formatButton(
+            "checklist", "To-do (⌘⇧T)", isActive: selectionContext.inList
+        ) { .toggleLinePrefix("- [ ] ") }
+            .keyboardShortcut("t", modifiers: [.command, .shift])
+        formatButton(
+            "quote.opening", "Quote", isActive: selectionContext.inQuote
+        ) { .toggleLinePrefix("> ") }
+        Divider().frame(height: 16)
+        linkButton
+        Divider().frame(height: 16)
+        Menu {
+            Button("Table", systemImage: "tablecells") {
+                editorCommand = EditorCommandRequest(.insertBlock(
+                    "| Column 1 | Column 2 |\n| --- | --- |\n|  |  |",
+                    cursorOffset: 2
+                ))
+            }
+            Button("Image…", systemImage: "photo") {
+                showingImagePicker = true
+            }
+            Button("Horizontal Rule", systemImage: "minus") {
+                editorCommand = EditorCommandRequest(.insertBlock("---", cursorOffset: nil))
+            }
+            // Table structure: every item is a no-op when the
+            // cursor is not in a table, so none of them disable.
+            Section("Table") {
+                Button("Add Row Below") {
+                    editorCommand = EditorCommandRequest(.tableInsertRow)
+                }
+                Button("Add Column After") {
+                    editorCommand = EditorCommandRequest(.tableInsertColumn)
+                }
+                Button("Delete Row") {
+                    editorCommand = EditorCommandRequest(.tableDeleteRow)
+                }
+                Button("Delete Column") {
+                    editorCommand = EditorCommandRequest(.tableDeleteColumn)
+                }
+                Button("Align Table") {
+                    editorCommand = EditorCommandRequest(.tableAlign)
+                }
+            }
+        } label: {
+            Image(systemName: "plus.square")
+                .frame(width: 26, height: 22)
+        }
+        .menuIndicator(.hidden)
+        .help("Insert a table, image, or divider")
+        .fileImporter(
+            isPresented: $showingImagePicker, allowedContentTypes: [.image]
+        ) { outcome in
+            guard case let .success(url) = outcome else { return }
+            Task {
+                guard let path = await model.attachImage(from: url) else {
+                    importStatus = "Image attach failed"
+                    return
+                }
+                let alt = url.deletingPathExtension().lastPathComponent
+                editorCommand = EditorCommandRequest(.insertBlock(
+                    "![\(alt)](\(path))", cursorOffset: nil
+                ))
+            }
+        }
     }
 
     private func formatButton(
@@ -1086,34 +1160,54 @@ struct NotesView: View {
             VStack(spacing: 0) {
                 editorHeader
                 Divider()
-                MarkdownEditor(
-                    text: Binding(
-                        get: { model.noteText },
-                        set: { model.noteText = $0; model.textChanged() }
-                    ),
-                    scrollTarget: $scrollTarget,
-                    command: $editorCommand,
-                    theme: .default.customized(
-                        baseFontSize: CGFloat(editorFontSize),
-                        fontDesign: editorFontDesign,
-                        findHighlight: findHighlightColor
-                    ),
-                    livePreview: livePreview,
-                    focusMode: focusMode,
-                    imageBase: selectedNoteFolder,
-                    tagCandidates: allTags.map(\.tag),
-                    linkCandidates: model.notes.map(noteTitle),
-                    mentionCandidates: indexService.allAssignees(),
-                    findSignal: findSignal,
-                    importAttachments: importPastedAttachments,
-                    onSelectionContext: { selectionContext = $0 },
-                    onOpenAttachment: { openAttachment($0) }
-                )
+                // Reading mode swaps the text view for the renderer INSIDE
+                // this same layout — the in-content header and the hidden
+                // window toolbar below stay exactly as they were.
+                if editorMode == .reading {
+                    ReadingView(
+                        source: model.noteText,
+                        style: readingStyle,
+                        imageBase: selectedNoteFolder,
+                        scrollToLine: $readingScrollLine,
+                        onToggleTask: { toggleReadingTask(line: $0) },
+                        onOpenNote: { openWikilink($0) },
+                        onTopLineChanged: { readingPosition.topLine = $0 }
+                    )
+                } else {
+                    MarkdownEditor(
+                        text: Binding(
+                            get: { model.noteText },
+                            set: { model.noteText = $0; model.textChanged() }
+                        ),
+                        scrollTarget: $scrollTarget,
+                        command: $editorCommand,
+                        theme: editorTheme,
+                        livePreview: editorMode == .live,
+                        focusMode: focusMode,
+                        imageBase: selectedNoteFolder,
+                        tagCandidates: allTags.map(\.tag),
+                        linkCandidates: model.notes.map(noteTitle),
+                        mentionCandidates: indexService.allAssignees(),
+                        findSignal: findSignal,
+                        importAttachments: importPastedAttachments,
+                        onSelectionContext: { selectionContext = $0 },
+                        onOpenAttachment: { openAttachment($0) }
+                    )
+                }
             }
+            // Hidden shortcut buttons, the pattern ⌘F already uses: these
+            // must live outside the format bar because Reading mode hides
+            // the formatting controls.
             .background(
-                Button("") { findSignal += 1 }
-                    .keyboardShortcut("f", modifiers: [.command])
-                    .hidden()
+                ZStack {
+                    Button("") { findSignal += 1 }
+                        .keyboardShortcut("f", modifiers: [.command])
+                    Button("") { setMode(editorMode.next) }
+                        .keyboardShortcut("e", modifiers: [.command])
+                    Button("") { setMode(editorMode == .source ? .live : .source) }
+                        .keyboardShortcut("/", modifiers: [.command])
+                }
+                .hidden()
             )
             .overlay(alignment: .bottomTrailing) {
                 Text(statsChip)
@@ -1137,6 +1231,119 @@ struct NotesView: View {
             .navigationBarTitleDisplayMode(.inline)
             #endif
         }
+    }
+
+    // MARK: - View mode
+
+    /// The picker writes through `setMode` so every switch carries the
+    /// scroll position with it.
+    private var modeBinding: Binding<EditorMode> {
+        Binding(get: { editorMode }, set: { setMode($0) })
+    }
+
+    /// Switching modes keeps the reader's place. Source↔Live share one text
+    /// view, so there is nothing to do there; the editor↔Reading crossings
+    /// hand each other a FILE line number.
+    private func setMode(_ mode: EditorMode) {
+        guard mode != editorMode else { return }
+        if mode == .reading {
+            readingScrollLine = editorCaretLine() ?? 0
+        } else if editorMode == .reading {
+            // Caret to the start of the block Reading had at the top — the
+            // editor's scrollTarget already places the caret and scrolls.
+            let offset = ReadingSourceLines(model.noteText)
+                .utf16Offset(ofLine: readingPosition.topLine)
+            scrollTarget = NSRange(location: offset, length: 0)
+        }
+        editorMode = mode
+    }
+
+    /// The caret's 0-based FILE line, read off the editor's text view.
+    /// EditorKit publishes formatting state but not the caret offset, and it
+    /// publishes only when that state CHANGES — so the switch has to ask the
+    /// view itself for the caret as it is right now. Found by walking the
+    /// window rather than by first responder, because clicking the mode
+    /// picker moves focus off the editor before this runs; the text
+    /// comparison is what proves it's OUR editor and not a field editor.
+    private func editorCaretLine() -> Int? {
+        #if os(macOS)
+            guard let window = NSApp.keyWindow ?? NSApp.mainWindow,
+                  let textView = Self.editorTextView(in: window.contentView, text: model.noteText)
+            else { return nil }
+            return ReadingSourceLines(model.noteText)
+                .line(forUTF16Offset: textView.selectedRange().location)
+        #else
+            return nil
+        #endif
+    }
+
+    #if os(macOS)
+        private static func editorTextView(in view: NSView?, text: String) -> NSTextView? {
+            guard let view else { return nil }
+            if let textView = view as? NSTextView, textView.string == text {
+                return textView
+            }
+            for subview in view.subviews {
+                if let found = editorTextView(in: subview, text: text) {
+                    return found
+                }
+            }
+            return nil
+        }
+    #endif
+
+    private var editorTheme: MarkdownTheme {
+        // Source is the strict-markdown view: a monospaced face when the
+        // user asked for one, their normal reading font otherwise.
+        let design = editorMode == .source && sourceModeMonospace ? "mono" : editorFontDesign
+        return .default.customized(
+            baseFontSize: CGFloat(editorFontSize),
+            fontDesign: design,
+            findHighlight: findHighlightColor
+        )
+    }
+
+    /// ReadingKit can't see EditorKit's theme or the To-Do tab's chips, so
+    /// the app hands it both — one place keeps Reading mode's colors equal
+    /// to the editor's and to the task list's.
+    private var readingStyle: ReadingStyle {
+        ReadingStyle(
+            baseFontSize: CGFloat(editorFontSize),
+            fontDesign: Self.fontDesign(editorFontDesign),
+            tagColor: { TaskChipStyle.labelColor($0) },
+            kindColor: { TaskChipStyle.kindColor($0) },
+            priorityColor: { TaskChipStyle.priorityColor($0) }
+        )
+    }
+
+    private static func fontDesign(_ name: String) -> Font.Design {
+        switch name {
+        case "serif": .serif
+        case "rounded": .rounded
+        case "mono": .monospaced
+        default: .default
+        }
+    }
+
+    /// Reading mode's checkbox takes the SAME outbound route the To-Do tab
+    /// takes: find the index row for (note, line) and let the service
+    /// rewrite the source markdown line under file coordination.
+    /// `model.noteText` is never poked directly — the reload hook re-renders
+    /// Reading mode from the rewritten file.
+    private func toggleReadingTask(line: Int) {
+        guard let noteId = model.selectedID,
+              let task = indexService.tasks(inNote: noteId).first(where: { $0.line == line })
+        else { return }
+        Task { await indexService.toggle(task) }
+    }
+
+    /// Wikilink taps resolve the way the link graph resolves edges:
+    /// case-insensitive match on the note's title.
+    private func openWikilink(_ title: String) {
+        let target = title.lowercased()
+        guard let note = model.notes.first(where: { noteTitle($0).lowercased() == target })
+        else { return }
+        model.openNote(note.id, jumpToLine: nil)
     }
 
     /// AI actions edit the note text like any other edit — autosave and the
