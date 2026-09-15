@@ -395,6 +395,28 @@ struct RevealEquivalenceTests {
             )
         }
 
+        @Test func sourceModeWithFocusStaysFullyRevealed() throws {
+            // Critic-caught (round 2): the Focus-mode same-paragraph path
+            // must not build a Live Preview scope while in Source mode.
+            let text = "---\nfavorite: true\n---\n**one** plain **two**\n\nsecond *lean*\n"
+            let (textView, coordinator) = editor(text)
+            coordinator.livePreview = false
+            coordinator.focusMode = true
+            textView.setSelectedRange(caretInside("one", of: text))
+            coordinator.restyle(textView)
+            let storage = try #require(textView.textStorage)
+            let fmOffset = offset(of: "favorite", in: text)
+            let fmFontBefore = storage.attribute(.font, at: fmOffset, effectiveRange: nil) as? PlatformFont
+            #expect(isVisible(storage, at: offset(of: "**two**", in: text)))
+
+            textView.setSelectedRange(caretInside("plain", of: text))
+            selectionChanged(textView, coordinator)
+            #expect(isVisible(storage, at: offset(of: "**two**", in: text)), "source mode shows every marker")
+            #expect(isVisible(storage, at: offset(of: "*lean*", in: text)))
+            let fmFontAfter = storage.attribute(.font, at: fmOffset, effectiveRange: nil) as? PlatformFont
+            #expect(fmFontAfter == fmFontBefore, "no frontmatter card styling in source mode")
+        }
+
         @Test func focusModeKeepsTheNarrowRevealAlive() throws {
             // Critic-caught: Focus mode early-returned on same-paragraph
             // caret moves, freezing the reveal at whatever the caret touched

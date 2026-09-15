@@ -612,7 +612,10 @@ struct EditorParseCache {
                     return
                 }
                 lastCursorLine = cursor
-                let scope = RevealScope.at(textView.selectedRange(), in: textView.string)
+                // Source mode has no reveal scope (restyle stored nil) — the
+                // Focus-mode path must not conjure one (critic-caught).
+                let scope = livePreview
+                    ? RevealScope.at(textView.selectedRange(), in: textView.string) : nil
                 guard scope != revealScope else { return }
                 MarkdownHighlighter.updateReveal(
                     storage,
@@ -1399,7 +1402,8 @@ struct EditorParseCache {
                     return
                 }
                 lastCursorLine = cursor
-                let scope = RevealScope.at(textView.selectedRange, in: textView.text ?? "")
+                let scope = livePreview
+                    ? RevealScope.at(textView.selectedRange, in: textView.text ?? "") : nil
                 guard scope != revealScope else { return }
                 MarkdownHighlighter.updateReveal(
                     storage,
