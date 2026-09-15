@@ -57,3 +57,28 @@ resolves, full gate after merge, fresh critic before push.
 - iOS: must keep building and keep current behavior; Reading mode and the
   mode picker should work on iOS where they compile cleanly (SwiftUI-only
   renderer makes this cheap), but macOS is the verification target.
+
+## Deferred follow-ups (from the post-merge critique, 3 rounds → pass, 2026-09-15)
+
+1. Reading-mode checkbox on an unlocked locked note is a silent no-op (the
+   index stores no task rows for `locked: true` notes); disable the circle
+   or surface a hint when `model.selectedIsLockable`.
+2. `applyRevealUpdate` and `restyle` each compute
+   `livePreview ? RevealScope.at(…) : nil`; extract one `currentScope(for:)`
+   helper per coordinator so the two sites cannot drift again.
+3. `TableGrid.columnLayout` has no production caller now that the fragment
+   stops re-drawing cell text — retire it or use it for true grid relayout.
+4. `#tag` chips inside table cells take the uniform monospaced table font
+   (columns stay aligned); color survives. Revisit if it reads oddly.
+5. Toggling "Source mode uses a monospaced font" while already in Source
+   mode repaints on the next restyle, not immediately (`modeChanged` watches
+   livePreview/focusMode/baseFontSize, not fontDesign).
+6. Frontmatter card rows render sorted by key (`Frontmatter.values` is a
+   dictionary; file order is lost upstream).
+7. In notes over the 20k-UTF16 debounce threshold, caret moves in the 150 ms
+   after typing leave the reveal untouched until the debounced restyle lands.
+8. Nothing in this feature set was observed live by anyone (builders declined
+   to launch against the live vault): ⌘E cycling, the mode picker, ⌘F/⌘E/⌘/
+   firing from the hidden button stack, Reading-mode checkbox toggles,
+   position sync across mode switches, and the no-reflow feel are the user's
+   shakedown checks.
