@@ -581,8 +581,17 @@ struct EditorParseCache {
                 // so it stays a whole-document pass — but only when the
                 // paragraph actually changed.
                 if focusMode {
-                    guard cursor != lastCursorLine else { return }
-                    restyle(textView)
+                    if cursor != lastCursorLine {
+                        // The dim region moved with the paragraph: whole-
+                        // document pass.
+                        restyle(textView)
+                    } else {
+                        // Same paragraph, so the dim region is unchanged —
+                        // exactly updateReveal's precondition — and the
+                        // narrow reveal must still follow the caret
+                        // (critic-caught: it was frozen in Focus mode).
+                        applyRevealUpdate(textView, cursor: cursor, dimOutside: cursor)
+                    }
                     return
                 }
                 applyRevealUpdate(textView, cursor: cursor)
@@ -592,7 +601,7 @@ struct EditorParseCache {
             /// reuse the cached one and re-apply attributes only where the
             /// reveal flipped (the caret's line for block syntax, the
             /// touched span for inline). No parse, no whole-note restyle.
-            private func applyRevealUpdate(_ textView: NSTextView, cursor: NSRange) {
+            private func applyRevealUpdate(_ textView: NSTextView, cursor: NSRange, dimOutside: NSRange? = nil) {
                 guard let storage = textView.textStorage,
                       let cache = parseCache, cache.length == storage.length
                 else {
@@ -612,6 +621,7 @@ struct EditorParseCache {
                     groups: cache.groups,
                     from: revealScope,
                     to: scope,
+                    dimOutside: dimOutside,
                     foldRanges: cache.folds
                 )
                 revealScope = scope
@@ -1362,8 +1372,17 @@ struct EditorParseCache {
                 // Focus mode's dim region moves with the caret's paragraph,
                 // so it stays a whole-document pass.
                 if focusMode {
-                    guard cursor != lastCursorLine else { return }
-                    restyle(textView)
+                    if cursor != lastCursorLine {
+                        // The dim region moved with the paragraph: whole-
+                        // document pass.
+                        restyle(textView)
+                    } else {
+                        // Same paragraph, so the dim region is unchanged —
+                        // exactly updateReveal's precondition — and the
+                        // narrow reveal must still follow the caret
+                        // (critic-caught: it was frozen in Focus mode).
+                        applyRevealUpdate(textView, cursor: cursor, dimOutside: cursor)
+                    }
                     return
                 }
                 applyRevealUpdate(textView, cursor: cursor)
@@ -1372,7 +1391,7 @@ struct EditorParseCache {
             /// Live Preview caret move: reuse the cached parse and re-apply
             /// attributes only where the reveal flipped — no parse, no
             /// whole-note restyle. Mirrors the macOS coordinator.
-            private func applyRevealUpdate(_ textView: UITextView, cursor: NSRange) {
+            private func applyRevealUpdate(_ textView: UITextView, cursor: NSRange, dimOutside: NSRange? = nil) {
                 let storage = textView.textStorage
                 guard let cache = parseCache, cache.length == storage.length else {
                     // The text just changed; its own (possibly debounced)
@@ -1389,6 +1408,7 @@ struct EditorParseCache {
                     groups: cache.groups,
                     from: revealScope,
                     to: scope,
+                    dimOutside: dimOutside,
                     foldRanges: cache.folds
                 )
                 revealScope = scope

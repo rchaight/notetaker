@@ -1334,6 +1334,14 @@ struct NotesView: View {
         guard let noteId = model.selectedID,
               let task = indexService.tasks(inNote: noteId).first(where: { $0.line == line })
         else { return }
+        // The index can trail the editor by an autosave + reindex. If the
+        // line under this checkbox is not the task the index thinks it is,
+        // do nothing rather than flip a neighbour (critic-caught race).
+        let lines = splitLines(model.noteText)
+        guard line < lines.count,
+              strippingCarriageReturn(lines[line]).trimmingCharacters(in: .newlines)
+              == task.rawLine.trimmingCharacters(in: .newlines)
+        else { return }
         Task { await indexService.toggle(task) }
     }
 

@@ -163,6 +163,11 @@ struct NarrowRevealTests {
 /// Every construct the highlighter treats specially: headings, inline
 /// spans, lists/tasks, quotes, code fences, rules, tables, frontmatter.
 private let revealFixtures: [String] = [
+    // Fold + table: the stable-block pass must stay inside the update
+    // window or a folded table re-inflates on any caret move.
+    "# Top\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\n# Next\n\nplain **bold** tail\n",
+    // Inline marker inside a cell: the marker group path re-asserts it.
+    "| Name | Note |\n| --- | --- |\n| Ada | has **bold** cell |\n\nafter *lean*\n",
     "**one** plain **two**\n\nsecond *line* here\n",
     "## Section\n\nbody with `code` and [docs](https://example.com)\n\n### Sub\n\ntail\n",
     "- item **bold** and *lean*\n- [ ] task with #tag and @person\n  - nested ==marked==\n",
@@ -388,6 +393,27 @@ struct RevealEquivalenceTests {
             coordinator.textViewDidChangeSelection(
                 Notification(name: NSTextView.didChangeSelectionNotification, object: textView)
             )
+        }
+
+        @Test func focusModeKeepsTheNarrowRevealAlive() throws {
+            // Critic-caught: Focus mode early-returned on same-paragraph
+            // caret moves, freezing the reveal at whatever the caret touched
+            // when the paragraph was entered.
+            let text = "plain start **bold** and *lean* end\n\nother paragraph\n"
+            let (textView, coordinator) = editor(text)
+            coordinator.focusMode = true
+            textView.setSelectedRange(NSRange(location: 0, length: 0))
+            coordinator.restyle(textView)
+            let storage = try #require(textView.textStorage)
+            #expect(!isVisible(storage, at: offset(of: "**bold**", in: text)))
+
+            textView.setSelectedRange(caretInside("bold", of: text))
+            selectionChanged(textView, coordinator)
+            #expect(
+                isVisible(storage, at: offset(of: "**bold**", in: text)),
+                "a same-paragraph move must reveal the touched span in Focus mode"
+            )
+            #expect(!isVisible(storage, at: offset(of: "*lean*", in: text)))
         }
 
         #if DEBUG

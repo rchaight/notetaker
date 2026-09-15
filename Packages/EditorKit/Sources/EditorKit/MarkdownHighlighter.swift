@@ -311,14 +311,15 @@ public enum MarkdownHighlighter {
             // with dimmed, full-size pipe separators, the rules drawn over
             // them by TableRowLayoutFragment. Entering a table changes
             // nothing but the caret.
-            TableStyling.apply(to: storage, text: text, styled: styled, theme: theme)
+            TableStyling.apply(to: storage, text: text, styled: styled, theme: theme, clip: clip)
             // Frontmatter: a properties card (FrontmatterLayoutFragment
             // draws the background). Identical metrics inside and outside —
             // only the colors change — so the block never collapses.
             FrontmatterStyling.apply(
                 to: storage, text: text, theme: theme,
                 focused: FrontmatterStyling.blockRange(in: text)
-                    .map { reveal.revealsBlock($0) } ?? false
+                    .map { reveal.revealsBlock($0) } ?? false,
+                clip: clip
             )
         }
         // Heading folds hide whole sections (hair-height, like markers) —

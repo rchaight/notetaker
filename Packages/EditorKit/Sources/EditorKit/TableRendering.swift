@@ -106,17 +106,29 @@ public enum TableStyling {
         to storage: NSTextStorage,
         text: String,
         styled: [StyledRange],
-        theme: MarkdownTheme
+        theme: MarkdownTheme,
+        clip: NSRange? = nil
     ) {
         let ns = text as NSString
         let font = theme.tableFont
         let separator = theme.tableSeparatorColor
+        // `clip` is the incremental update's window: an unclipped write here
+        // would re-inflate a table inside a FOLDED section, because the fold
+        // pass that re-hides it is itself window-clipped (critic-caught).
+        let bounds = clip.map { NSIntersectionRange($0, NSRange(location: 0, length: ns.length)) }
+            ?? NSRange(location: 0, length: ns.length)
+        func write(_ attributes: [NSAttributedString.Key: Any], _ range: NSRange) {
+            let target = NSIntersectionRange(range, bounds)
+            guard target.length > 0 else { return }
+            storage.addAttributes(attributes, range: target)
+        }
         for item in styled {
-            guard case .table = item.kind, NSMaxRange(item.range) <= ns.length else { continue }
+            guard case .table = item.kind, NSMaxRange(item.range) <= ns.length,
+                  NSIntersectionRange(item.range, bounds).length > 0 else { continue }
             // Re-asserting the font at full size also undoes any marker
             // collapse inside a cell: a 0.01pt run would knock the columns
             // out of the alignment the source was written with.
-            storage.addAttribute(.font, value: font, range: item.range)
+            write([.font: font], item.range)
             var offset = item.range.location
             for line in splitLines(ns.substring(with: item.range)) {
                 let length = line.utf16.count
@@ -130,22 +142,23 @@ public enum TableStyling {
                 if TableGrid.isSeparatorRow(trimmed) {
                     // The whole row recedes — the fragment draws the header
                     // underline over it, but the dashes keep their height.
-                    storage.addAttribute(.foregroundColor, value: separator, range: lineRange)
+                    write([.foregroundColor: separator], lineRange)
                     continue
                 }
-                dimPipes(in: lineRange, of: ns, storage: storage, color: separator)
+                dimPipes(in: lineRange, of: ns, color: separator, write: write)
             }
         }
     }
 
     private static func dimPipes(
-        in range: NSRange, of ns: NSString, storage: NSTextStorage, color: PlatformColor
+        in range: NSRange, of ns: NSString, color: PlatformColor,
+        write: ([NSAttributedString.Key: Any], NSRange) -> Void
     ) {
         var search = range
         while search.length > 0 {
             let hit = ns.range(of: "|", options: [], range: search)
             guard hit.location != NSNotFound else { return }
-            storage.addAttribute(.foregroundColor, value: color, range: hit)
+            write([.foregroundColor: color], hit)
             let next = NSMaxRange(hit)
             search = NSRange(location: next, length: max(NSMaxRange(range) - next, 0))
         }

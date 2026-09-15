@@ -69,11 +69,21 @@ public enum FrontmatterStyling {
         to storage: NSTextStorage,
         text: String,
         theme: MarkdownTheme,
-        focused: Bool
+        focused: Bool,
+        clip: NSRange? = nil
     ) {
         guard let block = blockRange(in: text), block.length > 0 else { return }
         let ns = text as NSString
-        storage.addAttributes(theme.frontmatterAttributes(focused: focused), range: block)
+        // Clipped to the incremental update's window for the same reason as
+        // TableStyling: the fold pass that would re-hide it is windowed.
+        let bounds = clip.map { NSIntersectionRange($0, NSRange(location: 0, length: ns.length)) }
+            ?? NSRange(location: 0, length: ns.length)
+        func write(_ attributes: [NSAttributedString.Key: Any], _ range: NSRange) {
+            let target = NSIntersectionRange(range, bounds)
+            guard target.length > 0 else { return }
+            storage.addAttributes(attributes, range: target)
+        }
+        write(theme.frontmatterAttributes(focused: focused), block)
         var offset = block.location
         for line in splitLines(ns.substring(with: block)) {
             let length = line.utf16.count
@@ -84,9 +94,7 @@ public enum FrontmatterStyling {
             guard lineRange.length > 0, NSMaxRange(lineRange) <= ns.length else { continue }
             let content = strippingCarriageReturn(line)
             if content.trimmingCharacters(in: .whitespaces) == "---" {
-                storage.addAttributes(
-                    theme.frontmatterFenceAttributes(focused: focused), range: lineRange
-                )
+                write(theme.frontmatterFenceAttributes(focused: focused), lineRange)
                 continue
             }
             // `key:` reads as the property name; a YAML list item ("- x")
@@ -94,9 +102,9 @@ public enum FrontmatterStyling {
             guard let colon = content.firstIndex(of: ":") else { continue }
             let keyLength = String(content[...colon]).utf16.count
             guard keyLength > 0, keyLength <= lineRange.length else { continue }
-            storage.addAttributes(
+            write(
                 theme.frontmatterKeyAttributes(focused: focused),
-                range: NSRange(location: lineRange.location, length: keyLength)
+                NSRange(location: lineRange.location, length: keyLength)
             )
         }
     }
