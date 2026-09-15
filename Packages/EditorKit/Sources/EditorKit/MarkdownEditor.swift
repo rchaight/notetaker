@@ -2,29 +2,24 @@ import MarkdownKit
 import SwiftUI
 import TaskEngine
 
-/// TextKit 2 markdown editor with live syntax styling on every keystroke.
-/// The underlying storage is always the plain CommonMark source — styling
-/// is attributes only, so the file on disk stays valid markdown.
-/// Ranges whose appearance depends on cursor position: syntax markers
-/// (hidden off-cursor) plus table/thematic-break bodies (rendered clear
-/// off-cursor). A cursor transition touching none of these cannot change
-/// layout, so the editor skips the whole-document restyle.
-@MainActor
-func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
-    var ranges = SyntaxMarkers.markerRanges(in: text, styled: styled)
-    let frontmatterLength = MarkdownDocument(source: text).bodyUTF16Offset
-    if frontmatterLength > 0 {
-        ranges.append(NSRange(location: 0, length: frontmatterLength))
-    }
-    for item in styled {
-        switch item.kind {
-        case .table, .thematicBreak:
-            ranges.append(item.range)
-        default:
-            continue
-        }
-    }
-    return ranges
+// TextKit 2 markdown editor with live syntax styling on every keystroke.
+// The underlying storage is always the plain CommonMark source — styling is
+// attributes only, so the file on disk stays valid markdown.
+//
+// Everything whose appearance depends on the caret (syntax markers, table
+// and thematic-break bodies, frontmatter) is owned by `RevealScope` and
+// `MarkdownHighlighter.updateReveal`: a caret move re-applies attributes
+// only where the reveal actually flipped, and never re-parses.
+
+/// One full parse of the note plus what the caret path derives from it.
+/// Cleared the moment the text changes (and length-checked on use), so the
+/// caret path either trusts it or leaves the work to the restyle that the
+/// text change already scheduled.
+struct EditorParseCache {
+    let length: Int
+    let styled: [StyledRange]
+    let groups: [SyntaxMarkers.MarkerGroup]
+    let folds: [NSRange]
 }
 
 #if canImport(AppKit)
@@ -268,7 +263,6 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             var headingInfos: [HeadingFolding.HeadingInfo] = []
             var hoveredHeadingKey: String?
             weak var hoverTextView: NSTextView?
-            var revealRanges: [NSRange] = []
             var frontmatterLength = 0
             var lastCommandID: UUID?
             var lastFindSignal = 0
@@ -280,6 +274,10 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             /// Style ranges from the last restyle pass — SelectionContext
             /// reuses these on every caret move instead of re-parsing.
             private var currentStyledRanges: [StyledRange] = []
+            /// The last full parse; caret moves reuse it instead of parsing.
+            private var parseCache: EditorParseCache?
+            /// The reveal the storage's attributes currently reflect.
+            private var revealScope: RevealScope?
             private var lastPublishedContext: SelectionContext?
             private var imageClickMonitor: Any?
             private var lastCursorLine: NSRange?
@@ -297,23 +295,31 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             func restyle(_ textView: NSTextView) {
                 guard let storage = textView.textStorage else { return }
                 installImageClickMonitorIfNeeded(for: textView)
+                let source = textView.string
                 let cursor = cursorParagraph(textView)
                 lastCursorLine = cursor
-                let prepass = MarkdownStyler.styleRanges(in: textView.string)
-                headingInfos = HeadingFolding.headings(in: textView.string, styled: prepass)
+                let scope = livePreview ? RevealScope.at(textView.selectedRange(), in: source) : nil
+                let prepass = MarkdownStyler.styleRanges(in: source)
+                let groups = SyntaxMarkers.markerGroups(in: source, styled: prepass)
+                headingInfos = HeadingFolding.headings(in: source, styled: prepass)
                 let folds = HeadingFolding.foldRanges(
-                    foldedKeys: foldedKeys, in: textView.string, styled: prepass
+                    foldedKeys: foldedKeys, in: source, styled: prepass
                 )
                 let styled = MarkdownHighlighter.highlight(
                     storage,
                     theme: theme,
-                    hideMarkersOutside: livePreview ? cursor : nil,
+                    styled: prepass,
+                    groups: groups,
+                    reveal: scope,
                     dimOutside: focusMode ? cursor : nil,
                     foldRanges: folds
                 )
                 codeRegions = CodeCardRegions.regions(in: textView.string, styled: styled)
                 tableRegions = TableGrid.regions(in: textView.string, styled: styled)
-                revealRanges = markdownRevealRanges(in: textView.string, styled: styled)
+                parseCache = EditorParseCache(
+                    length: (source as NSString).length, styled: styled, groups: groups, folds: folds
+                )
+                revealScope = scope
                 tagChipRanges = styled.compactMap { item in
                     switch item.kind {
                     case let .tag(name):
@@ -333,6 +339,9 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
 
             private func scheduleRestyle(_ textView: NSTextView) {
                 pendingRestyle?.cancel()
+                // The text moved: the cached parse no longer describes it,
+                // so the caret path must not build on it.
+                parseCache = nil
                 guard (textView.string as NSString).length > Self.debounceThresholdUTF16 else {
                     restyle(textView)
                     return
@@ -568,23 +577,44 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                 publishSelectionContext(for: textView)
                 guard livePreview || focusMode else { return }
                 let cursor = cursorParagraph(textView)
-                guard cursor != lastCursorLine else { return }
-                // Full restyle reflows text under the click (markers reveal
-                // at full size) — skip it when neither the old nor the new
-                // cursor paragraph contains anything hidden (user-reported
-                // "erratic jumps" clicking around plain text).
-                if focusMode || cursorTransitionAffectsLayout(from: lastCursorLine, to: cursor) {
+                // Focus mode's dim region moves with the caret's paragraph,
+                // so it stays a whole-document pass — but only when the
+                // paragraph actually changed.
+                if focusMode {
+                    guard cursor != lastCursorLine else { return }
                     restyle(textView)
-                } else {
-                    lastCursorLine = cursor
+                    return
                 }
+                applyRevealUpdate(textView, cursor: cursor)
             }
 
-            private func cursorTransitionAffectsLayout(from old: NSRange?, to new: NSRange) -> Bool {
-                revealRanges.contains { range in
-                    NSIntersectionRange(range, new).length > 0
-                        || old.map { NSIntersectionRange(range, $0).length > 0 } ?? false
+            /// Live Preview caret move: the parse cannot have changed, so
+            /// reuse the cached one and re-apply attributes only where the
+            /// reveal flipped (the caret's line for block syntax, the
+            /// touched span for inline). No parse, no whole-note restyle.
+            private func applyRevealUpdate(_ textView: NSTextView, cursor: NSRange) {
+                guard let storage = textView.textStorage,
+                      let cache = parseCache, cache.length == storage.length
+                else {
+                    // No parse to trust: the text just changed, and its own
+                    // restyle (already scheduled, possibly debounced) owns
+                    // the reveal. Parsing here too would double the work of
+                    // every keystroke.
+                    return
                 }
+                lastCursorLine = cursor
+                let scope = RevealScope.at(textView.selectedRange(), in: textView.string)
+                guard scope != revealScope else { return }
+                MarkdownHighlighter.updateReveal(
+                    storage,
+                    theme: theme,
+                    styled: cache.styled,
+                    groups: cache.groups,
+                    from: revealScope,
+                    to: scope,
+                    foldRanges: cache.folds
+                )
+                revealScope = scope
             }
 
             // MARK: Table auto-align
@@ -1066,13 +1096,16 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             var tagChipRanges: [(range: NSRange, color: PlatformColor)] = []
             var foldedKeys: Set<String> = []
             var headingInfos: [HeadingFolding.HeadingInfo] = []
-            var revealRanges: [NSRange] = []
             var frontmatterLength = 0
             var lastCommandID: UUID?
             var lastFindSignal = 0
             var lastTextLength = 0
             var onSelectionContext: ((SelectionContext) -> Void)?
             private var currentStyledRanges: [StyledRange] = []
+            /// The last full parse; caret moves reuse it instead of parsing.
+            private var parseCache: EditorParseCache?
+            /// The reveal the storage's attributes currently reflect.
+            private var revealScope: RevealScope?
             private var lastPublishedContext: SelectionContext?
             private var lastCursorLine: NSRange?
             private var pendingRestyle: Task<Void, Never>?
@@ -1087,22 +1120,31 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
             }
 
             func restyle(_ textView: UITextView) {
+                let source = textView.text ?? ""
                 let cursor = cursorParagraph(textView)
                 lastCursorLine = cursor
-                let prepass = MarkdownStyler.styleRanges(in: textView.text ?? "")
-                headingInfos = HeadingFolding.headings(in: textView.text ?? "", styled: prepass)
+                let scope = livePreview ? RevealScope.at(textView.selectedRange, in: source) : nil
+                let prepass = MarkdownStyler.styleRanges(in: source)
+                let groups = SyntaxMarkers.markerGroups(in: source, styled: prepass)
+                headingInfos = HeadingFolding.headings(in: source, styled: prepass)
+                let folds = HeadingFolding.foldRanges(
+                    foldedKeys: foldedKeys, in: source, styled: prepass
+                )
                 let styled = MarkdownHighlighter.highlight(
                     textView.textStorage,
                     theme: theme,
-                    hideMarkersOutside: livePreview ? cursor : nil,
+                    styled: prepass,
+                    groups: groups,
+                    reveal: scope,
                     dimOutside: focusMode ? cursor : nil,
-                    foldRanges: HeadingFolding.foldRanges(
-                        foldedKeys: foldedKeys, in: textView.text ?? "", styled: prepass
-                    )
+                    foldRanges: folds
                 )
                 codeRegions = CodeCardRegions.regions(in: textView.text ?? "", styled: styled)
                 tableRegions = TableGrid.regions(in: textView.text ?? "", styled: styled)
-                revealRanges = markdownRevealRanges(in: textView.text ?? "", styled: styled)
+                parseCache = EditorParseCache(
+                    length: (source as NSString).length, styled: styled, groups: groups, folds: folds
+                )
+                revealScope = scope
                 tagChipRanges = styled.compactMap { item in
                     switch item.kind {
                     case let .tag(name):
@@ -1122,6 +1164,9 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
 
             private func scheduleRestyle(_ textView: UITextView) {
                 pendingRestyle?.cancel()
+                // The text moved: the cached parse no longer describes it,
+                // so the caret path must not build on it.
+                parseCache = nil
                 guard ((textView.text ?? "") as NSString).length > Self.debounceThresholdUTF16 else {
                     restyle(textView)
                     return
@@ -1298,19 +1343,39 @@ func markdownRevealRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
                 publishSelectionContext(for: textView)
                 guard livePreview || focusMode else { return }
                 let cursor = cursorParagraph(textView)
-                guard cursor != lastCursorLine else { return }
-                if focusMode || cursorTransitionAffectsLayout(from: lastCursorLine, to: cursor) {
+                // Focus mode's dim region moves with the caret's paragraph,
+                // so it stays a whole-document pass.
+                if focusMode {
+                    guard cursor != lastCursorLine else { return }
                     restyle(textView)
-                } else {
-                    lastCursorLine = cursor
+                    return
                 }
+                applyRevealUpdate(textView, cursor: cursor)
             }
 
-            private func cursorTransitionAffectsLayout(from old: NSRange?, to new: NSRange) -> Bool {
-                revealRanges.contains { range in
-                    NSIntersectionRange(range, new).length > 0
-                        || old.map { NSIntersectionRange(range, $0).length > 0 } ?? false
+            /// Live Preview caret move: reuse the cached parse and re-apply
+            /// attributes only where the reveal flipped — no parse, no
+            /// whole-note restyle. Mirrors the macOS coordinator.
+            private func applyRevealUpdate(_ textView: UITextView, cursor: NSRange) {
+                let storage = textView.textStorage
+                guard let cache = parseCache, cache.length == storage.length else {
+                    // The text just changed; its own (possibly debounced)
+                    // restyle owns the reveal.
+                    return
                 }
+                lastCursorLine = cursor
+                let scope = RevealScope.at(textView.selectedRange, in: textView.text ?? "")
+                guard scope != revealScope else { return }
+                MarkdownHighlighter.updateReveal(
+                    storage,
+                    theme: theme,
+                    styled: cache.styled,
+                    groups: cache.groups,
+                    from: revealScope,
+                    to: scope,
+                    foldRanges: cache.folds
+                )
+                revealScope = scope
             }
 
             private func publishSelectionContext(for textView: UITextView) {

@@ -1,5 +1,8 @@
 import Foundation
 import Markdown
+#if DEBUG
+    import Synchronization
+#endif
 
 /// What a range of markdown source *is*, for editor styling. One parse of
 /// the body yields every range; EditorKit maps kinds to fonts/colors and
@@ -45,8 +48,18 @@ public struct StyledRange: Equatable, Sendable {
 }
 
 public enum MarkdownStyler {
+    #if DEBUG
+        /// Test instrumentation (debug builds only): every parse bumps this.
+        /// EditorKit's Live Preview asserts that a caret-only change never
+        /// moves it — the parse cannot change when only the caret moved.
+        public static let parseCount = Atomic<Int>(0)
+    #endif
+
     /// Parses the body and returns every styleable range, sorted by location.
     public static func styleRanges(in body: String) -> [StyledRange] {
+        #if DEBUG
+            parseCount.add(1, ordering: .relaxed)
+        #endif
         let document = Document(parsing: body, options: [.parseBlockDirectives])
         var walker = StyleWalker(converter: SourceConverter(body))
         walker.visit(document)

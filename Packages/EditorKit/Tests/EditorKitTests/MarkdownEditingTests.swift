@@ -284,7 +284,7 @@ struct GlyphSubstitutionTests {
         let theme = MarkdownTheme.default
         let focus = (storage.string as NSString).range(of: "cursor here\n")
         MarkdownHighlighter.highlight(
-            storage, theme: theme, hideMarkersOutside: focus, dimOutside: focus
+            storage, theme: theme, reveal: RevealScope.at(focus, in: storage.string), dimOutside: focus
         )
         let markerColor = storage.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? PlatformColor
         #expect(markerColor == .clear, "marker hiding must win over focus dim")
@@ -321,7 +321,9 @@ struct ThematicBreakDetectionTests {
         let storage = NSTextStorage(string: "above\n\n---\n\nbelow\n")
         let theme = MarkdownTheme.default
         let cursor = NSRange(location: 0, length: 6)
-        MarkdownHighlighter.highlight(storage, theme: theme, hideMarkersOutside: cursor)
+        MarkdownHighlighter.highlight(
+            storage, theme: theme, reveal: RevealScope.at(cursor, in: storage.string)
+        )
         let dashAt = (storage.string as NSString).range(of: "---").location
         let color = storage.attribute(.foregroundColor, at: dashAt, effectiveRange: nil) as? PlatformColor
         let font = storage.attribute(.font, at: dashAt, effectiveRange: nil) as? PlatformFont
@@ -460,12 +462,12 @@ struct TableGridTests {
         let text = "cursor\n\n| a | b |\n| - | - |\n| 1 | 2 |\n"
         let storage = NSTextStorage(string: text)
         let cursorOutside = NSRange(location: 0, length: 7)
-        MarkdownHighlighter.highlight(storage, hideMarkersOutside: cursorOutside)
+        MarkdownHighlighter.highlight(storage, reveal: RevealScope.at(cursorOutside, in: text))
         let pipeAt = (text as NSString).range(of: "| a").location
         #expect(storage.attribute(.foregroundColor, at: pipeAt, effectiveRange: nil) as? PlatformColor == .clear)
 
         let cursorInside = (text as NSString).range(of: "| a | b |\n")
-        MarkdownHighlighter.highlight(storage, hideMarkersOutside: cursorInside)
+        MarkdownHighlighter.highlight(storage, reveal: RevealScope.at(cursorInside, in: text))
         #expect(storage.attribute(.foregroundColor, at: pipeAt, effectiveRange: nil) as? PlatformColor != .clear)
     }
 }
@@ -552,13 +554,13 @@ struct AutocompleteTests {
         let storage = NSTextStorage(string: text)
         let bodyStart = (text as NSString).range(of: "# Body").location
         MarkdownHighlighter.highlight(
-            storage, hideMarkersOutside: NSRange(location: bodyStart, length: 6)
+            storage, reveal: RevealScope.at(NSRange(location: bodyStart, length: 6), in: text)
         )
         let font = storage.attribute(.font, at: 0, effectiveRange: nil) as? PlatformFont
         #expect((font?.pointSize ?? 10) < 1, "frontmatter must collapse off-cursor")
 
         MarkdownHighlighter.highlight(
-            storage, hideMarkersOutside: NSRange(location: 0, length: 4)
+            storage, reveal: RevealScope.at(NSRange(location: 0, length: 4), in: text)
         )
         let revealed = storage.attribute(.font, at: 0, effectiveRange: nil) as? PlatformFont
         #expect((revealed?.pointSize ?? 0) > 1, "cursor inside reveals the block")

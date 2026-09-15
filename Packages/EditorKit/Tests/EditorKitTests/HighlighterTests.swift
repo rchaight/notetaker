@@ -101,7 +101,7 @@ import Testing
         // Cursor on the first paragraph: its markers stay visible,
         // the second paragraph's markers collapse.
         let firstParagraph = ns.paragraphRange(for: NSRange(location: 0, length: 0))
-        MarkdownHighlighter.highlight(storage, hideMarkersOutside: firstParagraph)
+        MarkdownHighlighter.highlight(storage, reveal: RevealScope.at(firstParagraph, in: text))
 
         let firstMarkerFont = storage.attribute(.font, at: 0, effectiveRange: nil) as? PlatformFont
         #expect((firstMarkerFont?.pointSize ?? 0) > 1, "cursor-line markers must stay visible")
@@ -136,7 +136,7 @@ import Testing
     @Test func sourceModeShowsAllMarkers() {
         let text = "**bold**\n\n*second*\n"
         let storage = NSTextStorage(string: text)
-        MarkdownHighlighter.highlight(storage, hideMarkersOutside: nil)
+        MarkdownHighlighter.highlight(storage, reveal: nil)
         let font = storage.attribute(.font, at: 0, effectiveRange: nil) as? PlatformFont
         #expect((font?.pointSize ?? 0) > 1)
     }

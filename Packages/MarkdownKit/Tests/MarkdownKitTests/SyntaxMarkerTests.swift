@@ -132,6 +132,65 @@ struct ExtendedSyntaxTests {
     }
 }
 
+/// Marker grouping — what EditorKit's Live Preview needs to reveal one
+/// span's delimiters instead of a whole paragraph's.
+struct MarkerGroupTests {
+    private func groups(_ text: String) -> [SyntaxMarkers.MarkerGroup] {
+        SyntaxMarkers.markerGroups(in: text, styled: MarkdownStyler.styleRanges(in: text))
+    }
+
+    @Test func groupsCarryTheirOwningSpan() throws {
+        let text = "**one** plain **two**\n"
+        let found = groups(text)
+        #expect(found.count == 2)
+        let first = try #require(found.first)
+        #expect(first.span == NSRange(location: 0, length: 7))
+        #expect(first.markers == [NSRange(location: 0, length: 2), NSRange(location: 5, length: 2)])
+        #expect(!first.isBlockLevel)
+        #expect(found.last?.span == NSRange(location: 14, length: 7))
+    }
+
+    @Test func lineLevelSyntaxIsFlaggedBlockLevel() {
+        let lineLevel = ["## Section\n", "> quoted\n", "```swift\nlet a = 1\n```\n"].map { text in
+            let found = groups(text)
+            return !found.isEmpty && found.allSatisfy(\.isBlockLevel)
+        }
+        #expect(lineLevel == [true, true, true])
+    }
+
+    @Test func inlineSyntaxIsNotBlockLevel() {
+        let text = "a `code` [docs](https://x.y) ~~gone~~ [[Wiki]] ==mark== *lean*\n"
+        #expect(groups(text).allSatisfy { !$0.isBlockLevel })
+        #expect(groups(text).count == 6)
+    }
+
+    @Test func groupedMarkersMatchTheFlatList() {
+        let texts = [
+            "## Section with **bold**\n",
+            "> > nested quote\n",
+            "- item `code` and *lean*\n",
+            "```\nfence\n```\n",
+            "[docs](https://example.com) and [[Wiki]]\n",
+            "plain words\n",
+        ]
+        for text in texts {
+            let styled = MarkdownStyler.styleRanges(in: text)
+            #expect(
+                SyntaxMarkers.markerGroups(in: text, styled: styled).flatMap(\.markers)
+                    == SyntaxMarkers.markerRanges(in: text, styled: styled),
+                "grouping must not change which markers are hidden in \(text)"
+            )
+        }
+    }
+
+    @Test func blockquoteGroupsOneMarkerPerLine() throws {
+        let text = "> first\n> second\n"
+        let quote = try #require(groups(text).first)
+        #expect(quote.markers.count == 2)
+        #expect(quote.markers.allSatisfy { $0.length == 2 })
+    }
+}
+
 struct FrontmatterUpdateTests {
     @Test func addsKeyToExistingBlockPreservingOtherLines() throws {
         let doc = MarkdownDocument(source: "---\ntitle: My Note\n---\n# Body\n")

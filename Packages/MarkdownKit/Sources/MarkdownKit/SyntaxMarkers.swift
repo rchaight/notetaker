@@ -4,19 +4,51 @@ import Foundation
 /// link plumbing) inside styled ranges, so the editor can hide them off the
 /// cursor line in Live Preview. Pure text math — no styling here.
 public enum SyntaxMarkers {
+    /// The markers of one styled span, kept together so a caller can reveal
+    /// a single span's delimiters instead of a whole paragraph's.
+    public struct MarkerGroup: Equatable, Sendable {
+        /// The styled span the markers delimit.
+        public let span: NSRange
+        /// What the span is — reveal rules differ by kind.
+        public let kind: MarkdownElementKind
+        /// Line-level syntax (heading hashes, blockquote prefixes, code
+        /// fences) belongs to a line rather than to an inline span, so the
+        /// editor reveals it with the caret's line, not with a span.
+        public let isBlockLevel: Bool
+        /// Delimiter ranges, in the same UTF-16 coordinates as `span`.
+        public let markers: [NSRange]
+
+        public init(span: NSRange, kind: MarkdownElementKind, isBlockLevel: Bool, markers: [NSRange]) {
+            self.span = span
+            self.kind = kind
+            self.isBlockLevel = isBlockLevel
+            self.markers = markers
+        }
+    }
+
     /// Marker spans for the given styled ranges, in the same UTF-16
     /// coordinates. Ranges whose delimiters can't be confirmed in the text
     /// are skipped (defensive against parser/source drift).
     public static func markerRanges(in text: String, styled: [StyledRange]) -> [NSRange] {
+        markerGroups(in: text, styled: styled).flatMap(\.markers)
+    }
+
+    /// The same markers as `markerRanges(in:styled:)`, grouped by the span
+    /// that owns them and tagged block- or inline-level — what Live Preview
+    /// needs to reveal one span at a time.
+    public static func markerGroups(in text: String, styled: [StyledRange]) -> [MarkerGroup] {
         let ns = text as NSString
-        var markers: [NSRange] = []
+        var groups: [MarkerGroup] = []
 
         for item in styled {
             guard NSMaxRange(item.range) <= ns.length else { continue }
+            var markers: [NSRange] = []
+            var isBlockLevel = false
             switch item.kind {
             case .heading:
                 // "## Title" (up to 3 leading spaces is still a valid ATX
                 // heading) — hide indent + hashes + the following space.
+                isBlockLevel = true
                 let prefix = ns.substring(with: item.range)
                 var lead = 0
                 for character in prefix {
@@ -61,6 +93,7 @@ public enum SyntaxMarkers {
                 }
             case .blockQuote:
                 // Hide every line's "> " prefix (including nested "> > ").
+                isBlockLevel = true
                 appendLinePrefixMarkers(
                     pattern: "^ {0,3}(?:> ?)+",
                     range: item.range, in: ns, to: &markers
@@ -68,6 +101,7 @@ public enum SyntaxMarkers {
             case let .codeBlock(language):
                 // Fenced blocks: hide the opening ```lang and closing ```
                 // lines. Indented code blocks have no fence to hide.
+                isBlockLevel = true
                 let content = ns.substring(with: item.range)
                 guard content.hasPrefix("```") || content.hasPrefix("~~~") else { continue }
                 _ = language
@@ -115,15 +149,27 @@ public enum SyntaxMarkers {
             default:
                 continue
             }
+            guard !markers.isEmpty else { continue }
+            groups.append(MarkerGroup(
+                span: item.range, kind: item.kind, isBlockLevel: isBlockLevel, markers: markers
+            ))
         }
+
         // Nested constructs (e.g. "> > ") emit overlapping markers — keep
         // only the outermost span for each region.
-        return markers.filter { candidate in
-            !markers.contains { other in
-                other != candidate
-                    && NSIntersectionRange(other, candidate) == candidate
-                    && other.length > candidate.length
+        let all = groups.flatMap(\.markers)
+        return groups.compactMap { group in
+            let kept = group.markers.filter { candidate in
+                !all.contains { other in
+                    other != candidate
+                        && NSIntersectionRange(other, candidate) == candidate
+                        && other.length > candidate.length
+                }
             }
+            guard !kept.isEmpty else { return nil }
+            return MarkerGroup(
+                span: group.span, kind: group.kind, isBlockLevel: group.isBlockLevel, markers: kept
+            )
         }
     }
 
