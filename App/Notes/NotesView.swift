@@ -12,43 +12,6 @@ import SwiftUI
 import UniformTypeIdentifiers
 import VaultKit
 
-/// How the open note is shown. Three modes, Obsidian's vocabulary:
-/// Source is strict markdown, Live Preview hides syntax off the caret line,
-/// Reading is the rendered read-only view (ReadingKit). The packages know
-/// nothing about "modes" — EditorKit still takes `livePreview: Bool`.
-enum EditorMode: String, CaseIterable {
-    case source, live, reading
-
-    /// ⌘E order: Source → Live → Reading → Source.
-    var next: EditorMode {
-        switch self {
-        case .source: .live
-        case .live: .reading
-        case .reading: .source
-        }
-    }
-
-    var isEditing: Bool {
-        self != .reading
-    }
-
-    var symbol: String {
-        switch self {
-        case .source: "chevron.left.forwardslash.chevron.right"
-        case .live: "eye"
-        case .reading: "book"
-        }
-    }
-
-    var title: String {
-        switch self {
-        case .source: "Source"
-        case .live: "Live Preview"
-        case .reading: "Reading"
-        }
-    }
-}
-
 /// Reading mode's top-visible line, kept OUTSIDE SwiftUI state: it changes
 /// on every scroll frame and a `@State` write would re-run the whole detail
 /// pane's body each time. Only the mode switch ever reads it.
@@ -67,15 +30,25 @@ struct NotesView: View {
     /// Remembered globally (Obsidian's default); per-note memory is a
     /// deliberate non-goal for now.
     @AppStorage("editorMode") private var editorMode = EditorMode.live
-    /// Source mode is the "strict markdown" view — a monospaced face makes
-    /// that read like source instead of like prose.
-    @AppStorage("sourceModeMonospace") private var sourceModeMonospace = true
     /// One-shot scroll target for Reading mode (line), consumed by the view.
     @State private var readingScrollLine: Int?
     @State private var readingPosition = ReadingPositionBox()
     @AppStorage("editorFocusMode") private var focusMode = false
-    @AppStorage("editorFontSize") private var editorFontSize = 16.0
-    @AppStorage("editorFontDesign") private var editorFontDesign = "system"
+    /// Per-mode font design + size (spec 04) — Live keeps the legacy keys,
+    /// Source and Reading get their own. `EditorFontPreferences.keys(for:)`
+    /// is the single source of truth for the key strings.
+    @AppStorage(EditorFontPreferences.keys(for: .live).design) private var editorFontDesign = EditorFontPreferences
+        .defaultDesign
+    @AppStorage(EditorFontPreferences.keys(for: .live).size) private var editorFontSize = Double(EditorFontPreferences
+        .defaultSize)
+    @AppStorage(EditorFontPreferences.keys(for: .source).design) private var sourceFontDesign = EditorFontPreferences
+        .defaultDesign
+    @AppStorage(EditorFontPreferences.keys(for: .source).size) private var sourceFontSize = Double(EditorFontPreferences
+        .defaultSize)
+    @AppStorage(EditorFontPreferences.keys(for: .reading).design) private var readingFontDesign = EditorFontPreferences
+        .defaultDesign
+    @AppStorage(EditorFontPreferences.keys(for: .reading).size) private var readingFontSize =
+        Double(EditorFontPreferences.defaultSize)
     @AppStorage("findHighlightColor") private var findHighlightColor = "yellow"
     @State private var searchText = ""
     @State private var semanticIds: [String] = []
@@ -1206,6 +1179,14 @@ struct NotesView: View {
                         .keyboardShortcut("e", modifiers: [.command])
                     Button("") { setMode(editorMode == .source ? .live : .source) }
                         .keyboardShortcut("/", modifiers: [.command])
+                    // Zoom the active mode's font size — plain ⌘0 only, so
+                    // this can't collide with the inspector's ⌥⌘0 below.
+                    Button("") { zoomActiveMode(by: 1) }
+                        .keyboardShortcut("=", modifiers: [.command])
+                    Button("") { zoomActiveMode(by: -1) }
+                        .keyboardShortcut("-", modifiers: [.command])
+                    Button("") { resetActiveModeZoom() }
+                        .keyboardShortcut("0", modifiers: [.command])
                 }
                 .hidden()
             )
@@ -1292,12 +1273,14 @@ struct NotesView: View {
         }
     #endif
 
+    /// MarkdownEditor renders Source and Live Preview only (Reading swaps
+    /// in ReadingView) — each uses its own mode's stored design/size.
     private var editorTheme: MarkdownTheme {
-        // Source is the strict-markdown view: a monospaced face when the
-        // user asked for one, their normal reading font otherwise.
-        let design = editorMode == .source && sourceModeMonospace ? "mono" : editorFontDesign
+        let (design, size) = editorMode == .source
+            ? (sourceFontDesign, sourceFontSize)
+            : (editorFontDesign, editorFontSize)
         return .default.customized(
-            baseFontSize: CGFloat(editorFontSize),
+            baseFontSize: CGFloat(size),
             fontDesign: design,
             findHighlight: findHighlightColor
         )
@@ -1308,12 +1291,42 @@ struct NotesView: View {
     /// to the editor's and to the task list's.
     private var readingStyle: ReadingStyle {
         ReadingStyle(
-            baseFontSize: CGFloat(editorFontSize),
-            fontDesign: Self.fontDesign(editorFontDesign),
+            baseFontSize: CGFloat(readingFontSize),
+            fontDesign: Self.fontDesign(readingFontDesign),
             tagColor: { TaskChipStyle.labelColor($0) },
             kindColor: { TaskChipStyle.kindColor($0) },
             priorityColor: { TaskChipStyle.priorityColor($0) }
         )
+    }
+
+    // MARK: - Zoom (⌘= / ⌘− / ⌘0)
+
+    /// Hardware-keyboard zoom targets whichever mode is on screen right
+    /// now — Source and Live have independent sizes, so this reads/writes
+    /// the active mode's stored key, not a single shared one.
+    private func zoomActiveMode(by delta: CGFloat) {
+        let clamped = EditorFontPreferences.clamp(activeModeFontSize + delta)
+        setActiveModeFontSize(clamped)
+    }
+
+    private func resetActiveModeZoom() {
+        setActiveModeFontSize(EditorFontPreferences.defaultSize)
+    }
+
+    private var activeModeFontSize: CGFloat {
+        switch editorMode {
+        case .source: CGFloat(sourceFontSize)
+        case .live: CGFloat(editorFontSize)
+        case .reading: CGFloat(readingFontSize)
+        }
+    }
+
+    private func setActiveModeFontSize(_ size: CGFloat) {
+        switch editorMode {
+        case .source: sourceFontSize = Double(size)
+        case .live: editorFontSize = Double(size)
+        case .reading: readingFontSize = Double(size)
+        }
     }
 
     private static func fontDesign(_ name: String) -> Font.Design {

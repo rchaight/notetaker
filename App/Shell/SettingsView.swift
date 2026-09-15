@@ -1,5 +1,6 @@
 import AIKit
 import ConversionKit
+import EditorKit
 import SecurityKit
 import SwiftUI
 #if os(macOS)
@@ -16,13 +17,23 @@ struct SettingsView: View {
     @State private var calendarAccess = CalendarService.accessState()
     @State private var calendarList: [(id: String, title: String, account: String)] = []
     @State private var excludedIds: Set<String> = []
-    // Editor
-    @AppStorage("editorFontSize") private var editorFontSize = 16.0
-    @AppStorage("editorFontDesign") private var editorFontDesign = "system"
+    // Editor — per-mode font design + size (spec 04); Live keeps the
+    // legacy keys, Source/Reading get their own via EditorFontPreferences.
+    @AppStorage(EditorFontPreferences.keys(for: .live).design) private var liveFontDesign = EditorFontPreferences
+        .defaultDesign
+    @AppStorage(EditorFontPreferences.keys(for: .live).size) private var liveFontSize = Double(EditorFontPreferences
+        .defaultSize)
+    @AppStorage(EditorFontPreferences.keys(for: .source).design) private var sourceFontDesign = EditorFontPreferences
+        .defaultDesign
+    @AppStorage(EditorFontPreferences.keys(for: .source).size) private var sourceFontSize = Double(EditorFontPreferences
+        .defaultSize)
+    @AppStorage(EditorFontPreferences.keys(for: .reading).design) private var readingFontDesign = EditorFontPreferences
+        .defaultDesign
+    @AppStorage(EditorFontPreferences.keys(for: .reading).size) private var readingFontSize =
+        Double(EditorFontPreferences.defaultSize)
     @AppStorage("findHighlightColor") private var findHighlightColor = "yellow"
     @AppStorage("editorFocusMode") private var focusMode = false
     @AppStorage("editorMode") private var editorMode = EditorMode.live
-    @AppStorage("sourceModeMonospace") private var sourceModeMonospace = true
     // To-Do
     @AppStorage("todoDensity") private var todoDensity = "comfortable"
     @AppStorage("showStreaks") private var showStreaks = false
@@ -200,24 +211,24 @@ struct SettingsView: View {
 
     private var editorPane: some View {
         Form {
-            Section("Typography") {
-                Picker("Font", selection: $editorFontDesign) {
-                    Text("System").tag("system")
-                    Text("Serif").tag("serif")
-                    Text("Rounded").tag("rounded")
-                    Text("Monospaced").tag("mono")
-                }
-                HStack {
-                    Stepper(
-                        "Text size: \(Int(editorFontSize)) pt",
-                        value: $editorFontSize, in: 11 ... 28, step: 1
-                    )
-                    Button("Reset") { editorFontSize = 16 }
-                        .disabled(editorFontSize == 16)
-                }
-                Text("Applies to body text; headings scale proportionally. Code blocks stay monospaced.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            Section("Fonts") {
+                fontRow(
+                    "Source", design: $sourceFontDesign, size: $sourceFontSize,
+                    resetDesign: EditorFontPreferences.resetDesign(for: .source)
+                )
+                fontRow(
+                    "Live Preview", design: $liveFontDesign, size: $liveFontSize,
+                    resetDesign: EditorFontPreferences.resetDesign(for: .live)
+                )
+                fontRow(
+                    "Reading", design: $readingFontDesign, size: $readingFontSize,
+                    resetDesign: EditorFontPreferences.resetDesign(for: .reading)
+                )
+                Text(
+                    "Applies to body text; headings scale proportionally. Code blocks stay monospaced. ⌘= and ⌘− resize the mode you're in; ⌘0 resets it."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
             Section("View mode") {
                 Picker("Default mode for notes", selection: $editorMode) {
@@ -225,7 +236,6 @@ struct SettingsView: View {
                         Text(mode.title).tag(mode)
                     }
                 }
-                Toggle("Source mode uses a monospaced font", isOn: $sourceModeMonospace)
                 Text("⌘E cycles Source → Live Preview → Reading. ⌘/ flips between Source and Live Preview.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -242,6 +252,39 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    /// One row of the Fonts section: a design picker, a size stepper, and a
+    /// reset that restores `resetDesign` (Monospaced for Source, System for
+    /// Live/Reading — the same defaults `migrateIfNeeded` seeds) + the
+    /// shared default size.
+    private func fontRow(
+        _ label: String, design: Binding<String>, size: Binding<Double>, resetDesign: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Picker("\(label) font", selection: design) {
+                Text("System").tag("system")
+                Text("Serif").tag("serif")
+                Text("Rounded").tag("rounded")
+                Text("Monospaced").tag("mono")
+            }
+            HStack {
+                Stepper(
+                    "Size: \(Int(size.wrappedValue)) pt",
+                    value: size,
+                    in: Double(EditorFontPreferences.minSize) ... Double(EditorFontPreferences.maxSize),
+                    step: 1
+                )
+                Button("Reset") {
+                    design.wrappedValue = resetDesign
+                    size.wrappedValue = Double(EditorFontPreferences.defaultSize)
+                }
+                .disabled(
+                    design.wrappedValue == resetDesign
+                        && size.wrappedValue == Double(EditorFontPreferences.defaultSize)
+                )
+            }
+        }
     }
 
     private var todoPane: some View {

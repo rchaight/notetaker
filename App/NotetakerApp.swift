@@ -1,3 +1,4 @@
+import EditorKit
 import SwiftUI
 
 @main
@@ -15,6 +16,10 @@ struct NotetakerApp: App {
         // Purge saved window state before any window is created. Revisit
         // for proper state restoration at release (M10).
         Self.purgeSavedWindowState()
+        // One-time: seed the per-mode font keys (spec 04) from the legacy
+        // shared size and the old sourceModeMonospace toggle. A no-op on
+        // every later launch once sourceFontDesign is set.
+        EditorFontPreferences.migrateIfNeeded(store: UserDefaults.standard)
         VaultSmoke.runIfRequested()
         #if os(macOS)
             // System-wide quick capture (⌃⌥⌘N), registered once at launch.
