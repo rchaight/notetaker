@@ -57,15 +57,21 @@ public struct MarkdownTheme: @unchecked Sendable {
 
     /// "yellow" | "orange" | "pink" | "green" | "blue" — ⌘F match color.
     public var findHighlightName: String = "yellow"
+    /// How much of each level's default enlargement to apply: 1 = the
+    /// standard scale, 0 = headings the same size as body text (user
+    /// request: "the headers to be smaller"). Applied in every mode.
+    public var headingScale: CGFloat = 1.0
 
     /// A user-customized copy (Settings drives size + design + find color).
     public func customized(
-        baseFontSize: CGFloat, fontDesign: String, findHighlight: String = "yellow"
+        baseFontSize: CGFloat, fontDesign: String, findHighlight: String = "yellow",
+        headingScale: CGFloat = 1.0
     ) -> MarkdownTheme {
         var theme = self
         theme.baseFontSize = baseFontSize
         theme.fontDesign = fontDesign
         theme.findHighlightName = findHighlight
+        theme.headingScale = headingScale
         return theme
     }
 
@@ -116,7 +122,7 @@ public struct MarkdownTheme: @unchecked Sendable {
     static let headingScales: [CGFloat] = [1.6, 1.4, 1.25, 1.15, 1.05, 1.0]
 
     public func headingFont(level: Int) -> PlatformFont {
-        let scale = Self.headingScales[min(max(level, 1), 6) - 1]
+        let scale = 1 + (Self.headingScales[min(max(level, 1), 6) - 1] - 1) * headingScale
         return designedFont(size: (baseFontSize * scale).rounded(), bold: true)
     }
 

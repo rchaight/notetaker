@@ -34,6 +34,7 @@ struct SettingsView: View {
     @AppStorage("findHighlightColor") private var findHighlightColor = "yellow"
     @AppStorage("editorFocusMode") private var focusMode = false
     @AppStorage("editorMode") private var editorMode = EditorMode.live
+    @AppStorage("headingScale") private var headingScalePercent = 100.0
     // To-Do
     @AppStorage("todoDensity") private var todoDensity = "comfortable"
     @AppStorage("showStreaks") private var showStreaks = false
@@ -224,8 +225,16 @@ struct SettingsView: View {
                     "Reading", design: $readingFontDesign, size: $readingFontSize,
                     resetDesign: EditorFontPreferences.resetDesign(for: .reading)
                 )
+                HStack {
+                    Stepper(
+                        "Heading size: \(Int(headingScalePercent))%",
+                        value: $headingScalePercent, in: 0 ... 120, step: 10
+                    )
+                    Button("Reset") { headingScalePercent = 100 }
+                        .disabled(headingScalePercent == 100)
+                }
                 Text(
-                    "Applies to body text; headings scale proportionally. Code blocks stay monospaced. ⌘= and ⌘− resize the mode you're in; ⌘0 resets it."
+                    "Applies to body text. Heading size scales the headings in every mode — lower it to shrink them (0% = same as body). Code blocks stay monospaced. ⌘= and ⌘− resize the mode you're in; ⌘0 resets it."
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)

@@ -50,6 +50,8 @@ struct NotesView: View {
     @AppStorage(EditorFontPreferences.keys(for: .reading).size) private var readingFontSize =
         Double(EditorFontPreferences.defaultSize)
     @AppStorage("findHighlightColor") private var findHighlightColor = "yellow"
+    /// Heading size as a percent of the default enlargement, all modes.
+    @AppStorage("headingScale") private var headingScalePercent = 100.0
     @State private var searchText = ""
     @State private var semanticIds: [String] = []
     @State private var showingImporter = false
@@ -1282,7 +1284,8 @@ struct NotesView: View {
         return .default.customized(
             baseFontSize: CGFloat(size),
             fontDesign: design,
-            findHighlight: findHighlightColor
+            findHighlight: findHighlightColor,
+            headingScale: CGFloat(headingScalePercent / 100)
         )
     }
 
@@ -1293,6 +1296,7 @@ struct NotesView: View {
         ReadingStyle(
             baseFontSize: CGFloat(readingFontSize),
             fontDesign: Self.fontDesign(readingFontDesign),
+            headingScale: CGFloat(headingScalePercent / 100),
             tagColor: { TaskChipStyle.labelColor($0) },
             kindColor: { TaskChipStyle.kindColor($0) },
             priorityColor: { TaskChipStyle.priorityColor($0) }

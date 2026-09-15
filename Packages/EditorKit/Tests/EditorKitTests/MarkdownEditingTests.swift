@@ -240,6 +240,16 @@ struct GlyphSubstitutionTests {
 }
 
 @MainActor struct ThemeTokenTests {
+    @Test func headingScaleShrinksHeadingsTowardBody() {
+        let full = MarkdownTheme.default.customized(baseFontSize: 20, fontDesign: "system")
+        let half = MarkdownTheme.default.customized(baseFontSize: 20, fontDesign: "system", headingScale: 0.5)
+        let flat = MarkdownTheme.default.customized(baseFontSize: 20, fontDesign: "system", headingScale: 0)
+        #expect(half.headingFont(level: 1).pointSize < full.headingFont(level: 1).pointSize)
+        #expect(half.headingFont(level: 1).pointSize > 20)
+        #expect(flat.headingFont(level: 1).pointSize == 20)
+        #expect(half.headingFont(level: 1).pointSize >= half.headingFont(level: 3).pointSize)
+    }
+
     @Test func surfaceTokensResolveDistinctAppearances() throws {
         let theme = MarkdownTheme.default
         #if canImport(AppKit)

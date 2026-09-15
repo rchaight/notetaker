@@ -596,3 +596,15 @@ struct ReadingRenderingTests {
         #expect(ReadingDocument.anchorLine(for: 3, in: blocks("")) == nil)
     }
 }
+
+struct ReadingStyleHeadingScaleTests {
+    @Test func headingScaleShrinksHeadingsTowardBody() {
+        let full = ReadingStyle(baseFontSize: 20)
+        let half = ReadingStyle(baseFontSize: 20, headingScale: 0.5)
+        let flat = ReadingStyle(baseFontSize: 20, headingScale: 0)
+        #expect(half.headingSize(level: 1) < full.headingSize(level: 1))
+        #expect(half.headingSize(level: 1) > 20)
+        #expect(flat.headingSize(level: 1) == 20)
+        #expect(half.headingSize(level: 1) >= half.headingSize(level: 3))
+    }
+}

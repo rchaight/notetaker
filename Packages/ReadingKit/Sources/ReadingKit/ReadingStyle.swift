@@ -8,6 +8,9 @@ import SwiftUI
 public struct ReadingStyle: Sendable {
     public var baseFontSize: CGFloat
     public var fontDesign: Font.Design
+    /// Fraction of each heading level's default enlargement to apply
+    /// (1 = standard, 0 = body size) — mirrors MarkdownTheme.headingScale.
+    public var headingScale: CGFloat
     public var textColor: Color
     public var secondaryColor: Color
     public var accentColor: Color
@@ -35,6 +38,7 @@ public struct ReadingStyle: Sendable {
     public init(
         baseFontSize: CGFloat = 16,
         fontDesign: Font.Design = .default,
+        headingScale: CGFloat = 1.0,
         textColor: Color = .primary,
         secondaryColor: Color = .secondary,
         accentColor: Color = .accentColor,
@@ -48,6 +52,7 @@ public struct ReadingStyle: Sendable {
     ) {
         self.baseFontSize = baseFontSize
         self.fontDesign = fontDesign
+        self.headingScale = headingScale
         self.textColor = textColor
         self.secondaryColor = secondaryColor
         self.accentColor = accentColor
@@ -63,7 +68,7 @@ public struct ReadingStyle: Sendable {
     public static let `default` = ReadingStyle()
 
     public func headingSize(level: Int) -> CGFloat {
-        let scale = Self.headingScales[min(max(level, 1), 6) - 1]
+        let scale = 1 + (Self.headingScales[min(max(level, 1), 6) - 1] - 1) * headingScale
         return (baseFontSize * scale).rounded()
     }
 
