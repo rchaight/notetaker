@@ -86,3 +86,13 @@ ability to set the font and font size for these screens."
 
 - Per-note font memory; custom font families beyond the four designs;
   line-height/width controls; changing the To-Do/Projects/Meetings fonts.
+
+## Critique (pass, 2026-09-15) — deferrable notes
+
+1. `EditorFontPreferences.resolve` is tested but unused; NotesView reads the
+   raw `@AppStorage` values without clamping (only `defaults write` could
+   put an out-of-range size in). Route the theme through `resolve` if it
+   ever matters.
+2. Zoom-in is ⌘= only; add ⌘⇧= (⌘+) if the Safari habit bites.
+3. Settings rows, ⌘=/⌘−/⌘0, and immediate repaint were verified
+   structurally, not observed live — 30-second shakedown check.
