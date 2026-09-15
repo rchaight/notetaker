@@ -70,9 +70,9 @@ resolves, full gate after merge, fresh critic before push.
    stops re-drawing cell text — retire it or use it for true grid relayout.
 4. `#tag` chips inside table cells take the uniform monospaced table font
    (columns stay aligned); color survives. Revisit if it reads oddly.
-5. Toggling "Source mode uses a monospaced font" while already in Source
-   mode repaints on the next restyle, not immediately (`modeChanged` watches
-   livePreview/focusMode/baseFontSize, not fontDesign).
+5. ~~Font-design changes not repainting immediately~~ — STALE: `modeChanged`
+   has compared `fontDesign` since 2026-07-14 (verified by the spec-04
+   builder via blame); the toggle itself was replaced by per-mode fonts.
 6. Frontmatter card rows render sorted by key (`Frontmatter.values` is a
    dictionary; file order is lost upstream).
 7. In notes over the 20k-UTF16 debounce threshold, caret moves in the 150 ms
