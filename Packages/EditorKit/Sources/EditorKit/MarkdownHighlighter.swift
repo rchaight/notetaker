@@ -160,7 +160,8 @@ public enum MarkdownHighlighter {
 
     /// The ranges whose appearance differs between two reveal scopes for one
     /// parse: markers that flip hidden/visible, plus the block renderings
-    /// (tables, thematic breaks, frontmatter) keyed to the caret's line. An
+    /// (thematic breaks, frontmatter) keyed to the caret's line — tables
+    /// render identically in both states, so they never enter the delta. An
     /// empty result means the caret move cannot change a single pixel.
     public static func revealDelta(
         in text: String,
@@ -183,7 +184,7 @@ public enum MarkdownHighlighter {
             }
         }
         for item in styled
-            where (item.kind == .table || item.kind == .thematicBreak)
+            where item.kind == .thematicBreak
             && NSMaxRange(item.range) <= length {
             if flipped({ $0.revealsBlock(item.range) }) {
                 changed.append(item.range)
@@ -289,24 +290,6 @@ public enum MarkdownHighlighter {
         }
         // Marker hiding comes last so its .clear color survives focus dim.
         if let reveal {
-            // Frontmatter is metadata, not prose: collapse the whole block
-            // off-cursor (it also stops reading as markdown — its closing
-            // "---" was rendering as a divider). Cursor inside reveals it.
-            let frontmatterLength = MarkdownDocument(source: text).bodyUTF16Offset
-            if frontmatterLength > 0 {
-                let block = NSRange(location: 0, length: min(frontmatterLength, fullRange.length))
-                if !reveal.revealsBlock(block) {
-                    write(theme.hiddenMarkerAttributes, block)
-                }
-            }
-            // Tables: the drawn grid carries the content while the cursor is
-            // elsewhere; raw pipes come back the moment the cursor enters.
-            for item in styled
-                where item.kind == .table
-                && !reveal.revealsBlock(item.range)
-                && NSMaxRange(item.range) <= fullRange.length {
-                write([.foregroundColor: PlatformColor.clear], item.range)
-            }
             // Thematic breaks: the drawn divider carries the meaning, so the
             // dashes go clear at FULL size (0.01pt would collapse the row).
             for item in styled
@@ -320,6 +303,23 @@ public enum MarkdownHighlighter {
                     write(theme.hiddenMarkerAttributes, marker)
                 }
             }
+            // The two stable blocks go LAST so nothing inside them can be
+            // left collapsed: a 0.01pt run would knock a table's columns out
+            // of alignment and resize the frontmatter card.
+            //
+            // Tables: ONE rendering in both caret states — monospaced lines
+            // with dimmed, full-size pipe separators, the rules drawn over
+            // them by TableRowLayoutFragment. Entering a table changes
+            // nothing but the caret.
+            TableStyling.apply(to: storage, text: text, styled: styled, theme: theme)
+            // Frontmatter: a properties card (FrontmatterLayoutFragment
+            // draws the background). Identical metrics inside and outside —
+            // only the colors change — so the block never collapses.
+            FrontmatterStyling.apply(
+                to: storage, text: text, theme: theme,
+                focused: FrontmatterStyling.blockRange(in: text)
+                    .map { reveal.revealsBlock($0) } ?? false
+            )
         }
         // Heading folds hide whole sections (hair-height, like markers) —
         // applied last so nothing re-reveals them.

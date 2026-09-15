@@ -134,6 +134,80 @@ public struct MarkdownTheme: @unchecked Sendable {
         [.font: PlatformFont.systemFont(ofSize: 0.01), .foregroundColor: PlatformColor.clear]
     }
 
+    // MARK: - Stable blocks (tables, frontmatter)
+
+    /// Table lines: monospaced in BOTH caret states so the pipe columns line
+    /// up once the source is aligned (`TableEditing.aligned` runs on leave).
+    /// One rendering means entering a table changes nothing but the caret.
+    public var tableFont: PlatformFont {
+        .monospacedSystemFont(ofSize: baseFontSize * 0.93, weight: .regular)
+    }
+
+    /// Pipes and separator-row dashes: full size, receded. They ARE the
+    /// column separators, so they are never cleared and never collapsed —
+    /// a 0.01pt run would take the row's height with it.
+    public var tableSeparatorColor: PlatformColor {
+        secondaryColor.withAlphaComponent(0.45)
+    }
+
+    /// The frontmatter card's fill — the same in both caret states, so
+    /// entering the block cannot resize or repaint it.
+    public var frontmatterCardBackground: PlatformColor {
+        surfaceBackground
+    }
+
+    /// Frontmatter body metrics: small and monospaced so `key: value` pairs
+    /// read as metadata, not prose. The SAME metrics apply whether or not
+    /// the caret is inside the block — only the colors below change.
+    public var frontmatterFont: PlatformFont {
+        .monospacedSystemFont(ofSize: (baseFontSize * 0.8).rounded(), weight: .regular)
+    }
+
+    /// The `key:` half, emphasized at the body's exact point size (a size
+    /// change here would reflow the card).
+    public var frontmatterKeyFont: PlatformFont {
+        .monospacedSystemFont(ofSize: (baseFontSize * 0.8).rounded(), weight: .semibold)
+    }
+
+    /// `focused` (the caret is inside the block) lifts the color only —
+    /// never the font, never the paragraph style.
+    public func frontmatterAttributes(focused: Bool) -> [NSAttributedString.Key: Any] {
+        [
+            .font: frontmatterFont,
+            .foregroundColor: focused ? secondaryColor : focusDimColor,
+            .paragraphStyle: frontmatterParagraphStyle,
+        ]
+    }
+
+    public func frontmatterKeyAttributes(focused: Bool) -> [NSAttributedString.Key: Any] {
+        [
+            .font: frontmatterKeyFont,
+            .foregroundColor: focused ? textColor : secondaryColor,
+            .paragraphStyle: frontmatterParagraphStyle,
+        ]
+    }
+
+    /// The `---` fences: dimmed, never hidden. Hiding them collapsed the
+    /// row and moved the whole note — the jump this replaces.
+    public func frontmatterFenceAttributes(focused: Bool) -> [NSAttributedString.Key: Any] {
+        [
+            .font: frontmatterFont,
+            .foregroundColor: focused
+                ? secondaryColor.withAlphaComponent(0.7)
+                : focusDimColor.withAlphaComponent(0.7),
+            .paragraphStyle: frontmatterParagraphStyle,
+        ]
+    }
+
+    /// Insets the card's text clear of its rounded edge. Head indents only:
+    /// paragraph spacing would change the block's height.
+    var frontmatterParagraphStyle: NSParagraphStyle {
+        let style = NSMutableParagraphStyle()
+        style.firstLineHeadIndent = 12
+        style.headIndent = 12
+        return style
+    }
+
     /// The clickable "[ ]" / "[x]" checkbox token — sized up so the ○/●
     /// bubble glyph reads like the To-Do tab's check bubble.
     public func checkboxTokenAttributes(checked: Bool) -> [NSAttributedString.Key: Any] {

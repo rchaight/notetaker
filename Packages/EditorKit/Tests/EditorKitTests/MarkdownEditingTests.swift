@@ -457,18 +457,22 @@ struct TableGridTests {
     }
 }
 
-@MainActor struct TableHidingTests {
-    @Test func tableClearsOffCursorRevealsOnCursor() {
+@MainActor struct TableGridStabilityTests {
+    /// Pipes used to be cleared off-cursor and snap back on entry. Now they
+    /// are dimmed column separators in both states — see StableBlockTests
+    /// for the full contract.
+    @Test func tablePipesStayDimmedSeparatorsInBothCursorStates() {
         let text = "cursor\n\n| a | b |\n| - | - |\n| 1 | 2 |\n"
         let storage = NSTextStorage(string: text)
         let cursorOutside = NSRange(location: 0, length: 7)
         MarkdownHighlighter.highlight(storage, reveal: RevealScope.at(cursorOutside, in: text))
         let pipeAt = (text as NSString).range(of: "| a").location
-        #expect(storage.attribute(.foregroundColor, at: pipeAt, effectiveRange: nil) as? PlatformColor == .clear)
+        let dimmed = MarkdownTheme.default.tableSeparatorColor
+        #expect(storage.attribute(.foregroundColor, at: pipeAt, effectiveRange: nil) as? PlatformColor == dimmed)
 
         let cursorInside = (text as NSString).range(of: "| a | b |\n")
         MarkdownHighlighter.highlight(storage, reveal: RevealScope.at(cursorInside, in: text))
-        #expect(storage.attribute(.foregroundColor, at: pipeAt, effectiveRange: nil) as? PlatformColor != .clear)
+        #expect(storage.attribute(.foregroundColor, at: pipeAt, effectiveRange: nil) as? PlatformColor == dimmed)
     }
 }
 
@@ -548,22 +552,25 @@ struct AutocompleteTests {
     }
 }
 
-@MainActor struct FrontmatterHidingTests {
-    @Test func frontmatterCollapsesOffCursorRevealsOnCursor() {
+@MainActor struct FrontmatterCardTests {
+    /// The block used to collapse to a hairline off-cursor and snap open on
+    /// entry — the note's biggest jump. It is now a card with the same
+    /// metrics in both states (StableBlockTests holds the full contract).
+    @Test func frontmatterKeepsItsHeightOffCursorAndOnCursor() {
         let text = "---\nfavorite: true\n---\n# Body\ntext\n"
         let storage = NSTextStorage(string: text)
         let bodyStart = (text as NSString).range(of: "# Body").location
         MarkdownHighlighter.highlight(
             storage, reveal: RevealScope.at(NSRange(location: bodyStart, length: 6), in: text)
         )
-        let font = storage.attribute(.font, at: 0, effectiveRange: nil) as? PlatformFont
-        #expect((font?.pointSize ?? 10) < 1, "frontmatter must collapse off-cursor")
+        let off = storage.attribute(.font, at: 0, effectiveRange: nil) as? PlatformFont
+        #expect((off?.pointSize ?? 0) > 1, "frontmatter must never collapse")
 
         MarkdownHighlighter.highlight(
             storage, reveal: RevealScope.at(NSRange(location: 0, length: 4), in: text)
         )
-        let revealed = storage.attribute(.font, at: 0, effectiveRange: nil) as? PlatformFont
-        #expect((revealed?.pointSize ?? 0) > 1, "cursor inside reveals the block")
+        let on = storage.attribute(.font, at: 0, effectiveRange: nil) as? PlatformFont
+        #expect(on?.pointSize == off?.pointSize, "entering the card must not resize it")
     }
 }
 

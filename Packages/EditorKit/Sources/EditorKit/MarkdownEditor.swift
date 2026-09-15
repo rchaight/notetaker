@@ -815,26 +815,34 @@ struct EditorParseCache {
                         from: contentManager.documentRange.location, to: elementRange.endLocation
                     )
                     let paragraphRange = NSRange(location: start, length: max(end - start, 0))
-                    // Frontmatter lines never get decorated fragments (its
-                    // "---" fences are not thematic breaks).
+                    // Frontmatter renders as one rounded properties card
+                    // sliced across its paragraphs: never a divider (its
+                    // "---" fences are not thematic breaks) and never
+                    // collapsed, so entering the block moves nothing.
                     if start < frontmatterLength {
-                        return NSTextLayoutFragment(
+                        guard livePreview else {
+                            return NSTextLayoutFragment(
+                                textElement: textElement, range: textElement.elementRange
+                            )
+                        }
+                        let fragment = FrontmatterLayoutFragment(
                             textElement: textElement, range: textElement.elementRange
                         )
+                        fragment.roundsTop = start == 0
+                        fragment.roundsBottom = end >= frontmatterLength
+                        fragment.fillColor = theme.frontmatterCardBackground
+                        return fragment
                     }
-                    if let table = tableRegions.first(where: {
+                    // The grid draws in BOTH caret states (the pipes stay
+                    // visible as the column separators), so there is no
+                    // flip between a drawn grid and raw pipes on entry.
+                    if livePreview, let table = tableRegions.first(where: {
                         NSIntersectionRange($0.range, paragraphRange).length > 0
-                    }), let cursorLine = lastCursorLine,
-                    NSIntersectionRange(table.range, cursorLine).length == 0,
-                    let row = table.rows.first(where: {
+                    }), let row = table.rows.first(where: {
                         NSIntersectionRange($0.range, paragraphRange).length > 0
                     }) {
                         let fragment = TableRowLayoutFragment(
                             textElement: textElement, range: textElement.elementRange
-                        )
-                        fragment.cells = row.cells
-                        fragment.columns = TableGrid.columnLayout(
-                            for: table, headerFont: theme.tableHeaderFont, bodyFont: theme.baseFont
                         )
                         fragment.isSeparator = row.isSeparator
                         fragment.isHeader = row.range == table.rows.first?.range
@@ -1237,26 +1245,34 @@ struct EditorParseCache {
                         from: contentManager.documentRange.location, to: elementRange.endLocation
                     )
                     let paragraphRange = NSRange(location: start, length: max(end - start, 0))
-                    // Frontmatter lines never get decorated fragments (its
-                    // "---" fences are not thematic breaks).
+                    // Frontmatter renders as one rounded properties card
+                    // sliced across its paragraphs: never a divider (its
+                    // "---" fences are not thematic breaks) and never
+                    // collapsed, so entering the block moves nothing.
                     if start < frontmatterLength {
-                        return NSTextLayoutFragment(
+                        guard livePreview else {
+                            return NSTextLayoutFragment(
+                                textElement: textElement, range: textElement.elementRange
+                            )
+                        }
+                        let fragment = FrontmatterLayoutFragment(
                             textElement: textElement, range: textElement.elementRange
                         )
+                        fragment.roundsTop = start == 0
+                        fragment.roundsBottom = end >= frontmatterLength
+                        fragment.fillColor = theme.frontmatterCardBackground
+                        return fragment
                     }
-                    if let table = tableRegions.first(where: {
+                    // The grid draws in BOTH caret states (the pipes stay
+                    // visible as the column separators), so there is no
+                    // flip between a drawn grid and raw pipes on entry.
+                    if livePreview, let table = tableRegions.first(where: {
                         NSIntersectionRange($0.range, paragraphRange).length > 0
-                    }), let cursorLine = lastCursorLine,
-                    NSIntersectionRange(table.range, cursorLine).length == 0,
-                    let row = table.rows.first(where: {
+                    }), let row = table.rows.first(where: {
                         NSIntersectionRange($0.range, paragraphRange).length > 0
                     }) {
                         let fragment = TableRowLayoutFragment(
                             textElement: textElement, range: textElement.elementRange
-                        )
-                        fragment.cells = row.cells
-                        fragment.columns = TableGrid.columnLayout(
-                            for: table, headerFont: theme.tableHeaderFont, bodyFont: theme.baseFont
                         )
                         fragment.isSeparator = row.isSeparator
                         fragment.isHeader = row.range == table.rows.first?.range
