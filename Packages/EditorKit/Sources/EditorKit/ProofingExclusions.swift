@@ -182,3 +182,21 @@ struct ProofingFlags: Equatable {
         return types
     }
 }
+
+/// App-startup switch for the system spell checker. AppKit silently REFUSES
+/// `isContinuousSpellCheckingEnabled` (and grammar checking with it) unless
+/// the `NSAllowContinuousSpellChecking` default reads true — the setter
+/// takes, the getter comes back false, nothing is ever checked. Some user
+/// accounts hold 0 in NSGlobalDomain for that key (this machine did), which
+/// is why the editor never showed a squiggle. Writing true into the app's
+/// OWN domain outranks the global value without touching it. AppKit caches
+/// the answer for the process lifetime, so this must run before any text
+/// view exists — call it from the App's init, not from a view.
+public enum ProofingBootstrap {
+    public static let allowContinuousSpellCheckingKey = "NSAllowContinuousSpellChecking"
+
+    public static func allowContinuousSpellChecking(in defaults: UserDefaults = .standard) {
+        guard !defaults.bool(forKey: allowContinuousSpellCheckingKey) else { return }
+        defaults.set(true, forKey: allowContinuousSpellCheckingKey)
+    }
+}

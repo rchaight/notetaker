@@ -16,6 +16,10 @@ struct NotetakerApp: App {
         // Purge saved window state before any window is created. Revisit
         // for proper state restoration at release (M10).
         Self.purgeSavedWindowState()
+        // Before any text view exists (AppKit caches this for the process):
+        // let continuous spell checking actually turn on. See
+        // ProofingBootstrap for why this is a write and why it lives here.
+        ProofingBootstrap.allowContinuousSpellChecking()
         // One-time: seed the per-mode font keys (spec 04) from the legacy
         // shared size and the old sourceModeMonospace toggle. A no-op on
         // every later launch once sourceFontDesign is set.

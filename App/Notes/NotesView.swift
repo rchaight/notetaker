@@ -1475,24 +1475,12 @@ struct NotesView: View {
         }
     #endif
 
-    /// TODO(merge): replace with `ProofingExclusions.ranges(in:styled:)`
-    /// once EditorKit gains it (a concurrent change builds it). Until
-    /// then, this shim covers the same rough ground straight from
-    /// `MarkdownStyler` — code spans/blocks, `#tag`/`@mention`/`?kind`
-    /// chips, links/images/wikilinks — so LanguageTool never flags
-    /// markdown syntax as prose. It does NOT cover task-line tokens
-    /// (`>date`, `!pN`, `^id`, …), which live in TaskEngine's
-    /// TaskTokenParser rather than MarkdownStyler. Swapping in the real
-    /// oracle at merge is a one-line change to this function's body.
+    /// The ONE exclusion oracle (EditorKit): code, frontmatter, link
+    /// destinations, images, wikilinks, chips, and task-line tokens — the
+    /// same spans the system spell checker skips, so LanguageTool never
+    /// flags markdown syntax as prose.
     private func proofingExclusionRanges(in text: String) -> [NSRange] {
-        MarkdownStyler.styleRanges(in: text).compactMap { styled in
-            switch styled.kind {
-            case .inlineCode, .codeBlock, .link, .image, .wikilink, .tag, .mention, .kindToken:
-                styled.range
-            default:
-                nil
-            }
-        }
+        ProofingExclusions.ranges(in: text, styled: MarkdownStyler.styleRanges(in: text))
     }
 
     /// Runs LanguageTool on the whole note, or the selection when it's

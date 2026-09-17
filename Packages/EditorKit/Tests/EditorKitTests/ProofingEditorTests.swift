@@ -132,8 +132,9 @@
         /// Whether AppKit will honor `isContinuousSpellCheckingEnabled` in
         /// THIS process. It refuses unless `NSAllowContinuousSpellChecking`
         /// read true when the value was first cached, and this machine's
-        /// NSGlobalDomain holds 0 — so the opt-in `applyProofing` writes
-        /// lands from the next launch, and the flag assertions below can
+        /// NSGlobalDomain holds 0 — the app-startup opt-in (ProofingBootstrap)
+        /// fixes that for the real app, but the test runner never ran it
+        /// before AppKit cached the answer, so the flag assertions below can
         /// only be made when the gate is already open. (Asking a throwaway
         /// view is the only honest way to read the cached answer.)
         private var gateIsOpen: Bool {
@@ -142,15 +143,18 @@
             return probe.isContinuousSpellCheckingEnabled
         }
 
-        @Test func applyProofingMirrorsTheFlagsOntoTheView() {
+        @Test func applyProofingMirrorsTheFlagsOntoTheView() throws {
             let (textView, coordinator) = editor("Some prose.\n")
             coordinator.applyProofing(
                 ProofingFlags(spelling: true, grammar: true, autocorrect: false), to: textView
             )
-            // The opt-in itself is unconditional and is what makes the
-            // feature work from the next launch: if this breaks, the editor
-            // goes quiet on any machine whose global default is 0.
-            #expect(UserDefaults.standard.bool(forKey: "NSAllowContinuousSpellChecking"))
+            // The opt-in lives at app startup (ProofingBootstrap, called from
+            // NotetakerApp.init before any view exists): if this breaks, the
+            // editor goes quiet on any machine whose global default is 0.
+            let suite = try #require(UserDefaults(suiteName: "ProofingBootstrapTests.\(UUID().uuidString)"))
+            #expect(!suite.bool(forKey: ProofingBootstrap.allowContinuousSpellCheckingKey))
+            ProofingBootstrap.allowContinuousSpellChecking(in: suite)
+            #expect(suite.bool(forKey: ProofingBootstrap.allowContinuousSpellCheckingKey))
             #expect(!textView.isAutomaticSpellingCorrectionEnabled)
             if gateIsOpen {
                 #expect(textView.isContinuousSpellCheckingEnabled)

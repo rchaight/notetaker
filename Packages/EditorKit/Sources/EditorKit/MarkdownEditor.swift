@@ -689,9 +689,6 @@ struct EditorParseCache {
             /// the existing annotations on its own (also verified), so
             /// there is nothing to undo here.
             func applyProofing(_ flags: ProofingFlags, to textView: NSTextView, recheck: Bool = false) {
-                if flags.spelling {
-                    Self.allowContinuousSpellChecking()
-                }
                 textView.isContinuousSpellCheckingEnabled = flags.spelling
                 textView.isGrammarCheckingEnabled = flags.grammar
                 textView.isAutomaticSpellingCorrectionEnabled = flags.autocorrect
@@ -707,39 +704,6 @@ struct EditorParseCache {
                     types: flags.checkingTypes,
                     options: [:]
                 )
-            }
-
-            /// AppKit silently REFUSES `isContinuousSpellCheckingEnabled`
-            /// (and `isGrammarCheckingEnabled` with it) unless the
-            /// `NSAllowContinuousSpellChecking` default reads true — the
-            /// setter takes, the getter comes back false, nothing is ever
-            /// checked. On this machine the user's NSGlobalDomain holds 0
-            /// for that key, which is why the editor has never shown a
-            /// squiggle; a fresh macOS account can hold 0 too.
-            ///
-            /// Two things make this a write rather than a retry:
-            ///
-            /// - AppKit answers from a value cached for the life of the
-            ///   process, so writing the default takes effect from the
-            ///   NEXT launch — retrying the flag straight afterwards does
-            ///   nothing (measured). Until then the session is degraded,
-            ///   not broken: the explicit `checkText` above still marks
-            ///   misspellings when a note opens or a toggle flips, it just
-            ///   won't keep up as the user types.
-            /// - it goes in our own application domain, which outranks
-            ///   NSGlobalDomain, so it opts THIS app in without touching
-            ///   the user's global preference or any other app, and an
-            ///   explicit `defaults write` against our bundle still wins.
-            ///
-            /// Skipped entirely when the effective value is already true.
-            private static var allowedContinuousChecking = false
-
-            private static func allowContinuousSpellChecking() {
-                guard !allowedContinuousChecking else { return }
-                allowedContinuousChecking = true
-                let key = "NSAllowContinuousSpellChecking"
-                guard !UserDefaults.standard.bool(forKey: key) else { return }
-                UserDefaults.standard.set(true, forKey: key)
             }
 
             /// The spans of the current text that must not be proofread.
