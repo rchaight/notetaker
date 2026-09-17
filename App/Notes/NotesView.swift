@@ -762,7 +762,9 @@ struct NotesView: View {
             .buttonStyle(.plain)
             .disabled(aiStatus?.hasSuffix("…") == true)
             .help("Summarize the note or extract its action items")
-            if model.selectedID != nil, !model.lockedPlaceholder {
+            // Editing modes only: Reading has no MarkdownEditor mounted, so
+            // nothing would consume the Apply command (critic-caught).
+            if model.selectedID != nil, !model.lockedPlaceholder, editorMode != .reading {
                 actionIcon(
                     "text.badge.checkmark",
                     languageToolConfigured
@@ -1261,6 +1263,9 @@ struct NotesView: View {
         guard mode != editorMode else { return }
         if mode == .reading {
             readingScrollLine = editorCaretLine() ?? 0
+            // A command nobody consumes must not fire when the editor
+            // mounts again later.
+            editorCommand = nil
         } else if editorMode == .reading {
             // Caret to the start of the block Reading had at the top — the
             // editor's scrollTarget already places the caret and scrolls.
@@ -1455,9 +1460,24 @@ struct NotesView: View {
         return ServerURL.normalize(raw)
     }
 
+    /// Memoized for 2 s: the action bar re-evaluates on every keystroke and
+    /// a Keychain read per keystroke is real work; the short TTL still
+    /// picks up a URL saved in Settings almost immediately.
     private var languageToolConfigured: Bool {
-        configuredLanguageToolURL() != nil
+        let now = Date()
+        if now.timeIntervalSince(languageToolProbe.checkedAt) > 2 {
+            languageToolProbe.value = configuredLanguageToolURL() != nil
+            languageToolProbe.checkedAt = now
+        }
+        return languageToolProbe.value
     }
+
+    private final class LanguageToolProbe {
+        var value = false
+        var checkedAt = Date.distantPast
+    }
+
+    @State private var languageToolProbe = LanguageToolProbe()
 
     #if os(macOS)
         /// "Whole note or the selection when non-empty": the Proofread
@@ -1469,7 +1489,7 @@ struct NotesView: View {
         /// checks the whole note (iOS panel polish is an explicit
         /// non-goal for this pass).
         private func currentEditorSelection() -> NSRange? {
-            guard let responder = NSApp.keyWindow?.firstResponder as? NSTextView else { return nil }
+            guard let responder = NSApp.keyWindow?.firstResponder as? MarkdownTextView else { return nil }
             let range = responder.selectedRange()
             return range.length > 0 ? range : nil
         }

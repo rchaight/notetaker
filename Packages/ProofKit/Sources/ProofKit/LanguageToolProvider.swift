@@ -43,7 +43,20 @@ public struct LanguageToolProvider: GrammarProvider {
         guard http.statusCode == 200 else {
             throw GrammarError.badResponse("HTTP \(http.statusCode)")
         }
-        return try Self.decodeMatches(data, textLength: (text as NSString).length)
+        let decoded = try Self.decodeMatches(data, textLength: (text as NSString).length)
+        return Self.dropping(decoded, touching: excluding)
+    }
+
+    /// Last line of defense. LanguageTool drops markup from the text it
+    /// analyzes, so a rule can span the GAP where a token was: its
+    /// whitespace rule sees the double space around `#tag`, and the range
+    /// it reports in the original text covers the tag itself — one Apply
+    /// would delete it (critic-caught). Nothing that touches an excluded
+    /// span is ever surfaced.
+    static func dropping(_ matches: [GrammarMatch], touching excluded: [NSRange]) -> [GrammarMatch] {
+        matches.filter { match in
+            !excluded.contains { NSIntersectionRange($0, match.range).length > 0 }
+        }
     }
 
     /// GET {base}/v2/languages — Settings' "Test connection" probe and the

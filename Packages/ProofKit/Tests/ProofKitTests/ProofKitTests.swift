@@ -281,6 +281,32 @@ final class ProofStubURLProtocol: URLProtocol {
         )
     }
 
+    @Test func matchesStraddlingAnExcludedTokenAreDropped() async throws {
+        // LT's plain text for "fix teh bug #urgent today" is "fix teh bug  today"
+        // (the markup is gone, leaving a double space). Its whitespace rule
+        // reports the run from the first space to the second — which in
+        // the ORIGINAL text is " #urgent ". Surfacing that would let Apply
+        // delete the tag.
+        let text = "fix teh bug #urgent today"
+        let tagRange = (text as NSString).range(of: "#urgent")
+        let straddle = NSRange(location: tagRange.location - 1, length: tagRange.length + 2)
+        let tehRange = (text as NSString).range(of: "teh")
+        ProofStubURLProtocol.handler = { _ in
+            let json = """
+            {"matches":[
+              {"message":"Possible typo: you repeated a whitespace","shortMessage":"","replacements":[{"value":" "}],"offset":\(straddle
+                .location),"length":\(straddle.length),"rule":{"id":"WHITESPACE_RULE","category":{"id":"TYPOGRAPHY"}}},
+              {"message":"Possible spelling mistake","shortMessage":"","replacements":[{"value":"the"}],"offset":\(tehRange
+                .location),"length":\(tehRange.length),"rule":{"id":"MORFOLOGIK","category":{"id":"TYPOS"}}}
+            ]}
+            """
+            return (200, Data(json.utf8))
+        }
+        let matches = try await makeProvider().check(text, excluding: [tagRange], language: "en-US")
+        #expect(matches.count == 1)
+        #expect((text as NSString).substring(with: matches[0].range) == "teh")
+    }
+
     @Test func checkPostsAnnotatedTextWithExclusionsAsMarkup() async throws {
         let text = "I has a #project note, she go now."
         let tagRange = (text as NSString).range(of: "#project")

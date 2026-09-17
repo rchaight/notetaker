@@ -58,11 +58,13 @@ public enum ProofingExclusions {
         // trailing marker IS the destination plus its punctuation.
         var inlineLinks = Set<NSRange>()
         for group in SyntaxMarkers.markerGroups(in: text, styled: styled) {
-            guard case .link = group.kind,
-                  let destination = group.markers.max(by: { $0.location < $1.location })
-            else { continue }
+            guard case .link = group.kind, !group.markers.isEmpty else { continue }
             inlineLinks.insert(group.span)
-            add(destination)
+            // Both markers: the opening `[` too, or LanguageTool sees an
+            // orphan bracket and raises UNPAIRED_BRACKETS on every link.
+            for marker in group.markers {
+                add(marker)
+            }
         }
         for item in styled {
             guard case .link = item.kind, !inlineLinks.contains(item.range) else { continue }
