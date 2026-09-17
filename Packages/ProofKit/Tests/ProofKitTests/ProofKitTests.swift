@@ -281,6 +281,19 @@ final class ProofStubURLProtocol: URLProtocol {
         )
     }
 
+    @Test func abuttingMatchesAreKeptOnlyCoveringOnesDrop() {
+        /// Intersection is length-based: a typo that merely touches a token
+        /// ({0,3} against {3,4}) is kept; one covering excluded text goes.
+        func match(_ range: NSRange) -> GrammarMatch {
+            GrammarMatch(range: range, message: "m", shortMessage: "", replacements: [], ruleId: "R", category: "C")
+        }
+        let kept = LanguageToolProvider.dropping(
+            [match(NSRange(location: 0, length: 3)), match(NSRange(location: 2, length: 3))],
+            touching: [NSRange(location: 3, length: 4)]
+        )
+        #expect(kept.map(\.range) == [NSRange(location: 0, length: 3)])
+    }
+
     @Test func matchesStraddlingAnExcludedTokenAreDropped() async throws {
         // LT's plain text for "fix teh bug #urgent today" is "fix teh bug  today"
         // (the markup is gone, leaving a double space). Its whitespace rule

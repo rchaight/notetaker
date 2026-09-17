@@ -52,9 +52,9 @@ public enum ProofingExclusions {
             }
         }
 
-        // Links: the LABEL is prose and stays checkable — only the
-        // destination goes. `SyntaxMarkers` already knows where a link's
-        // `](destination)` starts, so the geometry lives in one place; its
+        // Links: the LABEL is prose and stays checkable — the syntax goes.
+        // `SyntaxMarkers` already knows a link's two markers (`[` and
+        // `](destination)`), so the geometry lives in one place; the
         // trailing marker IS the destination plus its punctuation.
         var inlineLinks = Set<NSRange>()
         for group in SyntaxMarkers.markerGroups(in: text, styled: styled) {

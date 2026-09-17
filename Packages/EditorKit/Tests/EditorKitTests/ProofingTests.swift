@@ -72,6 +72,9 @@ struct ProofingExclusionTests {
         // The label is the part a human wrote and reads — keep it checkable.
         #expect(!excluded("the enrollment memo", in: text))
         #expect(!excluded("today", in: text))
+        // The opening bracket is syntax too — left in, LanguageTool sees an
+        // orphan `[` and raises UNPAIRED_BRACKETS on every linked sentence.
+        #expect(excluded("[", in: text))
     }
 
     @Test func bareAndAngleURLsAreExcluded() {
