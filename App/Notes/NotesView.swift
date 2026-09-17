@@ -6,6 +6,7 @@ import ConversionKit
 import EditorKit
 import IndexKit
 import MarkdownKit
+import ProofKit
 import ReadingKit
 import SecurityKit
 import SwiftUI
@@ -111,6 +112,14 @@ struct NotesView: View {
     @State private var expandedFolders: Set<String> = []
     @AppStorage("noteSortOrder") private var noteSortOrder = "name"
     @State private var tagsExpanded = false
+    // Proofread (LanguageTool) — spec 02.
+    @State private var showingProofread = false
+    @State private var proofreadState = ProofreadState.idle
+    @State private var proofreadRows: [ProofreadRow] = []
+    @State private var proofreadTask: Task<Void, Never>?
+    /// "Ignore rule for this session" — deliberately not persisted.
+    @State private var ignoredProofreadRuleIds: Set<String> = []
+    @AppStorage("languageToolLanguage") private var languageToolLanguage = "auto"
 
     var body: some View {
         NavigationSplitView {
@@ -206,6 +215,7 @@ struct NotesView: View {
         }
         .onDisappear { Task { await model.flushSave() } }
         .sheet(isPresented: $showingLockSheet) { lockSheet }
+        .sheet(isPresented: $showingProofread) { proofreadSheet }
         .sheet(isPresented: $showingGraph) {
             GraphView(
                 notes: model.notes.map { ($0.id, noteTitle($0)) },
@@ -752,6 +762,18 @@ struct NotesView: View {
             .buttonStyle(.plain)
             .disabled(aiStatus?.hasSuffix("…") == true)
             .help("Summarize the note or extract its action items")
+            if model.selectedID != nil, !model.lockedPlaceholder {
+                actionIcon(
+                    "text.badge.checkmark",
+                    languageToolConfigured
+                        ? "Proofread with LanguageTool (⇧⌘P)"
+                        : "Proofread — configure a LanguageTool URL in Settings › AI & Import"
+                ) {
+                    runProofread()
+                }
+                .keyboardShortcut("p", modifiers: [.command, .shift])
+                .disabled(!languageToolConfigured)
+            }
             if model.selectedID != nil, !model.lockedPlaceholder {
                 actionIcon(
                     model.selectedIsLockable ? "lock.open" : "lock",
@@ -1424,6 +1446,258 @@ struct NotesView: View {
         }
     }
 
+    // MARK: - Proofread (LanguageTool)
+
+    /// Keychain-backed, ThisDeviceOnly — same policy as `ollamaURL`.
+    /// Read-only here; Settings › AI & Import owns writing it.
+    private func configuredLanguageToolURL() -> URL? {
+        guard let raw = KeychainStore.read(account: "languageToolURL") else { return nil }
+        return ServerURL.normalize(raw)
+    }
+
+    private var languageToolConfigured: Bool {
+        configuredLanguageToolURL() != nil
+    }
+
+    #if os(macOS)
+        /// "Whole note or the selection when non-empty": the Proofread
+        /// command sits outside MarkdownEditor's own binding surface (its
+        /// call site belongs to a concurrent change), so this reads the
+        /// focused NSTextView's live selection directly — the same
+        /// technique Format-panel-style commands use for text outside
+        /// their own event chain. iOS has no equivalent hook and always
+        /// checks the whole note (iOS panel polish is an explicit
+        /// non-goal for this pass).
+        private func currentEditorSelection() -> NSRange? {
+            guard let responder = NSApp.keyWindow?.firstResponder as? NSTextView else { return nil }
+            let range = responder.selectedRange()
+            return range.length > 0 ? range : nil
+        }
+    #endif
+
+    /// TODO(merge): replace with `ProofingExclusions.ranges(in:styled:)`
+    /// once EditorKit gains it (a concurrent change builds it). Until
+    /// then, this shim covers the same rough ground straight from
+    /// `MarkdownStyler` — code spans/blocks, `#tag`/`@mention`/`?kind`
+    /// chips, links/images/wikilinks — so LanguageTool never flags
+    /// markdown syntax as prose. It does NOT cover task-line tokens
+    /// (`>date`, `!pN`, `^id`, …), which live in TaskEngine's
+    /// TaskTokenParser rather than MarkdownStyler. Swapping in the real
+    /// oracle at merge is a one-line change to this function's body.
+    private func proofingExclusionRanges(in text: String) -> [NSRange] {
+        MarkdownStyler.styleRanges(in: text).compactMap { styled in
+            switch styled.kind {
+            case .inlineCode, .codeBlock, .link, .image, .wikilink, .tag, .mention, .kindToken:
+                styled.range
+            default:
+                nil
+            }
+        }
+    }
+
+    /// Runs LanguageTool on the whole note, or the selection when it's
+    /// non-empty. Never touches `model.noteText` — every accepted
+    /// replacement goes through `editorCommand` so undo keeps working.
+    private func runProofread() {
+        guard model.selectedID != nil, !model.lockedPlaceholder else { return }
+        let noteText = model.noteText
+        let ns = noteText as NSString
+        var scopeRange = NSRange(location: 0, length: ns.length)
+        #if os(macOS)
+            if let selection = currentEditorSelection(), NSMaxRange(selection) <= ns.length {
+                scopeRange = selection
+            }
+        #endif
+        let scopeText = ns.substring(with: scopeRange)
+        let scopeOffset = scopeRange.location
+        let language = languageToolLanguage
+
+        proofreadRows = []
+        ignoredProofreadRuleIds = []
+        proofreadState = .running
+        showingProofread = true
+
+        proofreadTask?.cancel()
+        proofreadTask = Task {
+            guard let url = configuredLanguageToolURL() else {
+                proofreadState = .error("No LanguageTool URL configured — set one in Settings › AI & Import.")
+                return
+            }
+            guard !scopeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                proofreadState = .noIssues
+                return
+            }
+            let exclusions = proofingExclusionRanges(in: scopeText)
+            let provider = LanguageToolProvider(baseURL: url)
+            do {
+                let matches = try await provider.check(scopeText, excluding: exclusions, language: language)
+                guard !Task.isCancelled else { return }
+                let scopeNS = scopeText as NSString
+                proofreadRows = matches.map { match in
+                    let excerpt = scopeNS.substring(with: match.range)
+                    let noteRange = NSRange(location: match.range.location + scopeOffset, length: match.range.length)
+                    let noteMatch = GrammarMatch(
+                        id: match.id, range: noteRange, message: match.message,
+                        shortMessage: match.shortMessage, replacements: match.replacements,
+                        ruleId: match.ruleId, category: match.category
+                    )
+                    return ProofreadRow(id: match.id, match: noteMatch, excerpt: excerpt)
+                }
+                proofreadState = proofreadRows.isEmpty ? .noIssues : .results
+            } catch let error as GrammarError {
+                guard !Task.isCancelled else { return }
+                proofreadState = .error(proofreadErrorMessage(error, url: url))
+            } catch {
+                guard !Task.isCancelled else { return }
+                proofreadState = .error(
+                    "LanguageTool unreachable at \(url.absoluteString) — check Settings › AI & Import."
+                )
+            }
+        }
+    }
+
+    private func proofreadErrorMessage(_ error: GrammarError, url: URL) -> String {
+        switch error {
+        case .unreachable:
+            "LanguageTool unreachable at \(url.absoluteString) — check Settings › AI & Import."
+        case .timeout:
+            "LanguageTool timed out at \(url.absoluteString) — check Settings › AI & Import."
+        case let .badResponse(detail):
+            "LanguageTool returned something unexpected (\(detail)) — check Settings › AI & Import."
+        }
+    }
+
+    /// Apply goes through the editor command (never `model.noteText`
+    /// directly) so undo works. `row.excerpt` — captured when the check
+    /// ran, never re-read from the live note — is the `.replaceRange`
+    /// guard's `expected`: `editorCommand` is consumed asynchronously by
+    /// the editor, so a second Apply clicked before the first has been
+    /// applied can't re-derive `expected` from a not-yet-updated
+    /// `model.noteText`. Remaining rows' ranges are then shifted by plain
+    /// offset arithmetic (`GrammarMatch.shifted`) rather than re-running
+    /// the check — instant, and the sheet already has everything it needs
+    /// in memory.
+    private func applyProofreadMatch(_ row: ProofreadRow, replacement: String) {
+        editorCommand = EditorCommandRequest(
+            .replaceRange(range: row.match.range, expected: row.excerpt, with: replacement)
+        )
+        let survivors = GrammarMatch.shifted(
+            proofreadRows.map(\.match), afterApplying: row.match, newLength: (replacement as NSString).length
+        )
+        let excerptById = Dictionary(uniqueKeysWithValues: proofreadRows.map { ($0.id, $0.excerpt) })
+        proofreadRows = survivors.map { match in
+            ProofreadRow(id: match.id, match: match, excerpt: excerptById[match.id] ?? "")
+        }
+        if proofreadRows.filter({ !ignoredProofreadRuleIds.contains($0.match.ruleId) }).isEmpty {
+            proofreadState = .noIssues
+        }
+    }
+
+    private func contextSnippet(for range: NSRange, context: Int = 24) -> String {
+        let ns = model.noteText as NSString
+        guard NSMaxRange(range) <= ns.length else { return "" }
+        let start = max(0, range.location - context)
+        let end = min(ns.length, NSMaxRange(range) + context)
+        let before = ns.substring(with: NSRange(location: start, length: range.location - start))
+        let flagged = ns.substring(with: range)
+        let after = ns.substring(with: NSRange(location: NSMaxRange(range), length: end - NSMaxRange(range)))
+        return "…\(before)⟦\(flagged)⟧\(after)…"
+            .replacingOccurrences(of: "\n", with: " ")
+    }
+
+    private var proofreadSheet: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Label("Proofread", systemImage: "text.badge.checkmark")
+                    .font(.headline)
+                Spacer()
+                Button("Done") { showingProofread = false }
+                    .keyboardShortcut(.cancelAction)
+            }
+            .padding()
+            Divider()
+            Group {
+                switch proofreadState {
+                case .idle:
+                    EmptyView()
+                case .running:
+                    VStack(spacing: 12) {
+                        ProgressView()
+                        Button("Cancel") {
+                            proofreadTask?.cancel()
+                            showingProofread = false
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .noIssues:
+                    ContentUnavailableView(
+                        "No Issues Found", systemImage: "checkmark.circle",
+                        description: Text("LanguageTool found nothing to flag in this text.")
+                    )
+                case let .error(message):
+                    ContentUnavailableView {
+                        Label("Proofread Failed", systemImage: "exclamationmark.triangle")
+                    } description: {
+                        Text(message)
+                    }
+                case .results:
+                    proofreadResultsList
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(width: 460, height: 480)
+    }
+
+    private var proofreadResultsList: some View {
+        let visible = proofreadRows.filter { !ignoredProofreadRuleIds.contains($0.match.ruleId) }
+        return ScrollView {
+            LazyVStack(alignment: .leading, spacing: 10) {
+                ForEach(visible) { row in
+                    proofreadRow(row)
+                    Divider()
+                }
+            }
+            .padding()
+        }
+    }
+
+    private func proofreadRow(_ row: ProofreadRow) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(row.match.message)
+                .font(.callout)
+            Text(contextSnippet(for: row.match.range))
+                .font(.callout.monospaced())
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+            if !row.match.replacements.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(row.match.replacements.prefix(5), id: \.self) { replacement in
+                            Button(replacement) {
+                                applyProofreadMatch(row, replacement: replacement)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+                    }
+                }
+            }
+            HStack(spacing: 10) {
+                Button("Ignore") {
+                    proofreadRows.removeAll { $0.id == row.id }
+                }
+                .controlSize(.small)
+                Button("Ignore Rule This Session") {
+                    ignoredProofreadRuleIds.insert(row.match.ruleId)
+                }
+                .controlSize(.small)
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+            }
+        }
+    }
+
     /// The 10 most-used tags — the sidebar shows only these; the browser
     /// sheet carries the long tail (a full dump was unwieldy, user-reported).
     private var topTags: [(tag: String, count: Int)] {
@@ -1938,4 +2212,23 @@ struct NotesView: View {
                 .help("Newer version syncing down…")
         }
     }
+}
+
+/// One row in the Proofread sheet: a `GrammarMatch` (range already in
+/// `model.noteText`'s coordinate space) plus the exact source text it
+/// pointed at when the check ran. `excerpt` is captured once and never
+/// re-read from `model.noteText` — see `applyProofreadMatch`'s doc comment
+/// for why that matters across a batch of Applies.
+private struct ProofreadRow: Identifiable, Equatable {
+    let id: UUID
+    let match: GrammarMatch
+    let excerpt: String
+}
+
+private enum ProofreadState: Equatable {
+    case idle
+    case running
+    case noIssues
+    case results
+    case error(String)
 }

@@ -121,6 +121,42 @@ struct MarkdownEditingTests {
         #expect(removal == nil)
     }
 
+    @Test func replaceRangeAppliesTheReplacement() throws {
+        // The Proofread panel's Apply action: a grammar match's range and
+        // exact source text, rewritten to the chosen suggestion.
+        let text = "I has a plan"
+        let range = (text as NSString).range(of: "has")
+        let (updated, selection) = try #require(run(
+            .replaceRange(range: range, expected: "has", with: "have"),
+            text, NSRange(location: 0, length: 0)
+        ))
+        #expect(updated == "I have a plan")
+        #expect(selection == NSRange(location: NSMaxRange(range) + 1, length: 0))
+    }
+
+    @Test func replaceRangeNoOpsOnADriftedDocument() {
+        // Same drift guard as .editLink: if the text at `range` no longer
+        // matches `expected` (an earlier Apply shifted things, or the
+        // note changed underneath the open Proofread sheet), the rewrite
+        // must refuse rather than clobber whatever is there now.
+        let original = "I has a plan"
+        let range = (original as NSString).range(of: "has")
+        let drifted = "Well, I has a plan"
+        let edit = MarkdownEditing.apply(
+            .replaceRange(range: range, expected: "has", with: "have"),
+            to: drifted, selection: NSRange(location: 0, length: 0)
+        )
+        #expect(edit == nil)
+    }
+
+    @Test func replaceRangeNoOpsWhenRangeIsOutOfBounds() {
+        let edit = MarkdownEditing.apply(
+            .replaceRange(range: NSRange(location: 50, length: 4), expected: "has", with: "have"),
+            to: "short text", selection: NSRange(location: 0, length: 0)
+        )
+        #expect(edit == nil)
+    }
+
     @Test func indentedLinesKeepIndent() throws {
         let (text, _) = try #require(run(.toggleLinePrefix("- [ ] "), "  nested item", NSRange(location: 4, length: 0)))
         #expect(text == "  - [ ] nested item")

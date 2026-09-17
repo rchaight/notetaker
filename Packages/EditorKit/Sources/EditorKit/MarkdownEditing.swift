@@ -19,6 +19,11 @@ public enum EditorCommand: Equatable, Sendable {
     /// Unwrap an existing link at `range` back to plain `text`, guarded by
     /// the same `expected` source check.
     case removeLink(range: NSRange, expected: String, text: String)
+    /// Replace `range` with `with` — the Proofread panel's Apply action.
+    /// `range` and `expected` are captured when the match was found; apply
+    /// refuses (no-ops) if the document no longer holds `expected` there,
+    /// the same drift guard as `.editLink`.
+    case replaceRange(range: NSRange, expected: String, with: String)
     /// Insert a block (table, image line, rule) on its own paragraph after
     /// the cursor's, blank-line separated; cursor lands `cursorOffset` into
     /// the block (or after it when nil).
@@ -100,6 +105,13 @@ public enum MarkdownEditing {
             return EditResult(
                 range: range, replacement: text,
                 selection: NSRange(location: range.location, length: (text as NSString).length)
+            )
+        case let .replaceRange(range, expected, with):
+            guard NSMaxRange(range) <= ns.length,
+                  ns.substring(with: range) == expected else { return nil }
+            return EditResult(
+                range: range, replacement: with,
+                selection: NSRange(location: range.location + (with as NSString).length, length: 0)
             )
         }
     }

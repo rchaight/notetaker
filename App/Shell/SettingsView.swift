@@ -1,6 +1,7 @@
 import AIKit
 import ConversionKit
 import EditorKit
+import ProofKit
 import SecurityKit
 import SwiftUI
 #if os(macOS)
@@ -63,6 +64,13 @@ struct SettingsView: View {
     @AppStorage("ollamaModel") private var ollamaModel = ""
     @State private var ollamaModels: [String] = []
     @State private var ollamaProbe: String?
+    /// LanguageTool (proofing) — same Keychain policy as `ollamaURL`.
+    @State private var languageToolURL = KeychainStore.migrateFromDefaults(
+        key: "languageToolURL", account: "languageToolURL"
+    )
+    @AppStorage("languageToolLanguage") private var languageToolLanguage = "auto"
+    @State private var languageToolLanguages: [LanguageToolProvider.Language] = []
+    @State private var languageToolProbe: String?
     // Claude / MCP integration. Key is shared with VaultIndexService, which
     // owns the actual _index.md / CLAUDE.md generation (M9.8 spec 01).
     @AppStorage("claudeIndexFiles") private var claudeIndexFiles = true
@@ -477,6 +485,51 @@ struct SettingsView: View {
                     }
                 } else if !ollamaModel.isEmpty {
                     LabeledContent("Model", value: ollamaModel)
+                }
+            }
+            Section("LanguageTool") {
+                Text(
+                    "Self-hosted grammar checking. Run the erikvl87/languagetool container on your homelab; nothing leaves your network."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                TextField(
+                    "LanguageTool server URL", text: $languageToolURL, prompt: Text("http://homelab:8010")
+                )
+                .onChange(of: languageToolURL) {
+                    KeychainStore.save(languageToolURL, account: "languageToolURL")
+                }
+                .autocorrectionDisabled()
+                HStack {
+                    Button("Test Connection") {
+                        languageToolProbe = "testing…"
+                        Task {
+                            guard let url = ServerURL.normalize(languageToolURL) else {
+                                languageToolProbe = "enter a URL like http://localhost:8010"
+                                return
+                            }
+                            do {
+                                let languages = try await LanguageToolProvider(baseURL: url).listLanguages()
+                                languageToolLanguages = languages
+                                languageToolProbe = "✓ \(languages.count) language(s) available"
+                            } catch {
+                                languageToolProbe = "✗ not reachable"
+                            }
+                        }
+                    }
+                    if let languageToolProbe {
+                        Text(languageToolProbe)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if !languageToolLanguages.isEmpty {
+                    Picker("Preferred language", selection: $languageToolLanguage) {
+                        Text("Auto").tag("auto")
+                        ForEach(languageToolLanguages) { language in
+                            Text(language.name).tag(language.id)
+                        }
+                    }
                 }
             }
             Section("Document conversion") {

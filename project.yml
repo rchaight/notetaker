@@ -22,6 +22,7 @@ packages:
   ProjectKit: { path: Packages/ProjectKit }
   ConversionKit: { path: Packages/ConversionKit }
   AIKit: { path: Packages/AIKit }
+  ProofKit: { path: Packages/ProofKit }
   SecurityKit: { path: Packages/SecurityKit }
   AppIntentsKit: { path: Packages/AppIntentsKit }
   MCPKit: { path: Packages/MCPKit }
@@ -93,6 +94,7 @@ targets:
       - package: ProjectKit
       - package: ConversionKit
       - package: AIKit
+      - package: ProofKit
       - package: SecurityKit
       - package: AppIntentsKit
     info:
