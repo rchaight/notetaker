@@ -88,6 +88,47 @@ public enum TaskTokenParser {
         )
     }
 
+    // MARK: - Token geometry
+
+    /// UTF-16 ranges of every inline token in ONE task line — the single
+    /// source of token geometry. `parse` only reports parsed *values*, and
+    /// it finds them by deleting each match from a working copy, so its
+    /// match ranges don't describe the original line. Surfaces that need to
+    /// know *where* the tokens are (EditorKit's proofing exclusions mark
+    /// them un-checkable) call this instead of re-regexing the vocabulary.
+    ///
+    /// Two differences from `parse`, both deliberate:
+    ///
+    /// - every token-shaped span is reported, not just the first of each
+    ///   kind — a line with two `>date` tokens yields both, because both
+    ///   read as syntax on screen even though only the first becomes the
+    ///   due date;
+    /// - `>2026-13-45` is reported even though `parse` refuses to turn an
+    ///   impossible date into metadata, since it still looks like a token.
+    ///
+    /// Sorted by location, then length; coalescing abutting or overlapping
+    /// spans is left to the caller.
+    public static func tokenRanges(in line: String) -> [NSRange] {
+        let ns = line as NSString
+        let full = NSRange(location: 0, length: ns.length)
+        var ranges: [NSRange] = []
+        let patterns = [
+            dueTokenRegex, startTokenRegex, priorityRegex, blockIdRegex, dependsRegex,
+            completedRegex, assigneeRegex, kindRegex, tagRegex,
+        ]
+        for regex in patterns.compactMap(\.self) {
+            ranges.append(contentsOf: regex.matches(in: line, range: full).map(\.range))
+        }
+        ranges.append(contentsOf: RecurrenceParser.tokenRanges(in: line))
+        return ranges.sorted { ($0.location, $0.length) < ($1.location, $1.length) }
+    }
+
+    /// `>date` / `~date`, built once: `tokenRanges` runs per task line on
+    /// every editor restyle, and compiling two regexes each time is not
+    /// free.
+    private static let dueTokenRegex = dateRegex(prefix: ">")
+    private static let startTokenRegex = dateRegex(prefix: "~")
+
     /// `?discuss` / `?waiting` at a word boundary — a closed set, so a
     /// question mark in prose never matches.
     private static let kindRegex = try? NSRegularExpression(

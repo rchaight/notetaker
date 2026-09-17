@@ -42,6 +42,17 @@ public enum RecurrenceParser {
         "thursday": 5, "friday": 6, "saturday": 7,
     ]
 
+    /// UTF-16 ranges of every `&every …` / `&after …` token in `text`,
+    /// against the ORIGINAL string (`extract` mutates as it goes, so its
+    /// match ranges can't be reused). Feeds `TaskTokenParser.tokenRanges`,
+    /// which is the only caller — the recurrence pattern stays in this
+    /// file so there is still exactly one of it.
+    static func tokenRanges(in text: String) -> [NSRange] {
+        guard let regex else { return [] }
+        let ns = text as NSString
+        return regex.matches(in: text, range: NSRange(location: 0, length: ns.length)).map(\.range)
+    }
+
     /// Extracts and removes the first recurrence token from `text`.
     public static func extract(from text: inout String) -> Recurrence? {
         guard let regex else { return nil }

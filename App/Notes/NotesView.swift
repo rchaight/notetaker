@@ -52,6 +52,11 @@ struct NotesView: View {
     @AppStorage("findHighlightColor") private var findHighlightColor = "yellow"
     /// Heading size as a percent of the default enlargement, all modes.
     @AppStorage("headingScale") private var headingScalePercent = 100.0
+    // Proofing — Settings ▸ Editor ▸ Proofing owns these three; the editor
+    // applies them live on every update.
+    @AppStorage("proofSpelling") private var proofSpelling = true
+    @AppStorage("proofGrammar") private var proofGrammar = true
+    @AppStorage("proofAutocorrect") private var proofAutocorrect = false
     @State private var searchText = ""
     @State private var semanticIds: [String] = []
     @State private var showingImporter = false
@@ -1165,6 +1170,9 @@ struct NotesView: View {
                         mentionCandidates: indexService.allAssignees(),
                         findSignal: findSignal,
                         importAttachments: importPastedAttachments,
+                        spellChecking: proofSpelling,
+                        grammarChecking: proofGrammar,
+                        autocorrect: proofAutocorrect,
                         onSelectionContext: { selectionContext = $0 },
                         onOpenAttachment: { openAttachment($0) }
                     )

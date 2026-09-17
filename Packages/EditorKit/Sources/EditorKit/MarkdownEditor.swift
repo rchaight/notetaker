@@ -38,6 +38,16 @@ struct EditorParseCache {
         var mentionCandidates: [String]
         var findSignal: Int
         var importAttachments: (([AttachmentDrop]) async -> [String])?
+        /// System continuous spell checking (squiggles + right-click
+        /// suggestions + Learn Spelling), filtered so markdown syntax and
+        /// task tokens never get flagged.
+        var spellChecking: Bool
+        /// System grammar checking; macOS only (iOS has spelling alone).
+        var grammarChecking: Bool
+        /// Autocorrect-as-you-type. OFF by default and by user decision:
+        /// silently rewriting `#Amber1` or an identifier is worse than an
+        /// underline the user can ignore.
+        var autocorrect: Bool
         /// Fires on caret/selection change with the format bar's active
         /// state — never re-parses; reuses the coordinator's style ranges.
         var onSelectionContext: ((SelectionContext) -> Void)?
@@ -58,6 +68,9 @@ struct EditorParseCache {
             mentionCandidates: [String] = [],
             findSignal: Int = 0,
             importAttachments: (([AttachmentDrop]) async -> [String])? = nil,
+            spellChecking: Bool = true,
+            grammarChecking: Bool = true,
+            autocorrect: Bool = false,
             onSelectionContext: ((SelectionContext) -> Void)? = nil,
             onOpenAttachment: ((String) -> Void)? = nil
         ) {
@@ -73,8 +86,16 @@ struct EditorParseCache {
             self.mentionCandidates = mentionCandidates
             self.findSignal = findSignal
             self.importAttachments = importAttachments
+            self.spellChecking = spellChecking
+            self.grammarChecking = grammarChecking
+            self.autocorrect = autocorrect
             self.onSelectionContext = onSelectionContext
             self.onOpenAttachment = onOpenAttachment
+        }
+
+        /// The flags as one value — what the coordinator diffs.
+        var proofing: ProofingFlags {
+            ProofingFlags(spelling: spellChecking, grammar: grammarChecking, autocorrect: autocorrect)
         }
 
         /// One cached editor per process: tab switches tear the SwiftUI
@@ -110,10 +131,13 @@ struct EditorParseCache {
                 context.coordinator.linkCandidates = linkCandidates
                 context.coordinator.mentionCandidates = mentionCandidates
                 textView.importAttachments = importAttachments
+                var textSwapped = false
                 if textView.string != text {
                     textView.string = text
                     context.coordinator.restyle(textView)
+                    textSwapped = true
                 }
+                context.coordinator.applyProofing(proofing, to: textView, recheck: textSwapped)
                 return cached
             }
             // Construct the subclass on its own fresh TextKit 2 stack. The
@@ -183,6 +207,7 @@ struct EditorParseCache {
             context.coordinator.linkCandidates = linkCandidates
             context.coordinator.mentionCandidates = mentionCandidates
             context.coordinator.restyle(textView)
+            context.coordinator.applyProofing(proofing, to: textView, recheck: true)
             if SharedEditorCache.scrollView == nil {
                 SharedEditorCache.scrollView = scrollView
             }
@@ -206,12 +231,19 @@ struct EditorParseCache {
             context.coordinator.mentionCandidates = mentionCandidates
             context.coordinator.onSelectionContext = onSelectionContext
             context.coordinator.onOpenAttachment = onOpenAttachment
+            var textSwapped = false
             if textView.string != text {
                 textView.string = text
                 context.coordinator.restyle(textView)
+                textSwapped = true
             } else if modeChanged {
                 context.coordinator.restyle(textView)
             }
+            // Replacing the whole string (switching notes) resets the
+            // layout manager's spelling annotations, and nothing the user
+            // did asks for them back — so re-check after the swap, not
+            // just when a settings toggle changed a flag.
+            context.coordinator.applyProofing(proofing, to: textView, recheck: textSwapped)
             if let target = scrollTarget,
                NSMaxRange(target) <= (textView.string as NSString).length {
                 textView.scrollRangeToVisible(target)
@@ -282,6 +314,13 @@ struct EditorParseCache {
             private var imageClickMonitor: Any?
             private var lastCursorLine: NSRange?
             private var pendingRestyle: Task<Void, Never>?
+            /// What the text view's proofing flags were last set to — the
+            /// diff that decides whether a re-check is owed.
+            private var appliedProofing: ProofingFlags?
+            /// Exclusion spans for the text as of the last parse. Cleared
+            /// whenever the parse is, so `didCheckTextIn` (which can fire
+            /// several times per typed word) doesn't recompute them.
+            private var exclusionCache: (length: Int, ranges: [NSRange])?
 
             /// Above this size, keystroke restyles are debounced so typing
             /// never waits on a full re-parse (50k words ≈ 150ms debug).
@@ -334,6 +373,7 @@ struct EditorParseCache {
                 }
                 frontmatterLength = MarkdownDocument(source: textView.string).bodyUTF16Offset
                 currentStyledRanges = styled
+                exclusionCache = nil
                 publishSelectionContext(for: textView)
             }
 
@@ -342,6 +382,7 @@ struct EditorParseCache {
                 // The text moved: the cached parse no longer describes it,
                 // so the caret path must not build on it.
                 parseCache = nil
+                exclusionCache = nil
                 guard (textView.string as NSString).length > Self.debounceThresholdUTF16 else {
                     restyle(textView)
                     return
@@ -628,6 +669,151 @@ struct EditorParseCache {
                     foldRanges: cache.folds
                 )
                 revealScope = scope
+            }
+
+            // MARK: Proofing (system spell + grammar checking)
+
+            /// Mirrors the three settings onto the text view, and asks for
+            /// a fresh pass when the flags changed or the text was swapped
+            /// wholesale — the system otherwise only checks what the user
+            /// types, so flipping "Check spelling" on would show nothing
+            /// until the next keystroke.
+            ///
+            /// Empirically (step-0 probe, macOS 27): a TextKit 2 NSTextView
+            /// keeps the squiggle as a `.spellingState` RENDERING attribute
+            /// on its `NSTextLayoutManager`, not in the text storage and
+            /// not as a TextKit 1 temporary attribute. `restyle`'s
+            /// `NSTextStorage.setAttributes` therefore cannot clobber it,
+            /// and re-requesting after every restyle would be waste — so
+            /// this runs on make/update only. Turning spelling OFF clears
+            /// the existing annotations on its own (also verified), so
+            /// there is nothing to undo here.
+            func applyProofing(_ flags: ProofingFlags, to textView: NSTextView, recheck: Bool = false) {
+                if flags.spelling {
+                    Self.allowContinuousSpellChecking()
+                }
+                textView.isContinuousSpellCheckingEnabled = flags.spelling
+                textView.isGrammarCheckingEnabled = flags.grammar
+                textView.isAutomaticSpellingCorrectionEnabled = flags.autocorrect
+                let changed = appliedProofing != flags
+                appliedProofing = flags
+                guard flags.spelling, changed || recheck else { return }
+                // NOT `checkTextInDocument(nil)`: that requests the
+                // text-replacement types (dashes, quotes, substitutions)
+                // and leaves the spelling bit clear — verified in the
+                // probe, where it came back with orthography only.
+                textView.checkText(
+                    in: NSRange(location: 0, length: (textView.string as NSString).length),
+                    types: flags.checkingTypes,
+                    options: [:]
+                )
+            }
+
+            /// AppKit silently REFUSES `isContinuousSpellCheckingEnabled`
+            /// (and `isGrammarCheckingEnabled` with it) unless the
+            /// `NSAllowContinuousSpellChecking` default reads true — the
+            /// setter takes, the getter comes back false, nothing is ever
+            /// checked. On this machine the user's NSGlobalDomain holds 0
+            /// for that key, which is why the editor has never shown a
+            /// squiggle; a fresh macOS account can hold 0 too.
+            ///
+            /// Two things make this a write rather than a retry:
+            ///
+            /// - AppKit answers from a value cached for the life of the
+            ///   process, so writing the default takes effect from the
+            ///   NEXT launch — retrying the flag straight afterwards does
+            ///   nothing (measured). Until then the session is degraded,
+            ///   not broken: the explicit `checkText` above still marks
+            ///   misspellings when a note opens or a toggle flips, it just
+            ///   won't keep up as the user types.
+            /// - it goes in our own application domain, which outranks
+            ///   NSGlobalDomain, so it opts THIS app in without touching
+            ///   the user's global preference or any other app, and an
+            ///   explicit `defaults write` against our bundle still wins.
+            ///
+            /// Skipped entirely when the effective value is already true.
+            private static var allowedContinuousChecking = false
+
+            private static func allowContinuousSpellChecking() {
+                guard !allowedContinuousChecking else { return }
+                allowedContinuousChecking = true
+                let key = "NSAllowContinuousSpellChecking"
+                guard !UserDefaults.standard.bool(forKey: key) else { return }
+                UserDefaults.standard.set(true, forKey: key)
+            }
+
+            /// The spans of the current text that must not be proofread.
+            /// Prefers the last parse; a stale one (the text changed and
+            /// its restyle is still debounced) is re-derived rather than
+            /// trusted, because a wrong range would silence a real
+            /// misspelling.
+            func exclusionRanges(for textView: NSTextView) -> [NSRange] {
+                let source = textView.string
+                let length = (source as NSString).length
+                if let cached = exclusionCache, cached.length == length {
+                    return cached.ranges
+                }
+                let ranges = ProofingExclusions.ranges(in: source, styled: styledRanges(for: source))
+                exclusionCache = (length, ranges)
+                return ranges
+            }
+
+            /// The last parse when it still describes `source` (restyle
+            /// stores it with its length and clears it on every text
+            /// change), otherwise a fresh one.
+            private func styledRanges(for source: String) -> [StyledRange] {
+                if let cache = parseCache, cache.length == (source as NSString).length {
+                    return cache.styled
+                }
+                return MarkdownStyler.styleRanges(in: source)
+            }
+
+            /// The system hands us every result it found; we return the
+            /// ones to keep. This is the whole token-awareness mechanism —
+            /// dropping a result here means no squiggle is drawn for it
+            /// (verified in the step-0 probe), so `#Amber1`, `>friday` and
+            /// the contents of a code fence stay unmarked.
+            public func textView(
+                _ textView: NSTextView,
+                didCheckTextIn _: NSRange,
+                types _: NSTextCheckingTypes,
+                options _: [NSSpellChecker.OptionKey: Any],
+                results: [NSTextCheckingResult],
+                orthography _: NSOrthography?,
+                wordCount _: Int
+            ) -> [NSTextCheckingResult] {
+                ProofingExclusions.keeping(results, excluding: exclusionRanges(for: textView))
+            }
+
+            /// Belt to the view flag's braces: `isGrammarCheckingEnabled`
+            /// governs the continuous pass, but a check requested with an
+            /// explicit type mask (Edit ▸ Spelling and Grammar, or our own
+            /// re-request) can still carry the grammar bit. Clearing it
+            /// here makes "Check grammar: off" hold on every path.
+            public func textView(
+                _: NSTextView,
+                willCheckTextIn _: NSRange,
+                options: [NSSpellChecker.OptionKey: Any],
+                types: UnsafeMutablePointer<NSTextCheckingTypes>
+            ) -> [NSSpellChecker.OptionKey: Any] {
+                if appliedProofing?.grammar == false {
+                    types.pointee &= ~NSTextCheckingResult.CheckingType.grammar.rawValue
+                }
+                return options
+            }
+
+            /// Writing Tools (proofread / rewrite / summarize) must leave
+            /// syntax alone too, or a rewrite silently eats a task's
+            /// tokens. See `ProofingExclusions.writingToolsIgnoredRanges`
+            /// for the coordinate contract.
+            public func textView(
+                _ textView: NSTextView,
+                writingToolsIgnoredRangesInEnclosingRange enclosingRange: NSRange
+            ) -> [NSValue] {
+                let source = textView.string
+                return ProofingExclusions.writingToolsIgnoredRanges(
+                    in: source, styled: styledRanges(for: source), enclosing: enclosingRange
+                ).map { NSValue(range: $0) }
             }
 
             // MARK: Table auto-align
@@ -974,6 +1160,14 @@ struct EditorParseCache {
         var mentionCandidates: [String]
         var findSignal: Int
         var importAttachments: (([AttachmentDrop]) async -> [String])?
+        /// System spell checking (red underline + suggestion menu).
+        var spellChecking: Bool
+        /// Accepted for API parity: UIKit has no grammar checking, so this
+        /// is inert on iOS. Settings hides the toggle there.
+        var grammarChecking: Bool
+        /// Autocorrect-as-you-type; OFF by default, same reasoning as
+        /// macOS (it rewrites `#tags` and identifiers).
+        var autocorrect: Bool
         /// Mirrors the macOS callback (cheap: reuses ranges from the last
         /// restyle). Bar UI is macOS-first but nothing here is iOS-unsafe.
         var onSelectionContext: ((SelectionContext) -> Void)?
@@ -994,6 +1188,9 @@ struct EditorParseCache {
             mentionCandidates: [String] = [],
             findSignal: Int = 0,
             importAttachments: (([AttachmentDrop]) async -> [String])? = nil,
+            spellChecking: Bool = true,
+            grammarChecking: Bool = true,
+            autocorrect: Bool = false,
             onSelectionContext: ((SelectionContext) -> Void)? = nil,
             onOpenAttachment: ((String) -> Void)? = nil
         ) {
@@ -1009,8 +1206,16 @@ struct EditorParseCache {
             self.mentionCandidates = mentionCandidates
             self.findSignal = findSignal
             self.importAttachments = importAttachments
+            self.spellChecking = spellChecking
+            self.grammarChecking = grammarChecking
+            self.autocorrect = autocorrect
             self.onSelectionContext = onSelectionContext
             self.onOpenAttachment = onOpenAttachment
+        }
+
+        /// The flags as one value — what the coordinator diffs.
+        var proofing: ProofingFlags {
+            ProofingFlags(spelling: spellChecking, grammar: grammarChecking, autocorrect: autocorrect)
         }
 
         public func makeCoordinator() -> Coordinator {
@@ -1022,7 +1227,6 @@ struct EditorParseCache {
             let textView = MarkdownUITextView(usingTextLayoutManager: true)
             textView.importAttachments = importAttachments
             textView.delegate = context.coordinator
-            textView.autocorrectionType = .default
             textView.smartQuotesType = .no
             textView.smartDashesType = .no
             textView.writingToolsBehavior = .complete
@@ -1050,6 +1254,7 @@ struct EditorParseCache {
             context.coordinator.tagCandidates = tagCandidates
             context.coordinator.linkCandidates = linkCandidates
             context.coordinator.mentionCandidates = mentionCandidates
+            context.coordinator.applyProofing(proofing, to: textView)
             context.coordinator.restyle(textView)
             return textView
         }
@@ -1072,6 +1277,7 @@ struct EditorParseCache {
             context.coordinator.linkCandidates = linkCandidates
             context.coordinator.mentionCandidates = mentionCandidates
             context.coordinator.onSelectionContext = onSelectionContext
+            context.coordinator.applyProofing(proofing, to: textView)
             if textView.text != text {
                 textView.text = text
                 context.coordinator.restyle(textView)
@@ -1138,6 +1344,37 @@ struct EditorParseCache {
             init(text: Binding<String>, theme: MarkdownTheme) {
                 self.text = text
                 self.theme = theme
+            }
+
+            // MARK: Proofing
+
+            /// UIKit exposes only the two keyboard traits — there is no
+            /// grammar checking and no `didCheckTextIn` hook to filter
+            /// results with, so on iOS the underline is unfiltered system
+            /// spelling. What IS filtered is Writing Tools (below), which
+            /// is the path that can actually rewrite the text.
+            func applyProofing(_ flags: ProofingFlags, to textView: UITextView) {
+                textView.spellCheckingType = flags.spelling ? .yes : .no
+                textView.autocorrectionType = flags.autocorrect ? .yes : .no
+            }
+
+            /// Writing Tools must not rewrite markdown syntax or task
+            /// tokens. Same exclusion oracle and same coordinate contract
+            /// as macOS.
+            public func textView(
+                _ textView: UITextView,
+                writingToolsIgnoredRangesInEnclosingRange enclosingRange: NSRange
+            ) -> [NSValue] {
+                let source = textView.text ?? ""
+                let styled: [StyledRange] = if let cache = parseCache,
+                                               cache.length == (source as NSString).length {
+                    cache.styled
+                } else {
+                    MarkdownStyler.styleRanges(in: source)
+                }
+                return ProofingExclusions.writingToolsIgnoredRanges(
+                    in: source, styled: styled, enclosing: enclosingRange
+                ).map { NSValue(range: $0) }
             }
 
             func restyle(_ textView: UITextView) {

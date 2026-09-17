@@ -35,6 +35,11 @@ struct SettingsView: View {
     @AppStorage("editorFocusMode") private var focusMode = false
     @AppStorage("editorMode") private var editorMode = EditorMode.live
     @AppStorage("headingScale") private var headingScalePercent = 100.0
+    // Proofing (spec 01): system spell/grammar checking, token-aware.
+    // Autocorrect is off by user decision — see the section's caption.
+    @AppStorage("proofSpelling") private var proofSpelling = true
+    @AppStorage("proofGrammar") private var proofGrammar = true
+    @AppStorage("proofAutocorrect") private var proofAutocorrect = false
     // To-Do
     @AppStorage("todoDensity") private var todoDensity = "comfortable"
     @AppStorage("showStreaks") private var showStreaks = false
@@ -248,6 +253,20 @@ struct SettingsView: View {
                 Text("⌘E cycles Source → Live Preview → Reading. ⌘/ flips between Source and Live Preview.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+            Section("Proofing") {
+                Toggle("Check spelling while typing", isOn: $proofSpelling)
+                #if os(macOS)
+                    // macOS only: UIKit has no grammar checking.
+                    Toggle("Check grammar", isOn: $proofGrammar)
+                        .disabled(!proofSpelling)
+                #endif
+                Toggle("Correct spelling automatically", isOn: $proofAutocorrect)
+                Text(
+                    "Off keeps #tags, @handles and identifiers exactly as typed; misspellings get an underline and right-click suggestions instead. Markdown syntax, code, links and task tokens are never checked."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
             Section("Behavior") {
                 Toggle("Focus mode (dim other paragraphs)", isOn: $focusMode)
