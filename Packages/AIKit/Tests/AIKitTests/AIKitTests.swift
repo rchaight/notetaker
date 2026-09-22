@@ -379,7 +379,12 @@ struct RouterHandOffTests {
 
     @Test func noAvailableProviderStillFallsBackToNone() async throws {
         let router = AIRouter(providers: [Flaky(name: "Offline", available: false, fails: false)])
-        let (_, provider) = try await router.summarize("A sentence. Another sentence.")
+        // NoneProvider keeps only sentences longer than 20 characters —
+        // the first version of this test fed it two shorter ones and it
+        // threw "nothing to summarize" (a red build reached origin/main).
+        let text = "The committee approved the new competency map on Tuesday afternoon. "
+            + "A draft assessment blueprint is due to the dean by the end of October."
+        let (_, provider) = try await router.summarize(text)
         #expect(provider == NoneProvider().name)
     }
 }
