@@ -53,6 +53,9 @@ struct NotesView: View {
     @AppStorage("findHighlightColor") private var findHighlightColor = "yellow"
     /// Heading size as a percent of the default enlargement, all modes.
     @AppStorage("headingScale") private var headingScalePercent = 100.0
+    /// Summaries / action items: the homelab Ollama model first, Apple
+    /// Intelligence as the fallback (user request). Off = on-device first.
+    @AppStorage("aiPreferOllama") private var aiPreferOllama = true
     // Proofing — Settings ▸ Editor ▸ Proofing owns these three; the editor
     // applies them live on every update.
     @AppStorage("proofSpelling") private var proofSpelling = true
@@ -1414,14 +1417,24 @@ struct NotesView: View {
         aiStatus = summarize ? "Summarizing…" : "Extracting…"
         Task {
             var providers: [any AIProvider] = []
-            #if canImport(FoundationModels)
-                providers.append(FoundationModelsProvider())
-            #endif
-            if let urlString = KeychainStore.read(account: "ollamaURL"),
-               let url = ServerURL.normalize(urlString) {
+            // migrateFromDefaults, not read(): a URL seeded into defaults
+            // reaches the Keychain on first use HERE, not only once Settings
+            // has been opened.
+            let ollamaURL = KeychainStore.migrateFromDefaults(key: "ollamaURL", account: "ollamaURL")
+            if let url = ServerURL.normalize(ollamaURL) {
                 let model = UserDefaults.standard.string(forKey: "ollamaModel") ?? "qwen3"
                 providers.append(OllamaProvider(baseURL: url, model: model.isEmpty ? "qwen3" : model))
             }
+            #if canImport(FoundationModels)
+                // AIRouter walks providers in order and skips any whose
+                // isAvailable() fails, so "prefer Ollama" still falls back
+                // to on-device when the homelab is unreachable.
+                if aiPreferOllama {
+                    providers.append(FoundationModelsProvider())
+                } else {
+                    providers.insert(FoundationModelsProvider(), at: 0)
+                }
+            #endif
             let router = AIRouter(providers: providers)
             do {
                 if summarize {

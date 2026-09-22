@@ -62,6 +62,7 @@ struct SettingsView: View {
         key: "ollamaURL", account: "ollamaURL"
     )
     @AppStorage("ollamaModel") private var ollamaModel = ""
+    @AppStorage("aiPreferOllama") private var aiPreferOllama = true
     @State private var ollamaModels: [String] = []
     @State private var ollamaProbe: String?
     /// LanguageTool (proofing) — same Keychain policy as `ollamaURL`.
@@ -477,6 +478,14 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                Toggle("Prefer Ollama for summaries and action items", isOn: $aiPreferOllama)
+                Text(
+                    aiPreferOllama
+                        ? "Your Ollama server runs first; Apple Intelligence takes over only if it can't be reached."
+                        : "Apple Intelligence runs first; Ollama handles what exceeds it."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
                 if !ollamaModels.isEmpty {
                     Picker("Model", selection: $ollamaModel) {
                         ForEach(ollamaModels, id: \.self) { model in
