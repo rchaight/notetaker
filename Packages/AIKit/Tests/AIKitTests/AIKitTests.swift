@@ -316,3 +316,70 @@ struct TagGroupTests {
         #expect(valid[0].parent == "greek")
     }
 }
+
+struct RouterHandOffTests {
+    struct Flaky: AIProvider {
+        let name: String
+        let available: Bool
+        let fails: Bool
+        var contextLimit: Int? {
+            nil
+        }
+
+        func isAvailable() async -> Bool {
+            available
+        }
+
+        func summarize(_: String) async throws -> String {
+            if fails {
+                throw AIProviderError.unavailable("\(name) timed out")
+            }
+            return "summary by \(name)"
+        }
+
+        func extractActionItems(from _: String) async throws -> [AITask] {
+            throw AIProviderError.unavailable("not under test")
+        }
+
+        func parseTask(_: String) async throws -> AITask {
+            throw AIProviderError.unavailable("not under test")
+        }
+    }
+
+    @Test func aFailingAvailableProviderHandsOffToTheNext() async throws {
+        // Ollama answers its /api/tags probe, then the 35B model times out —
+        // Apple Intelligence must take over instead of surfacing the error.
+        let router = AIRouter(providers: [
+            Flaky(name: "Ollama", available: true, fails: true),
+            Flaky(name: "Apple Intelligence", available: true, fails: false),
+        ])
+        let (summary, provider) = try await router.summarize("some note text")
+        #expect(provider == "Apple Intelligence")
+        #expect(summary == "summary by Apple Intelligence")
+    }
+
+    @Test func unavailableProvidersAreSkippedWithoutBeingTried() async throws {
+        let router = AIRouter(providers: [
+            Flaky(name: "Offline", available: false, fails: true),
+            Flaky(name: "Local", available: true, fails: false),
+        ])
+        let (_, provider) = try await router.summarize("text")
+        #expect(provider == "Local")
+    }
+
+    @Test func allAvailableProvidersFailingRethrowsTheLastError() async {
+        let router = AIRouter(providers: [
+            Flaky(name: "A", available: true, fails: true),
+            Flaky(name: "B", available: true, fails: true),
+        ])
+        await #expect(throws: AIProviderError.self) {
+            _ = try await router.summarize("text")
+        }
+    }
+
+    @Test func noAvailableProviderStillFallsBackToNone() async throws {
+        let router = AIRouter(providers: [Flaky(name: "Offline", available: false, fails: false)])
+        let (_, provider) = try await router.summarize("A sentence. Another sentence.")
+        #expect(provider == NoneProvider().name)
+    }
+}

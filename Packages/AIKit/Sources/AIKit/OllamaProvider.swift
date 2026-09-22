@@ -19,7 +19,12 @@ public struct OllamaProvider: AIProvider {
             self.session = session
         } else {
             let configuration = URLSessionConfiguration.ephemeral
-            configuration.timeoutIntervalForRequest = 30
+            // Idle timeout between bytes. Requests are non-streamed, so
+            // NOTHING arrives until the whole answer is ready — a 30 s value
+            // killed a warm 43 s reply from a 35B homelab model (measured).
+            // Cold loads of 20 GB models run longer still; the router now
+            // falls through to the next provider if this trips.
+            configuration.timeoutIntervalForRequest = 180
             configuration.timeoutIntervalForResource = 600
             self.session = URLSession(configuration: configuration)
         }
