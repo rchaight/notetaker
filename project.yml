@@ -105,6 +105,19 @@ targets:
         UILaunchScreen: {}
         NSLocalNetworkUsageDescription: Notetaker connects to your own homelab servers (Ollama, docling-serve) for AI and document conversion.
         NSCalendarsFullAccessUsageDescription: Notetaker reads your calendars to list the day's meetings in daily notes. Nothing is stored or sent anywhere.
+        # The homelab servers the user configures (Ollama, LanguageTool,
+        # docling-serve) speak plain HTTP. ATS blocks cleartext to any
+        # fully-qualified hostname by default (-1022) — only localhost and
+        # raw IPs are exempt, which hid this until a Tailscale MagicDNS name
+        # was entered. Scoped, not NSAllowsArbitraryLoads: local-network
+        # names (.local, unqualified, IPs) plus *.ts.net, where the tunnel is
+        # already WireGuard-encrypted end to end. Anything else needs https.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+          NSExceptionDomains:
+            ts.net:
+              NSIncludesSubdomains: true
+              NSExceptionAllowsInsecureHTTPLoads: true
         NSUbiquitousContainers:
           iCloud.com.rchaight.notetaker:
             NSUbiquitousContainerIsDocumentScopePublic: true

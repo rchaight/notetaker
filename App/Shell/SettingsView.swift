@@ -437,6 +437,29 @@ struct SettingsView: View {
         .formStyle(.grouped)
     }
 
+    /// Why a Test Connection failed, in words the user can act on. A flat
+    /// "not reachable" hid an App Transport Security block behind what
+    /// looked like a server problem (user report).
+    static func probeFailure(_ error: Error) -> String {
+        guard let urlError = error as? URLError else {
+            return "✗ no service answered at that URL — check the port and that it is running"
+        }
+        switch urlError.code {
+        case .appTransportSecurityRequiresSecureConnection:
+            return "✗ blocked by macOS: plain http is only allowed to .ts.net, .local, or IP-address hosts — use https or one of those"
+        case .timedOut:
+            return "✗ timed out — is the server up, and are you on its network (Tailscale connected)?"
+        case .cannotFindHost, .dnsLookupFailed:
+            return "✗ host name not found — check the spelling and that Tailscale/VPN is connected"
+        case .cannotConnectToHost:
+            return "✗ host found, but nothing is listening on that port"
+        case .notConnectedToInternet, .networkConnectionLost:
+            return "✗ no network connection"
+        default:
+            return "✗ \(urlError.localizedDescription)"
+        }
+    }
+
     private var aiPane: some View {
         Form {
             Section("AI — Ollama (homelab)") {
@@ -468,7 +491,7 @@ struct SettingsView: View {
                                 }
                                 ollamaProbe = "✓ \(models.count) model(s) available"
                             } catch {
-                                ollamaProbe = "✗ not reachable"
+                                ollamaProbe = Self.probeFailure(error)
                             }
                         }
                     }
@@ -522,7 +545,7 @@ struct SettingsView: View {
                                 languageToolLanguages = languages
                                 languageToolProbe = "✓ \(languages.count) language(s) available"
                             } catch {
-                                languageToolProbe = "✗ not reachable"
+                                languageToolProbe = Self.probeFailure(error)
                             }
                         }
                     }
