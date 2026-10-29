@@ -71,6 +71,23 @@ struct VaultServiceTests {
         #expect(open?["locked"]?.boolValue == false)
     }
 
+    @Test func listFolderFlagsCRLFLockedNote() throws {
+        let fixture = try VaultFixture()
+        defer { fixture.cleanUp() }
+        // Same envelope as Work/Locked.md but with Windows line endings.
+        try "---\r\nlocked: true\r\n---\r\nU2FsdGVkX1+ciphertext\r\n".write(
+            to: fixture.root.appendingPathComponent("Work/LockedCRLF.md"), atomically: true, encoding: .utf8
+        )
+
+        let listing = try fixture.service(withIndex: false).listFolder(path: "Work")
+        let notes = listing["notes"]?.arrayValue ?? []
+        let crlf = notes.first { $0["path"]?.stringValue == "Work/LockedCRLF.md" }
+        #expect(crlf?["locked"]?.boolValue == true)
+        // The LF twin and an ordinary note keep their flags.
+        #expect(notes.first { $0["path"]?.stringValue == "Work/Locked.md" }?["locked"]?.boolValue == true)
+        #expect(notes.first { $0["path"]?.stringValue == "Work/Curriculum.md" }?["locked"]?.boolValue == false)
+    }
+
     @Test func listFolderComputesAListingWhenNoIndexFileExists() throws {
         let fixture = try VaultFixture()
         defer { fixture.cleanUp() }

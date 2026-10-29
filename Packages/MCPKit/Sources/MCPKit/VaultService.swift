@@ -173,10 +173,12 @@ public struct VaultService: Sendable {
         defer { try? handle.close() }
         guard let head = try? handle.read(upToCount: 4096),
               let text = String(data: head, encoding: .utf8) else { return false }
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
-        guard lines.first?.trimmingCharacters(in: .whitespaces) == "---" else { return false }
+        // CRLF is ONE Character in Swift, so splitting on "\n" never splits a CRLF
+        // file; split on any newline and trim newlines too.
+        let lines = text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
+        guard lines.first?.trimmingCharacters(in: .whitespacesAndNewlines) == "---" else { return false }
         for line in lines.dropFirst() {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed == "---" {
                 return false
             }

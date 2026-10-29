@@ -68,7 +68,7 @@ jobs:
           set -uo pipefail
           FAILED=""
           SUMMARY=""
-          for PKG in TaskEngine MarkdownKit CalendarKit ProjectKit IndexKit AIKit MCPKit; do
+          for PKG in TaskEngine MarkdownKit CalendarKit ProjectKit IndexKit AIKit MCPKit RemoteServer; do
             echo "=== $PKG ==="
             if (cd "Packages/$PKG" && swift test); then
               SUMMARY="$SUMMARY\nPASS $PKG"
