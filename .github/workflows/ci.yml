@@ -63,8 +63,18 @@ jobs:
       - name: Package tests (Linux)
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
+          FAILED=""
+          SUMMARY=""
           for PKG in TaskEngine MarkdownKit CalendarKit ProjectKit IndexKit AIKit MCPKit; do
             echo "=== $PKG ==="
-            (cd "Packages/$PKG" && swift test)
+            if (cd "Packages/$PKG" && swift test); then
+              SUMMARY="$SUMMARY\nPASS $PKG"
+            else
+              SUMMARY="$SUMMARY\nFAIL $PKG"
+              FAILED="$FAILED $PKG"
+            fi
           done
+          echo "=== Linux package summary ==="
+          printf "$SUMMARY\n"
+          if [ -n "$FAILED" ]; then echo "Failed:$FAILED"; exit 1; fi
