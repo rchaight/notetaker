@@ -49,9 +49,11 @@ jobs:
           curl -fsSL -o /tmp/swiftformat.zip https://github.com/nicklockwood/SwiftFormat/releases/download/0.62.1/swiftformat.zip
           unzip -o /tmp/swiftformat.zip -d /tmp/sf
           sudo install -m 755 "$(find /tmp/sf -name swiftformat -type f | head -1)" /usr/local/bin/swiftformat
-          swiftformat --version
+          # Call the pinned binary by absolute path: the runner image's own
+          # Homebrew swiftformat (newer) comes first on PATH and shadows it.
+          /usr/local/bin/swiftformat --version
       - name: Lint formatting
-        run: swiftformat --lint .
+        run: /usr/local/bin/swiftformat --lint .
 
   linux-packages:
     runs-on: ubuntu-24.04
