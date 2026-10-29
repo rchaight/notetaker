@@ -115,5 +115,6 @@ public enum QuickAddParser {
         formatter.timeZone = calendar.timeZone
         formatter.dateFormat = "yyyy-MM-dd"
         return (formatter.string(from: date), ns.replacingCharacters(in: match.range, with: ""))
-    }    #endif
+    }
+    #endif
 }
