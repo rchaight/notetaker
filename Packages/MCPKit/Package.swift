@@ -14,6 +14,7 @@ let package = Package(
         .package(path: "../MarkdownKit"),
         .package(path: "../TaskEngine"),
         .package(path: "../AIKit"),
+        .package(path: "../CalendarKit"),
     ],
     targets: [
         .target(
@@ -24,11 +25,12 @@ let package = Package(
                 "MarkdownKit",
                 "TaskEngine",
                 "AIKit",
+                "CalendarKit",
             ]
         ),
         .testTarget(
             name: "MCPKitTests",
-            dependencies: ["MCPKit", "IndexKit", "AIKit", .product(name: "MCP", package: "swift-sdk")]
+            dependencies: ["MCPKit", "IndexKit", "AIKit", "CalendarKit", .product(name: "MCP", package: "swift-sdk")]
         ),
     ]
 )

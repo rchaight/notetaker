@@ -46,7 +46,8 @@ struct VaultServiceTests {
         // Point at an index file that isn't there — the app closed, deleted,
         // or never built it.
         let location = VaultLocation(
-            root: fixture.root, indexPath: fixture.indexPath, origin: .argument
+            root: fixture.root, indexPath: fixture.indexPath, origin: .argument,
+            calendarSnapshotPath: fixture.calendarSnapshotPath
         )
         let service = VaultService(location: location, embeddings: StubEmbeddings())
         #expect(service.indexStatus.hasPrefix("unavailable"))

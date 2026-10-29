@@ -18,6 +18,10 @@ struct SettingsView: View {
     @State private var calendarAccess = CalendarService.accessState()
     @State private var calendarList: [(id: String, title: String, account: String)] = []
     @State private var excludedIds: Set<String> = []
+    #if os(macOS)
+        @AppStorage("calendarShareWithMCP") private var calendarShareWithMCP = false
+        @State private var lastSnapshot: Date?
+    #endif
     // Editor — per-mode font design + size (spec 04); Live keeps the
     // legacy keys, Source/Reading get their own via EditorFontPreferences.
     @AppStorage(EditorFontPreferences.keys(for: .live).design) private var liveFontDesign = EditorFontPreferences
@@ -118,8 +122,11 @@ struct SettingsView: View {
             Section("Connection") {
                 switch calendarAccess {
                 case .granted:
-                    Label("Connected — meetings populate new daily notes", systemImage: "checkmark.circle")
-                        .foregroundStyle(.green)
+                    Label(
+                        "Connected — meetings populate new daily notes and the Calendar tab",
+                        systemImage: "checkmark.circle"
+                    )
+                    .foregroundStyle(.green)
                 case .denied:
                     Label("Access denied", systemImage: "xmark.circle")
                         .foregroundStyle(.red)
@@ -160,6 +167,34 @@ struct SettingsView: View {
                     }
                 }
             }
+            #if os(macOS)
+                Section("Claude / MCP") {
+                    Toggle(
+                        "Share upcoming events with the MCP server",
+                        isOn: $calendarShareWithMCP
+                    )
+                    .disabled(calendarAccess != .granted)
+                    if calendarAccess != .granted {
+                        Text("Connect your calendars above to enable sharing.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else if calendarShareWithMCP {
+                        Text(
+                            "Notetaker keeps a local snapshot of the next four weeks — title, time, calendar, location, status, organizer and attendee names — at \(CalendarSnapshotPublisher.snapshotURL?.path ?? "the Index folder") for the read-only notetaker-mcp server. Event notes, links and email addresses are never included. Turn this off to delete the snapshot."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    } else {
+                        Text("Off — Claude cannot see your calendar.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    LabeledContent("Last snapshot") {
+                        Text(lastSnapshot.map { $0.formatted(date: .abbreviated, time: .standard) } ?? "none")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            #endif
             Section("Daily note template") {
                 TextEditor(text: $dailyTemplate)
                     .font(.body.monospaced())
@@ -189,8 +224,29 @@ struct SettingsView: View {
             calendarAccess = CalendarService.accessState()
             calendarList = CalendarService.availableCalendars()
             excludedIds = CalendarService.excludedCalendarIds()
+            refreshSnapshotDate()
         }
+        #if os(macOS)
+        .onChange(of: calendarShareWithMCP) {
+            if !calendarShareWithMCP {
+                CalendarSnapshotPublisher.deleteIfPresent()
+            }
+            Task {
+                try? await Task.sleep(for: .seconds(1))
+                refreshSnapshotDate()
+            }
+        }
+        #endif
     }
+
+    #if os(macOS)
+        private func refreshSnapshotDate() {
+            guard let url = CalendarSnapshotPublisher.snapshotURL else { return }
+            lastSnapshot = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
+        }
+    #else
+        private func refreshSnapshotDate() {}
+    #endif
 
     private var generalPane: some View {
         Form {
@@ -699,6 +755,9 @@ struct SettingsView: View {
             )
             .font(.caption)
             .foregroundStyle(.secondary)
+            Text("Calendar access for the MCP server is a separate toggle in Settings › Calendar.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     #endif
 }

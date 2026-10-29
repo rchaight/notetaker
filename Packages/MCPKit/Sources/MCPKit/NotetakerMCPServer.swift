@@ -1,7 +1,7 @@
 import Foundation
 import MCP
 
-/// The MCP surface: five read-only tools over the Notetaker vault.
+/// The MCP surface: seven read-only tools over the Notetaker vault.
 /// Descriptions are written for the model that will read them — what the
 /// tool is for and when to reach for it, not just what it returns.
 public enum NotetakerMCPServer {
@@ -34,6 +34,9 @@ public enum NotetakerMCPServer {
     know about X"), list_folder (browsing a known area), and read_note \
     (the full text of one note). Use tasks for anything about todos, \
     deadlines, or what someone owes whom.
+
+    calendar_agenda shows the user's day or week when they have enabled \
+    calendar sharing; it is a snapshot, so check `stale`.
 
     This server is read-only: it never edits the vault.
     """
@@ -172,6 +175,54 @@ public enum NotetakerMCPServer {
                 ]),
                 annotations: readOnly
             ),
+            Tool(
+                name: "calendar_agenda",
+                description: """
+                The user's upcoming calendar events from the calendars they chose to share \
+                with you, grouped by day. Use it for "what's on today / this week / on \
+                Friday", meeting prep, and finding free time. Default range is today; "week" \
+                is today plus the next six days; "custom" takes from/to dates. Events come \
+                from a snapshot Notetaker refreshes while it runs — check `stale` and \
+                `generated_at`. Returns `available: false` with instructions when the user \
+                has not turned sharing on.
+                """,
+                inputSchema: .object([
+                    "type": .string("object"),
+                    "properties": .object([
+                        "range": .object([
+                            "type": .string("string"),
+                            "enum": .array([
+                                .string("today"), .string("tomorrow"), .string("week"), .string("custom"),
+                            ]),
+                            "description": .string("Default today. custom requires from and to."),
+                        ]),
+                        "from": .object([
+                            "type": .string("string"),
+                            "description": .string("yyyy-mm-dd, first day (range custom only)."),
+                        ]),
+                        "to": .object([
+                            "type": .string("string"),
+                            "description": .string("yyyy-mm-dd, last day inclusive (range custom only)."),
+                        ]),
+                        "calendar": .object([
+                            "type": .string("string"),
+                            "description": .string(
+                                "Only events from the calendar with this title (case-insensitive); see calendar_list."
+                            ),
+                        ]),
+                    ]),
+                ]),
+                annotations: readOnly
+            ),
+            Tool(
+                name: "calendar_list",
+                description: """
+                The calendars included in the shared snapshot, with account and colour. Use \
+                the titles as the `calendar` filter for calendar_agenda.
+                """,
+                inputSchema: .object(["type": .string("object"), "properties": .object([:])]),
+                annotations: readOnly
+            ),
         ]
     }
 
@@ -219,6 +270,15 @@ public enum NotetakerMCPServer {
                     includeCompleted: arguments["include_completed"]?.boolValue ?? false,
                     limit: arguments["limit"]?.intValue ?? 100
                 ))
+            case "calendar_agenda":
+                try service.calendarAgenda(VaultService.CalendarAgendaQuery(
+                    range: arguments["range"]?.stringValue,
+                    from: arguments["from"]?.stringValue,
+                    to: arguments["to"]?.stringValue,
+                    calendar: arguments["calendar"]?.stringValue
+                ))
+            case "calendar_list":
+                service.calendarList()
             default:
                 throw MCPError.methodNotFound("unknown tool \(name)")
             }

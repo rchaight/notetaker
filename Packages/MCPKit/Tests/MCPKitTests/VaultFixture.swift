@@ -8,6 +8,8 @@ import IndexKit
 struct VaultFixture {
     let root: URL
     let indexPath: String
+    /// Where a calendar snapshot would live; the file exists only if a test writes one.
+    let calendarSnapshotPath: String
 
     static let notes: [String: String] = [
         "CLAUDE.md": """
@@ -56,6 +58,8 @@ struct VaultFixture {
         root = FileManager.default.temporaryDirectory
             .appendingPathComponent("mcpkit-vault-\(UUID().uuidString)", isDirectory: true)
         indexPath = root.appendingPathComponent("index.sqlite").path
+        calendarSnapshotPath = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mcpkit-calendar-\(UUID().uuidString).json").path
         for (path, contents) in Self.notes {
             let url = root.appendingPathComponent(path)
             try FileManager.default.createDirectory(
@@ -67,6 +71,7 @@ struct VaultFixture {
 
     func cleanUp() {
         try? FileManager.default.removeItem(at: root)
+        try? FileManager.default.removeItem(atPath: calendarSnapshotPath)
     }
 
     /// Builds the index exactly the way the app's pipeline does, plus the
@@ -90,7 +95,8 @@ struct VaultFixture {
 
     func location(withIndex: Bool) -> VaultLocation {
         VaultLocation(
-            root: root, indexPath: withIndex ? indexPath : nil, origin: .argument
+            root: root, indexPath: withIndex ? indexPath : nil, origin: .argument,
+            calendarSnapshotPath: calendarSnapshotPath
         )
     }
 

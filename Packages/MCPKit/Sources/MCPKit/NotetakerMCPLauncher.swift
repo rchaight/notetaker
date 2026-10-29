@@ -15,10 +15,11 @@ public enum NotetakerMCPLauncher {
     Options:
       --vault <path>   Serve this folder instead of the active vault.
       --index <path>   Use this GRDB index file (default: the app's).
+      --calendar <path> Use this calendar snapshot file (default: the app's).
       --version        Print the version and exit.
       -h, --help       Print this help and exit.
 
-    Tools: vault_overview, list_folder, read_note, search, tasks.
+    Tools: vault_overview, list_folder, read_note, search, tasks, calendar_agenda, calendar_list.
     The server never writes to the vault or to the index.
     """
 

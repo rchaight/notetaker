@@ -13,7 +13,7 @@ Native macOS + iOS markdown notes, todos, and project management — plain `.md`
 Notetaker's vault works as a knowledge source for Claude Code/Desktop, on macOS:
 
 1. In Settings › AI & Import, leave "Maintain `_index.md` tables of contents and a `CLAUDE.md` guide" enabled (default) — the app keeps machine-written folder indexes and a root `CLAUDE.md` up to date so any agent pointed at the vault folder can navigate it without a server.
-2. For structured search and task queries even while Notetaker is closed, copy the `claude mcp add notetaker -- "<path>"` command shown in that same section and run it once. Claude Code (or Claude Desktop, via its MCP settings) can then search notes, read a note, list a folder, or pull tasks — read-only, with locked notes never exposed. Notetaker never edits Claude's own configuration for you.
+2. For structured search and task queries even while Notetaker is closed, copy the `claude mcp add notetaker -- "<path>"` command shown in that same section and run it once. Claude Code (or Claude Desktop, via its MCP settings) can then search notes, read a note, list a folder, or pull tasks — read-only, with locked notes never exposed. Calendar tools (`calendar_agenda`, `calendar_list`) are off until you turn on Settings › Calendar › "Share upcoming events with the MCP server". Notetaker never edits Claude's own configuration for you.
 
 ## Documents
 

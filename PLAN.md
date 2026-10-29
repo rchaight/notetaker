@@ -342,6 +342,7 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 
 - [x] `_index.md` per folder + root `CLAUDE.md` seed, generated from `IndexFileRenderer` (IndexKit), driven by `VaultIndexService`, gated on `claudeIndexFiles` (default on); excluded from the notes list/search/To-Do at the `VaultFileStore` enumeration choke point.
 - [x] `Packages/MCPKit` + bundled `notetaker-mcp` stdio executable (official MCP Swift SDK): `vault_overview`/`list_folder`/`read_note`/`search`/`tasks` tools over a read-only `IndexDatabase.openReadOnly()` with scan fallback; locked notes redacted to title-only.
+- [x] Calendar tools: opt-in snapshot (`Index/calendar-snapshot.json`, written by `CalendarSnapshotPublisher`) read by `calendar_agenda`/`calendar_list` in `notetaker-mcp`; default off, deleted when turned off (specs/calendar/03).
 - [x] Settings › AI & Import "Claude integration" section: toggle for the context files, resolved MCP binary path + copyable `claude mcp add` command (macOS only) — the app never writes to `~/.claude.json` or Claude Desktop's config.
 
 ### M9.9 — Ongoing shakedown (current phase, 2026-08-17)

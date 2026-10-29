@@ -38,7 +38,7 @@
 		</dict>
 	</dict>
 	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>Notetaker reads your calendars to list the day's meetings in daily notes. Nothing is stored or sent anywhere.</string>
+	<string>Notetaker reads your calendars to show them in the Calendar tab and list the day's meetings in daily notes. Nothing leaves the device unless you turn on sharing with the MCP server in Settings.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Notetaker connects to your own homelab servers (Ollama, docling-serve) for AI and document conversion.</string>
 	<key>NSUbiquitousContainers</key>

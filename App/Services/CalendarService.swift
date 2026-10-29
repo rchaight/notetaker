@@ -1,3 +1,5 @@
+import CalendarKit
+import CoreGraphics
 import EventKit
 import Foundation
 
@@ -81,6 +83,88 @@ enum CalendarService {
                 : "\(formatter.string(from: meeting.start))–\(formatter.string(from: meeting.end))"
             return "# \(time) — \(meeting.title)\n\n\n"
         }.joined()
+    }
+
+    // MARK: - CalendarKit mapping
+
+    private static func includedEKCalendars(_ excluded: Set<String>) -> [EKCalendar] {
+        guard accessState() == .granted else { return [] }
+        return store.calendars(for: .event).filter { !excluded.contains($0.calendarIdentifier) }
+    }
+
+    private static func hex(_ color: CGColor?) -> String? {
+        guard let color,
+              let srgb = CGColorSpace(name: CGColorSpace.sRGB),
+              let c = color.converted(to: srgb, intent: .defaultIntent, options: nil)?.components,
+              c.count >= 3
+        else { return nil }
+        func byte(_ v: CGFloat) -> Int {
+            Int((min(max(v, 0), 1) * 255).rounded())
+        }
+        return String(format: "#%02X%02X%02X", byte(c[0]), byte(c[1]), byte(c[2]))
+    }
+
+    /// Included calendars (every event calendar minus the excluded set).
+    static func includedCalendars(
+        excludedCalendarIds: Set<String> = excludedCalendarIds()
+    ) -> [CalendarInfo] {
+        includedEKCalendars(excludedCalendarIds).map {
+            CalendarInfo(
+                id: $0.calendarIdentifier, title: $0.title,
+                account: $0.source.title, colorHex: hex($0.cgColor)
+            )
+        }
+    }
+
+    /// Events overlapping [start, end) across the included calendars, mapped to
+    /// CalendarKit's model. Empty when access is not granted.
+    static func events(
+        from start: Date, to end: Date,
+        excludedCalendarIds: Set<String> = excludedCalendarIds()
+    ) -> [CalendarEvent] {
+        let calendars = includedEKCalendars(excludedCalendarIds)
+        guard !calendars.isEmpty else { return [] }
+        let predicate = store.predicateForEvents(withStart: start, end: end, calendars: calendars)
+        return store.events(matching: predicate).map { e in
+            let status: CalendarEvent.Status = switch e.status {
+            case .confirmed: .confirmed
+            case .tentative: .tentative
+            case .canceled: .canceled
+            default: .none
+            }
+            let location = e.location?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return CalendarEvent(
+                id: "\(e.eventIdentifier ?? UUID().uuidString)@\(Int(e.startDate.timeIntervalSince1970))",
+                title: e.title ?? "Untitled event",
+                start: e.startDate, end: e.endDate, allDay: e.isAllDay,
+                calendarId: e.calendar.calendarIdentifier,
+                calendarTitle: e.calendar.title,
+                calendarColorHex: hex(e.calendar.cgColor),
+                location: (location?.isEmpty ?? true) ? nil : location,
+                status: status,
+                // Participants without a display name report their email as the name; never share those.
+                organizer: e.organizer?.name.flatMap { $0.contains("@") ? nil : $0 },
+                attendees: e.attendees?.compactMap(\.name).filter { !$0.contains("@") } ?? []
+            )
+        }
+        .sorted { ($0.start, $0.title, $0.id) < ($1.start, $1.title, $1.id) }
+    }
+
+    /// A snapshot for [startOfDay(today - daysBack), startOfDay(today + daysAhead)).
+    static func snapshot(
+        daysBack: Int, daysAhead: Int, now: Date = Date(), calendar: Calendar = .current
+    ) -> CalendarSnapshot {
+        let today = calendar.startOfDay(for: now)
+        let start = calendar.date(byAdding: .day, value: -daysBack, to: today) ?? today
+        let end = calendar.date(byAdding: .day, value: daysAhead, to: today) ?? today
+        let excluded = excludedCalendarIds()
+        let all = events(from: start, to: end, excludedCalendarIds: excluded)
+        return CalendarSnapshot(
+            generatedAt: now, rangeStart: start, rangeEnd: end,
+            timeZone: calendar.timeZone.identifier,
+            calendars: includedCalendars(excludedCalendarIds: excluded),
+            events: AgendaBuilder.events(all, overlapping: start, end)
+        )
     }
 
     static func excludedCalendarIds() -> Set<String> {

@@ -24,7 +24,8 @@ struct ProtocolSmokeTests {
 
         let listed = try await client.listTools()
         #expect(listed.tools.map(\.name).sorted() == [
-            "list_folder", "read_note", "search", "tasks", "vault_overview",
+            "calendar_agenda", "calendar_list", "list_folder", "read_note", "search", "tasks",
+            "vault_overview",
         ])
         // Every tool must advertise itself as read-only, and say what it's for.
         for tool in listed.tools {

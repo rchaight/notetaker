@@ -17,10 +17,14 @@ public struct VaultLocation: Sendable, Equatable {
     /// `--vault` folder the app has never indexed) — tools then scan.
     public let indexPath: String?
     public let origin: Origin
+    /// The app's opt-in calendar snapshot. Always a path; the file may not
+    /// exist (sharing off, app never run) — the reader handles that.
+    public let calendarSnapshotPath: String
 
-    public init(root: URL, indexPath: String?, origin: Origin) {
+    public init(root: URL, indexPath: String?, origin: Origin, calendarSnapshotPath: String) {
         self.root = root
         self.indexPath = indexPath
+        self.calendarSnapshotPath = calendarSnapshotPath
         self.origin = origin
     }
 }
@@ -98,7 +102,8 @@ public enum VaultLocator {
             return try VaultLocation(
                 root: root,
                 indexPath: indexPath(named: indexName, in: indexDirectory, arguments: arguments),
-                origin: .argument
+                origin: .argument,
+                calendarSnapshotPath: calendarPath(in: indexDirectory, arguments: arguments)
             )
         }
 
@@ -112,7 +117,8 @@ public enum VaultLocator {
                 indexPath: indexPath(
                     named: "index-\(activeId).sqlite", in: indexDirectory, arguments: arguments
                 ),
-                origin: .registeredVault
+                origin: .registeredVault,
+                calendarSnapshotPath: calendarPath(in: indexDirectory, arguments: arguments)
             )
         }
 
@@ -121,7 +127,8 @@ public enum VaultLocator {
         return try VaultLocation(
             root: root.standardizedFileURL,
             indexPath: indexPath(named: "index.sqlite", in: indexDirectory, arguments: arguments),
-            origin: .iCloud
+            origin: .iCloud,
+            calendarSnapshotPath: calendarPath(in: indexDirectory, arguments: arguments)
         )
     }
 
@@ -134,6 +141,15 @@ public enum VaultLocator {
             return (override as NSString).expandingTildeInPath
         }
         return name.map { directory.appendingPathComponent($0).path }
+    }
+
+    /// `--calendar <path>` overrides the snapshot location (tests, parity
+    /// with `--index`).
+    private static func calendarPath(in directory: URL, arguments: [String]) throws -> String {
+        if let override = try value(of: "--calendar", in: arguments) {
+            return (override as NSString).expandingTildeInPath
+        }
+        return directory.appendingPathComponent("calendar-snapshot.json").path
     }
 
     static func value(of flag: String, in arguments: [String]) throws -> String? {

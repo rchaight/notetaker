@@ -57,6 +57,25 @@ struct VaultLocatorTests {
         #expect(location.indexPath == "/tmp/custom.sqlite")
     }
 
+    @Test func calendarSnapshotDefaultsBesideTheIndexAndHonoursOverride() throws {
+        let folder = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let support = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: support) }
+
+        let derived = try VaultLocator.resolve(
+            arguments: ["--vault", folder.path], defaults: emptyDefaults(), applicationSupport: support
+        )
+        #expect(derived.calendarSnapshotPath
+            == support.appendingPathComponent("Index/calendar-snapshot.json").path)
+
+        let overridden = try VaultLocator.resolve(
+            arguments: ["--vault", folder.path, "--calendar", "/tmp/cal.json"],
+            defaults: emptyDefaults(), applicationSupport: support
+        )
+        #expect(overridden.calendarSnapshotPath == "/tmp/cal.json")
+    }
+
     @Test func missingVaultFolderIsAClearError() throws {
         #expect(throws: VaultLocator.LocatorError.self) {
             _ = try VaultLocator.resolve(

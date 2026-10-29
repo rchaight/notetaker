@@ -19,6 +19,7 @@ packages:
   ReadingKit: { path: Packages/ReadingKit }
   IndexKit: { path: Packages/IndexKit }
   TaskEngine: { path: Packages/TaskEngine }
+  CalendarKit: { path: Packages/CalendarKit }
   ProjectKit: { path: Packages/ProjectKit }
   ConversionKit: { path: Packages/ConversionKit }
   AIKit: { path: Packages/AIKit }
@@ -91,6 +92,7 @@ targets:
       - package: ReadingKit
       - package: IndexKit
       - package: TaskEngine
+      - package: CalendarKit
       - package: ProjectKit
       - package: ConversionKit
       - package: AIKit
@@ -104,7 +106,7 @@ targets:
         LSApplicationCategoryType: public.app-category.productivity
         UILaunchScreen: {}
         NSLocalNetworkUsageDescription: Notetaker connects to your own homelab servers (Ollama, docling-serve) for AI and document conversion.
-        NSCalendarsFullAccessUsageDescription: Notetaker reads your calendars to list the day's meetings in daily notes. Nothing is stored or sent anywhere.
+        NSCalendarsFullAccessUsageDescription: Notetaker reads your calendars to show them in the Calendar tab and list the day's meetings in daily notes. Nothing leaves the device unless you turn on sharing with the MCP server in Settings.
         # The homelab servers the user configures (Ollama, LanguageTool,
         # docling-serve) speak plain HTTP. ATS blocks cleartext to any
         # fully-qualified hostname by default (-1022) — only localhost and

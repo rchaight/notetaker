@@ -24,12 +24,17 @@ struct AppShell: View {
     @State private var locked = false
     @State private var lastUnlocked: Date?
     @State private var backgroundedAt: Date?
+    #if os(macOS)
+        @State private var calendarSnapshotPublisher = CalendarSnapshotPublisher()
+        @AppStorage("calendarShareWithMCP") private var calendarShareWithMCP = false
+    #endif
 
     private static let tabs: [(id: String, title: String, icon: String)] = [
         ("notes", "Notes", "note.text"),
         ("todo", "To-Do", "checklist"),
         ("projects", "Projects", "calendar.day.timeline.left"),
         ("meetings", "Meetings", "person.3"),
+        ("calendar", "Calendar", "calendar"),
         ("tags", "Tags", "number"),
         ("vault", "Vault", "icloud"),
     ]
@@ -114,6 +119,8 @@ struct AppShell: View {
                 await indexService.start()
             }
         #if os(macOS)
+            .task { calendarSnapshotPublisher.start() }
+            .onChange(of: calendarShareWithMCP) { calendarSnapshotPublisher.settingsChanged() }
             .task {
                 // Scene storage restores window frames independently of the
                 // saved-state purge — clamp anything the buggy sizing builds
@@ -163,6 +170,9 @@ struct AppShell: View {
                 Tab("Meetings", systemImage: "person.3", value: "meetings") {
                     meetingsTab
                 }
+                Tab("Calendar", systemImage: "calendar", value: "calendar") {
+                    calendarTab
+                }
                 Tab("Tags", systemImage: "number", value: "tags") {
                     tagsTab
                 }
@@ -186,6 +196,7 @@ struct AppShell: View {
         case "todo": todoTab
         case "projects": projectsTab
         case "meetings": meetingsTab
+        case "calendar": calendarTab
         case "tags": tagsTab
         #if DEBUG
             case "vault": vaultTab
@@ -199,6 +210,13 @@ struct AppShell: View {
             notesModel.openNote(noteId, jumpToLine: line)
             selectedTab = "notes"
         }
+    }
+
+    private var calendarTab: some View {
+        CalendarView(openDailyNote: { date in
+            notesModel.openDailyNote(for: date)
+            selectedTab = "notes"
+        })
     }
 
     private var tagsTab: some View {

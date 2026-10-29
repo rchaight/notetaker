@@ -35,7 +35,7 @@ struct CommandPalette: View {
                 onDailyNote()
             })
         }
-        for (name, key) in [("Notes", "notes"), ("To-Do", "todo"), ("Projects", "projects")]
+        for (name, key) in [("Notes", "notes"), ("To-Do", "todo"), ("Projects", "projects"), ("Calendar", "calendar")]
             where trimmed.isEmpty || name.lowercased().contains(trimmed.lowercased()) {
             results.append(Command(id: "tab-\(key)", title: "Go to \(name)", icon: "arrow.right.square") {
                 onSwitchTab(key)

@@ -13,6 +13,7 @@ App target:
 - `App/` — shell, feature surfaces, and the wiring that composes packages. Domain logic belongs in a package; what lives here should be UI or glue.
   - `Shell/` — `AppShell` (adaptive TabView + NavigationSplitView), command palette, global hotkey, menu-bar quick add, Settings.
   - `Notes/`, `Todo/` (incl. Meetings), `Projects/` — the feature surfaces.
+  - `Calendar/` — the Calendar tab.
   - `Services/` — app-level services: `VaultIndexService`, `VaultRegistry`, `CalendarService` (EventKit), headless vault writer, task/tag extras stores.
   - `Intents/`, `Debug/`.
 - `Shared/` — app-group constants shared with the widget extension.
@@ -25,12 +26,13 @@ Packages:
 - `Packages/EditorKit` — TextKit 2 live-preview editor (NS/UIViewRepresentable), Liquid Glass chrome, heading folding.
 - `Packages/IndexKit` — GRDB derived index + FTS5. Rebuildable; schema-version guard drops + rescans.
 - `Packages/TaskEngine` — dates, priorities, recurrence, token parsing (ONE engine for every surface), filters. Pure; no I/O.
+- `Packages/CalendarKit` — calendar snapshot model, agenda grouping, range arithmetic. Pure; no I/O; EventKit stays in App/Services/CalendarService.
 - `Packages/ProjectKit` — projects/Gantt/dependencies as views over TaskEngine + IndexKit data.
 - `Packages/ConversionKit` — import pipeline (Vision/Speech native paths; Docling via File-Parser on macOS).
 - `Packages/AIKit` — `AIProvider` protocol: FoundationModels | Ollama | None. Private/on-device by default.
 - `Packages/SecurityKit` — app lock (LocalAuthentication), per-note locking, Keychain.
 - `Packages/AppIntentsKit` — App Intents (Add Task / Create Note) feeding Siri/Shortcuts/widgets.
-- `Packages/MCPKit` + the `notetaker-mcp` target (macOS only) — bundled read-only stdio MCP server (Claude Code/Desktop) over the vault + GRDB index, with scan fallback and locked-note redaction.
+- `Packages/MCPKit` + the `notetaker-mcp` target (macOS only) — bundled read-only stdio MCP server (Claude Code/Desktop) over the vault + GRDB index, with scan fallback and locked-note redaction, + opt-in calendar snapshot tools (`calendar_agenda`, `calendar_list`; the app writes `Index/calendar-snapshot.json` only while Settings › Calendar sharing is on).
 
 Dependencies point downward only (App → packages; packages never import App). Pure packages (MarkdownKit, TaskEngine) must stay I/O-free.
 
@@ -60,7 +62,7 @@ Adding a `?kind` means touching parser, rewriter, style ranges, chips, autocompl
 Two hard environment rules:
 
 1. **Toolchain: Xcode 27 beta.** Prefix every xcodebuild/swift command with `DEVELOPER_DIR=/Applications/Xcode-beta.app` (macOS 27 / iOS 27 SDKs; the App Store Xcode 26.6 at /Applications/Xcode.app is the fallback).
-2. **Build products must live OUTSIDE the repo.** This repo sits under `~/Documents`, which is iCloud-synced — the file provider decorates in-repo build artifacts with xattrs mid-build and codesign fails with "resource fork/detritus" errors, intermittently and on random targets. Always pass an external scratch/derived-data path; never create `build/` or `.build/` inside the repo.
+2. **Build products must live OUTSIDE the repo.** This repo now sits at `~/Developer/Notetaker` (not iCloud-synced), but it formerly lived under iCloud-synced `~/Documents`, where the file provider decorated in-repo build artifacts with xattrs mid-build and codesign failed with "resource fork/detritus" errors, intermittently and on random targets. Always pass an external scratch/derived-data path; never create `build/` or `.build/` inside the repo.
 
 - `Notetaker.xcodeproj` is GENERATED — edit `project.yml`, then `xcodegen generate`. Never hand-edit the pbxproj.
 - Build: `DEVELOPER_DIR=/Applications/Xcode-beta.app xcodebuild -project Notetaker.xcodeproj -scheme Notetaker -destination 'platform=macOS' -derivedDataPath ~/.cache/notetaker-build/DerivedData build`
