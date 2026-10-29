@@ -19,7 +19,7 @@ public struct VaultService: Sendable {
 
     public init(
         location: VaultLocation,
-        embeddings: any EmbeddingProvider = AppleEmbeddingProvider()
+        embeddings: any EmbeddingProvider = EmbeddingProviders.platformDefault()
     ) {
         self.location = location
         self.embeddings = embeddings

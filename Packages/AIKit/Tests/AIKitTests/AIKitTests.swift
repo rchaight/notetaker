@@ -1,6 +1,9 @@
 @testable import AIKit
 import Foundation
 import Testing
+#if canImport(FoundationNetworking)
+    import FoundationNetworking
+#endif
 
 #if canImport(FoundationModels)
     import FoundationModels
@@ -235,156 +238,166 @@ struct EmbeddingChunkerTests {
     }
 }
 
-struct AppleEmbeddingLiveTests {
-    @Test(.enabled(if: ProcessInfo.processInfo.environment["CI"] == nil), .timeLimit(.minutes(3)))
-    func embedsAndRanksByMeaning() async throws {
-        let provider = AppleEmbeddingProvider()
-        guard await provider.isAvailable() else { return } // assets absent: skip silently
-        let vectors = try await provider.embed([
-            "the committee approved the pharmacy curriculum",
-            "students take medication therapy courses",
-            "my car needs an oil change",
-        ])
-        #expect(vectors.count == 3)
-        #expect(vectors[0].count == vectors[1].count)
-        func cosine(_ a: [Float], _ b: [Float]) -> Float {
-            zip(a, b).map(*)
-                .reduce(0, +) /
-                (a.map { $0 * $0 }.reduce(0, +).squareRoot() * b.map { $0 * $0 }.reduce(0, +).squareRoot())
-        }
-        let related = cosine(vectors[0], vectors[1])
-        let unrelated = cosine(vectors[0], vectors[2])
-        #expect(related > unrelated, "curriculum topics must outrank car maintenance (\(related) vs \(unrelated))")
+struct NoEmbeddingProviderTests {
+    @Test func reportsUnavailableAndThrows() async {
+        let provider = NoEmbeddingProvider()
+        #expect(await provider.isAvailable() == false)
+        await #expect(throws: AIProviderError.self) { _ = try await provider.embed(["x"]) }
     }
 }
 
-struct TagCurationTests {
-    @Test func detectsCasePluralAndSeparatorVariants() {
-        let merges = TagCuration.heuristicMerges(tags: [
-            ("project", 10), ("Projects", 2), ("meeting-notes", 5),
-            ("meeting_notes", 1), ("budget", 3),
-        ])
-        #expect(merges.contains { $0.from == ["Projects"] && $0.into == "project" })
-        #expect(merges.contains { $0.from == ["meeting_notes"] && $0.into == "meeting-notes" })
-        #expect(!merges.contains { $0.into == "budget" || $0.from.contains("budget") })
-    }
-
-    @Test func higherCountWins() {
-        let merges = TagCuration.heuristicMerges(tags: [("Work", 1), ("work", 9)])
-        #expect(merges == [TagMerge(from: ["Work"], into: "work", reason: "case variant")])
-    }
-
-    @Test func validationDropsHallucinatedTags() {
-        let tags: [(String, Int)] = [("real", 2), ("also", 1)]
-        let merges = [
-            TagMerge(from: ["ghost"], into: "real", reason: "x"),
-            TagMerge(from: ["also"], into: "imaginary", reason: "x"),
-            TagMerge(from: ["also", "ghost"], into: "real", reason: "x"),
-            TagMerge(from: ["real"], into: "real", reason: "self"),
-        ]
-        let valid = TagCuration.validated(merges, against: tags)
-        #expect(valid == [TagMerge(from: ["also"], into: "real", reason: "x")])
-    }
-}
-
-struct TagGroupTests {
-    @Test func prefixFamiliesGroup() {
-        let groups = TagCuration.heuristicGroups(tags: [
-            ("meeting-notes", 4), ("meeting-agenda", 2), ("budget", 3), ("work/done", 1),
-        ])
-        #expect(groups.count == 1)
-        #expect(groups[0].parent == "meeting")
-        #expect(groups[0].members == ["meeting-agenda", "meeting-notes"])
-    }
-
-    @Test func nestedNameStripsSharedPrefix() {
-        #expect(TagGroup.nestedName(member: "meeting-notes", parent: "meeting") == "meeting/notes")
-        #expect(TagGroup.nestedName(member: "standup", parent: "meeting") == "meeting/standup")
-    }
-
-    @Test func groupValidationFiltersModelOutput() {
-        let tags: [(String, Int)] = [("alpha", 1), ("beta", 2), ("nested/x", 1)]
-        let groups = [
-            TagGroup(parent: "greek", members: ["alpha", "beta"], reason: "letters"),
-            TagGroup(parent: "bad!", members: ["alpha", "beta"], reason: "bad parent"),
-            TagGroup(parent: "solo", members: ["alpha"], reason: "one member"),
-            TagGroup(parent: "ghosts", members: ["nope", "nada"], reason: "unknown"),
-            TagGroup(parent: "mixed", members: ["alpha", "nested/x"], reason: "nested member"),
-        ]
-        let valid = TagCuration.validatedGroups(groups, against: tags)
-        #expect(valid.count == 1)
-        #expect(valid[0].parent == "greek")
-    }
-}
-
-struct RouterHandOffTests {
-    struct Flaky: AIProvider {
-        let name: String
-        let available: Bool
-        let fails: Bool
-        var contextLimit: Int? {
-            nil
-        }
-
-        func isAvailable() async -> Bool {
-            available
-        }
-
-        func summarize(_: String) async throws -> String {
-            if fails {
-                throw AIProviderError.unavailable("\(name) timed out")
+#if canImport(NaturalLanguage)
+    struct AppleEmbeddingLiveTests {
+        @Test(.enabled(if: ProcessInfo.processInfo.environment["CI"] == nil), .timeLimit(.minutes(3)))
+        func embedsAndRanksByMeaning() async throws {
+            let provider = AppleEmbeddingProvider()
+            guard await provider.isAvailable() else { return } // assets absent: skip silently
+            let vectors = try await provider.embed([
+                "the committee approved the pharmacy curriculum",
+                "students take medication therapy courses",
+                "my car needs an oil change",
+            ])
+            #expect(vectors.count == 3)
+            #expect(vectors[0].count == vectors[1].count)
+            func cosine(_ a: [Float], _ b: [Float]) -> Float {
+                zip(a, b).map(*)
+                    .reduce(0, +) /
+                    (a.map { $0 * $0 }.reduce(0, +).squareRoot() * b.map { $0 * $0 }.reduce(0, +).squareRoot())
             }
-            return "summary by \(name)"
-        }
-
-        func extractActionItems(from _: String) async throws -> [AITask] {
-            throw AIProviderError.unavailable("not under test")
-        }
-
-        func parseTask(_: String) async throws -> AITask {
-            throw AIProviderError.unavailable("not under test")
+            let related = cosine(vectors[0], vectors[1])
+            let unrelated = cosine(vectors[0], vectors[2])
+            #expect(related > unrelated, "curriculum topics must outrank car maintenance (\(related) vs \(unrelated))")
         }
     }
 
-    @Test func aFailingAvailableProviderHandsOffToTheNext() async throws {
-        // Ollama answers its /api/tags probe, then the 35B model times out —
-        // Apple Intelligence must take over instead of surfacing the error.
-        let router = AIRouter(providers: [
-            Flaky(name: "Ollama", available: true, fails: true),
-            Flaky(name: "Apple Intelligence", available: true, fails: false),
-        ])
-        let (summary, provider) = try await router.summarize("some note text")
-        #expect(provider == "Apple Intelligence")
-        #expect(summary == "summary by Apple Intelligence")
-    }
+    struct TagCurationTests {
+        @Test func detectsCasePluralAndSeparatorVariants() {
+            let merges = TagCuration.heuristicMerges(tags: [
+                ("project", 10), ("Projects", 2), ("meeting-notes", 5),
+                ("meeting_notes", 1), ("budget", 3),
+            ])
+            #expect(merges.contains { $0.from == ["Projects"] && $0.into == "project" })
+            #expect(merges.contains { $0.from == ["meeting_notes"] && $0.into == "meeting-notes" })
+            #expect(!merges.contains { $0.into == "budget" || $0.from.contains("budget") })
+        }
 
-    @Test func unavailableProvidersAreSkippedWithoutBeingTried() async throws {
-        let router = AIRouter(providers: [
-            Flaky(name: "Offline", available: false, fails: true),
-            Flaky(name: "Local", available: true, fails: false),
-        ])
-        let (_, provider) = try await router.summarize("text")
-        #expect(provider == "Local")
-    }
+        @Test func higherCountWins() {
+            let merges = TagCuration.heuristicMerges(tags: [("Work", 1), ("work", 9)])
+            #expect(merges == [TagMerge(from: ["Work"], into: "work", reason: "case variant")])
+        }
 
-    @Test func allAvailableProvidersFailingRethrowsTheLastError() async {
-        let router = AIRouter(providers: [
-            Flaky(name: "A", available: true, fails: true),
-            Flaky(name: "B", available: true, fails: true),
-        ])
-        await #expect(throws: AIProviderError.self) {
-            _ = try await router.summarize("text")
+        @Test func validationDropsHallucinatedTags() {
+            let tags: [(String, Int)] = [("real", 2), ("also", 1)]
+            let merges = [
+                TagMerge(from: ["ghost"], into: "real", reason: "x"),
+                TagMerge(from: ["also"], into: "imaginary", reason: "x"),
+                TagMerge(from: ["also", "ghost"], into: "real", reason: "x"),
+                TagMerge(from: ["real"], into: "real", reason: "self"),
+            ]
+            let valid = TagCuration.validated(merges, against: tags)
+            #expect(valid == [TagMerge(from: ["also"], into: "real", reason: "x")])
         }
     }
 
-    @Test func noAvailableProviderStillFallsBackToNone() async throws {
-        let router = AIRouter(providers: [Flaky(name: "Offline", available: false, fails: false)])
-        // NoneProvider keeps only sentences longer than 20 characters —
-        // the first version of this test fed it two shorter ones and it
-        // threw "nothing to summarize" (a red build reached origin/main).
-        let text = "The committee approved the new competency map on Tuesday afternoon. "
-            + "A draft assessment blueprint is due to the dean by the end of October."
-        let (_, provider) = try await router.summarize(text)
-        #expect(provider == NoneProvider().name)
+    struct TagGroupTests {
+        @Test func prefixFamiliesGroup() {
+            let groups = TagCuration.heuristicGroups(tags: [
+                ("meeting-notes", 4), ("meeting-agenda", 2), ("budget", 3), ("work/done", 1),
+            ])
+            #expect(groups.count == 1)
+            #expect(groups[0].parent == "meeting")
+            #expect(groups[0].members == ["meeting-agenda", "meeting-notes"])
+        }
+
+        @Test func nestedNameStripsSharedPrefix() {
+            #expect(TagGroup.nestedName(member: "meeting-notes", parent: "meeting") == "meeting/notes")
+            #expect(TagGroup.nestedName(member: "standup", parent: "meeting") == "meeting/standup")
+        }
+
+        @Test func groupValidationFiltersModelOutput() {
+            let tags: [(String, Int)] = [("alpha", 1), ("beta", 2), ("nested/x", 1)]
+            let groups = [
+                TagGroup(parent: "greek", members: ["alpha", "beta"], reason: "letters"),
+                TagGroup(parent: "bad!", members: ["alpha", "beta"], reason: "bad parent"),
+                TagGroup(parent: "solo", members: ["alpha"], reason: "one member"),
+                TagGroup(parent: "ghosts", members: ["nope", "nada"], reason: "unknown"),
+                TagGroup(parent: "mixed", members: ["alpha", "nested/x"], reason: "nested member"),
+            ]
+            let valid = TagCuration.validatedGroups(groups, against: tags)
+            #expect(valid.count == 1)
+            #expect(valid[0].parent == "greek")
+        }
     }
-}
+
+    struct RouterHandOffTests {
+        struct Flaky: AIProvider {
+            let name: String
+            let available: Bool
+            let fails: Bool
+            var contextLimit: Int? {
+                nil
+            }
+
+            func isAvailable() async -> Bool {
+                available
+            }
+
+            func summarize(_: String) async throws -> String {
+                if fails {
+                    throw AIProviderError.unavailable("\(name) timed out")
+                }
+                return "summary by \(name)"
+            }
+
+            func extractActionItems(from _: String) async throws -> [AITask] {
+                throw AIProviderError.unavailable("not under test")
+            }
+
+            func parseTask(_: String) async throws -> AITask {
+                throw AIProviderError.unavailable("not under test")
+            }
+        }
+
+        @Test func aFailingAvailableProviderHandsOffToTheNext() async throws {
+            // Ollama answers its /api/tags probe, then the 35B model times out —
+            // Apple Intelligence must take over instead of surfacing the error.
+            let router = AIRouter(providers: [
+                Flaky(name: "Ollama", available: true, fails: true),
+                Flaky(name: "Apple Intelligence", available: true, fails: false),
+            ])
+            let (summary, provider) = try await router.summarize("some note text")
+            #expect(provider == "Apple Intelligence")
+            #expect(summary == "summary by Apple Intelligence")
+        }
+
+        @Test func unavailableProvidersAreSkippedWithoutBeingTried() async throws {
+            let router = AIRouter(providers: [
+                Flaky(name: "Offline", available: false, fails: true),
+                Flaky(name: "Local", available: true, fails: false),
+            ])
+            let (_, provider) = try await router.summarize("text")
+            #expect(provider == "Local")
+        }
+
+        @Test func allAvailableProvidersFailingRethrowsTheLastError() async {
+            let router = AIRouter(providers: [
+                Flaky(name: "A", available: true, fails: true),
+                Flaky(name: "B", available: true, fails: true),
+            ])
+            await #expect(throws: AIProviderError.self) {
+                _ = try await router.summarize("text")
+            }
+        }
+
+        @Test func noAvailableProviderStillFallsBackToNone() async throws {
+            let router = AIRouter(providers: [Flaky(name: "Offline", available: false, fails: false)])
+            // NoneProvider keeps only sentences longer than 20 characters —
+            // the first version of this test fed it two shorter ones and it
+            // threw "nothing to summarize" (a red build reached origin/main).
+            let text = "The committee approved the new competency map on Tuesday afternoon. "
+                + "A draft assessment blueprint is due to the dean by the end of October."
+            let (_, provider) = try await router.summarize(text)
+            #expect(provider == NoneProvider().name)
+        }
+    }
+#endif

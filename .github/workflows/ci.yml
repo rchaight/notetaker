@@ -52,3 +52,18 @@ jobs:
           swiftformat --version
       - name: Lint formatting
         run: swiftformat --lint .
+
+  linux-packages:
+    runs-on: ubuntu-24.04
+    container: swift:6.4-noble
+    steps:
+      - uses: actions/checkout@v4
+      - name: System deps
+        run: apt-get update && apt-get install -y libsqlite3-dev
+      - name: Package tests (Linux)
+        run: |
+          set -euo pipefail
+          for PKG in TaskEngine MarkdownKit CalendarKit ProjectKit IndexKit AIKit MCPKit; do
+            echo "=== $PKG ==="
+            (cd "Packages/$PKG" && swift test)
+          done

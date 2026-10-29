@@ -1,4 +1,8 @@
 import Foundation
+#if canImport(FoundationNetworking)
+    // Linux: URLSession lives in FoundationNetworking.
+    import FoundationNetworking
+#endif
 
 /// Homelab tier: an Ollama server handles what the on-device model can't —
 /// long documents, transcript cleanup, heavier reasoning. Only the URL and

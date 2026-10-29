@@ -1,4 +1,9 @@
-import CryptoKit
+#if canImport(CryptoKit)
+    import CryptoKit
+#else
+    // Linux: swift-crypto mirrors CryptoKit's SHA256 API, so call sites are unchanged.
+    import Crypto
+#endif
 import Foundation
 import GRDB
 import MarkdownKit

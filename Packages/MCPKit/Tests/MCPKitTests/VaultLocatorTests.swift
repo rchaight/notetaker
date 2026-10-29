@@ -91,29 +91,31 @@ struct VaultLocatorTests {
         }
     }
 
-    @Test func registeredVaultFromTheAppsDefaults() throws {
-        let folder = try temporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: folder) }
-        let support = try temporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: support) }
+    #if os(macOS) // security-scoped bookmarks are a Mac concept
+        @Test func registeredVaultFromTheAppsDefaults() throws {
+            let folder = try temporaryDirectory()
+            defer { try? FileManager.default.removeItem(at: folder) }
+            let support = try temporaryDirectory()
+            defer { try? FileManager.default.removeItem(at: support) }
 
-        // Exactly the shape VaultRegistry persists.
-        let entry: [String: Any] = try [
-            "id": "vault-1",
-            "name": folder.lastPathComponent,
-            "bookmark": folder.bookmarkData().base64EncodedString(),
-        ]
-        let defaults = emptyDefaults()
-        try defaults.set(JSONSerialization.data(withJSONObject: [entry]), forKey: "customVaults")
-        defaults.set("vault-1", forKey: "activeVault")
+            // Exactly the shape VaultRegistry persists.
+            let entry: [String: Any] = try [
+                "id": "vault-1",
+                "name": folder.lastPathComponent,
+                "bookmark": folder.bookmarkData().base64EncodedString(),
+            ]
+            let defaults = emptyDefaults()
+            try defaults.set(JSONSerialization.data(withJSONObject: [entry]), forKey: "customVaults")
+            defaults.set("vault-1", forKey: "activeVault")
 
-        let location = try VaultLocator.resolve(
-            arguments: [], defaults: defaults, applicationSupport: support
-        )
-        #expect(location.origin == .registeredVault)
-        #expect(location.root == folder.standardizedFileURL)
-        #expect(location.indexPath == support.appendingPathComponent("Index/index-vault-1.sqlite").path)
-    }
+            let location = try VaultLocator.resolve(
+                arguments: [], defaults: defaults, applicationSupport: support
+            )
+            #expect(location.origin == .registeredVault)
+            #expect(location.root == folder.standardizedFileURL)
+            #expect(location.indexPath == support.appendingPathComponent("Index/index-vault-1.sqlite").path)
+        }
+    #endif
 
     @Test func fallsBackToTheICloudContainer() throws {
         let support = try temporaryDirectory()

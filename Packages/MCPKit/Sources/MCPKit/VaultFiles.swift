@@ -149,53 +149,69 @@ enum NoteReader {
         )
     }
 
-    /// iCloud stores an undownloaded file as `.Name.md.icloud`. Ask the
-    /// daemon for it and poll — the alternative is handing Claude an error
-    /// for a note that exists.
-    private static func ensureDownloaded(_ url: URL, relativePath: String, timeout: Duration) async throws {
-        if isReadable(url) {
-            return
-        }
-        let placeholder = url.deletingLastPathComponent()
-            .appendingPathComponent(".\(url.lastPathComponent).icloud")
-        guard FileManager.default.fileExists(atPath: placeholder.path) else {
-            throw VaultReadError.notFound(relativePath)
-        }
-        try? FileManager.default.startDownloadingUbiquitousItem(at: url)
-
-        let deadline = ContinuousClock.now.advanced(by: timeout)
-        while ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(200))
+    #if canImport(Darwin)
+        /// iCloud stores an undownloaded file as `.Name.md.icloud`. Ask the
+        /// daemon for it and poll — the alternative is handing Claude an error
+        /// for a note that exists.
+        private static func ensureDownloaded(_ url: URL, relativePath: String, timeout: Duration) async throws {
             if isReadable(url) {
                 return
             }
+            let placeholder = url.deletingLastPathComponent()
+                .appendingPathComponent(".\(url.lastPathComponent).icloud")
+            guard FileManager.default.fileExists(atPath: placeholder.path) else {
+                throw VaultReadError.notFound(relativePath)
+            }
+            try? FileManager.default.startDownloadingUbiquitousItem(at: url)
+
+            let deadline = ContinuousClock.now.advanced(by: timeout)
+            while ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(200))
+                if isReadable(url) {
+                    return
+                }
+            }
+            throw VaultReadError.notDownloaded(relativePath)
         }
-        throw VaultReadError.notDownloaded(relativePath)
-    }
 
-    private static func isReadable(_ url: URL) -> Bool {
-        guard FileManager.default.fileExists(atPath: url.path) else { return false }
-        let status = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
-            .ubiquitousItemDownloadingStatus
-        // Non-ubiquitous files report no status at all, which is fine.
-        return status == nil || status == .current
-    }
+        private static func isReadable(_ url: URL) -> Bool {
+            guard FileManager.default.fileExists(atPath: url.path) else { return false }
+            let status = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
+                .ubiquitousItemDownloadingStatus
+            // Non-ubiquitous files report no status at all, which is fine.
+            return status == nil || status == .current
+        }
 
-    /// NSFileCoordinator so we never read a half-written file out from under
-    /// the app or the iCloud daemon.
-    private static func coordinatedRead(_ url: URL) async throws -> String {
-        try await Task.detached(priority: .userInitiated) {
-            let coordinator = NSFileCoordinator(filePresenter: nil)
-            var coordinationError: NSError?
-            var result: Result<String, any Error>?
-            coordinator.coordinate(readingItemAt: url, options: [], error: &coordinationError) { actualURL in
-                result = Result { try String(contentsOf: actualURL, encoding: .utf8) }
+        /// NSFileCoordinator so we never read a half-written file out from under
+        /// the app or the iCloud daemon.
+        private static func coordinatedRead(_ url: URL) async throws -> String {
+            try await Task.detached(priority: .userInitiated) {
+                let coordinator = NSFileCoordinator(filePresenter: nil)
+                var coordinationError: NSError?
+                var result: Result<String, any Error>?
+                coordinator.coordinate(readingItemAt: url, options: [], error: &coordinationError) { actualURL in
+                    result = Result { try String(contentsOf: actualURL, encoding: .utf8) }
+                }
+                if let coordinationError {
+                    throw coordinationError
+                }
+                guard let result else { throw VaultReadError.notFound(url.lastPathComponent) }
+                return try result.get()
+            }.value
+        }
+    #else
+        // Linux: the container's rsync writes temp files and renames, so an uncoordinated
+        // read never sees a torn file, and there are no iCloud placeholders to download.
+        private static func ensureDownloaded(_ url: URL, relativePath: String, timeout _: Duration) async throws {
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                throw VaultReadError.notFound(relativePath)
             }
-            if let coordinationError {
-                throw coordinationError
-            }
-            guard let result else { throw VaultReadError.notFound(url.lastPathComponent) }
-            return try result.get()
-        }.value
-    }
+        }
+
+        private static func coordinatedRead(_ url: URL) async throws -> String {
+            try await Task.detached(priority: .userInitiated) {
+                try String(contentsOf: url, encoding: .utf8)
+            }.value
+        }
+    #endif
 }

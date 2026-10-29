@@ -215,3 +215,16 @@ struct BacklinkTests {
         #expect(!unlinked.contains("Budget.md"), "a note never mentions itself")
     }
 }
+
+struct SQLiteCapabilityTests {
+    /// Pins the libsqlite3 requirement on both platforms (Linux needs libsqlite3-dev with FTS5).
+    @Test func fts5IsCompiledIn() throws {
+        let queue = try DatabaseQueue()
+        let hasFTS5: Bool = (try? queue.write { db in
+            try db.execute(sql: "CREATE VIRTUAL TABLE t USING fts5(x)")
+            return true
+        }) ?? false
+        let options = try queue.read { db in try String.fetchAll(db, sql: "PRAGMA compile_options") }
+        #expect(hasFTS5 || options.contains { $0.contains("ENABLE_FTS5") })
+    }
+}

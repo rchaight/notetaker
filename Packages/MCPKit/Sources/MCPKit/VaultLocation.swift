@@ -186,19 +186,26 @@ public enum VaultLocator {
         return (try? JSONDecoder().decode([RegisteredVault].self, from: data)) ?? []
     }
 
-    /// The app mints plain bookmarks when unsandboxed and scoped ones when
-    /// not; try both, and don't fail the whole launch over a stale entry.
-    private static func resolveBookmark(_ data: Data) -> URL? {
-        var isStale = false
-        if let url = try? URL(
-            resolvingBookmarkData: data, options: .withSecurityScope,
-            relativeTo: nil, bookmarkDataIsStale: &isStale
-        ) {
-            _ = url.startAccessingSecurityScopedResource()
-            return url
+    #if os(macOS)
+        /// The app mints plain bookmarks when unsandboxed and scoped ones when
+        /// not; try both, and don't fail the whole launch over a stale entry.
+        private static func resolveBookmark(_ data: Data) -> URL? {
+            var isStale = false
+            if let url = try? URL(
+                resolvingBookmarkData: data, options: .withSecurityScope,
+                relativeTo: nil, bookmarkDataIsStale: &isStale
+            ) {
+                _ = url.startAccessingSecurityScopedResource()
+                return url
+            }
+            return try? URL(resolvingBookmarkData: data, relativeTo: nil, bookmarkDataIsStale: &isStale)
         }
-        return try? URL(resolvingBookmarkData: data, relativeTo: nil, bookmarkDataIsStale: &isStale)
-    }
+    #else
+        /// Registered vaults (bookmarks) are a Mac concept; the Linux container always passes --vault.
+        private static func resolveBookmark(_: Data) -> URL? {
+            nil
+        }
+    #endif
 
     private static func isDirectory(_ url: URL, _ fileManager: FileManager) -> Bool {
         var directory: ObjCBool = false

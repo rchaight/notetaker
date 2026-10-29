@@ -1,3 +1,4 @@
+import AIKit
 import Foundation
 import MCP
 @testable import MCPKit
@@ -160,6 +161,17 @@ struct VaultServiceTests {
             .search(query: "spiral", mode: .hybrid)
         #expect(results["semantic"]?.boolValue == false)
         #expect(results["source"]?.stringValue == "index")
+        #expect(results["results"]?.arrayValue?.isEmpty == false)
+    }
+
+    @Test func noEmbeddingProviderKeepsHybridSearchKeywordOnly() async throws {
+        let fixture = try VaultFixture()
+        defer { fixture.cleanUp() }
+        try fixture.buildIndex()
+
+        let results = await fixture.service(withIndex: true, embeddings: NoEmbeddingProvider())
+            .search(query: "spiral", mode: .hybrid)
+        #expect(results["semantic"]?.boolValue == false)
         #expect(results["results"]?.arrayValue?.isEmpty == false)
     }
 
