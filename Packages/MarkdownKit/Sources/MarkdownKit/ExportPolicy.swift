@@ -156,13 +156,18 @@ extension ExportPolicy {
     /// `compare(_:options: .caseInsensitive)` (full case folding, canonical
     /// equivalence — e.g. "ᾈ" == "ἀι", as APFS folds them), or stdlib
     /// `lowercased()` + canonical `==`. Not `caseInsensitiveCompare`, which
-    /// misses folds like that one.
+    /// misses folds like that one. A third, stdlib-only comparison
+    /// (`uppercased().lowercased()`, which applies the full Unicode case
+    /// mappings) covers swift-corelibs-foundation on Linux, whose
+    /// `.caseInsensitive` compare does not do full folding; it only ever
+    /// widens the match, so it fails closed on every platform.
     static func components(_ components: [String], areInFolder folder: String) -> Bool {
         let folderParts = scalarComponents(folder, omittingEmpty: true)
         guard !folderParts.isEmpty, components.count >= folderParts.count else { return false }
         return zip(components, folderParts).allSatisfy { part, folderPart in
             part.compare(folderPart, options: [.caseInsensitive]) == .orderedSame
                 || part.lowercased() == folderPart.lowercased()
+                || part.uppercased().lowercased() == folderPart.uppercased().lowercased()
         }
     }
 
