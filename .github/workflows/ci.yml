@@ -61,6 +61,7 @@ jobs:
       - name: System deps
         run: apt-get update && apt-get install -y libsqlite3-dev
       - name: Package tests (Linux)
+        shell: bash
         run: |
           set -euo pipefail
           for PKG in TaskEngine MarkdownKit CalendarKit ProjectKit IndexKit AIKit MCPKit; do
