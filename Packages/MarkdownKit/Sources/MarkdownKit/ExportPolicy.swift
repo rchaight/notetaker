@@ -85,8 +85,7 @@ public struct ExportPolicy: Sendable, Equatable {
     /// valid UTF-8 (ASCII interleaved with NULs) and would hide its
     /// frontmatter from every check below — so NUL is undecodable too.
     static func containsNUL(_ text: String) -> Bool {
-        var copy = text
-        return copy.withUTF8 { memchr($0.baseAddress, 0, $0.count) != nil }
+        text.utf8.contains(0)
     }
 
     /// The locked-note detector alone, for self-checks and audit-replica.

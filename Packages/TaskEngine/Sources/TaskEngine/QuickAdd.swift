@@ -78,43 +78,43 @@ public enum QuickAddParser {
     }
 
     #if os(Linux)
-    /// swift-corelibs-foundation has no NSDataDetector. Linux fallback: only
-    /// the bare words "today" / "tomorrow" (case-insensitive); phrases like
-    /// "next friday" or "jul 20" are not detected (use `>date` tokens).
-    private static func detectNaturalDate(
-        in text: String,
-        calendar: Calendar
-    ) -> (String, String)? {
-        guard let regex = try? NSRegularExpression(pattern: #"\b(today|tomorrow)\b"#, options: [.caseInsensitive])
-        else { return nil }
-        let ns = text as NSString
-        guard let match = regex.firstMatch(in: text, range: NSRange(location: 0, length: ns.length))
-        else { return nil }
-        let offset = ns.substring(with: match.range(at: 1)).lowercased() == "tomorrow" ? 1 : 0
-        guard let date = calendar.date(byAdding: .day, value: offset, to: Date()) else { return nil }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = calendar.timeZone
-        formatter.dateFormat = "yyyy-MM-dd"
-        return (formatter.string(from: date), ns.replacingCharacters(in: match.range, with: ""))
-    }
+        /// swift-corelibs-foundation has no NSDataDetector. Linux fallback: only
+        /// the bare words "today" / "tomorrow" (case-insensitive); phrases like
+        /// "next friday" or "jul 20" are not detected (use `>date` tokens).
+        private static func detectNaturalDate(
+            in text: String,
+            calendar: Calendar
+        ) -> (String, String)? {
+            guard let regex = try? NSRegularExpression(pattern: #"\b(today|tomorrow)\b"#, options: [.caseInsensitive])
+            else { return nil }
+            let ns = text as NSString
+            guard let match = regex.firstMatch(in: text, range: NSRange(location: 0, length: ns.length))
+            else { return nil }
+            let offset = ns.substring(with: match.range(at: 1)).lowercased() == "tomorrow" ? 1 : 0
+            guard let date = calendar.date(byAdding: .day, value: offset, to: Date()) else { return nil }
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = calendar.timeZone
+            formatter.dateFormat = "yyyy-MM-dd"
+            return (formatter.string(from: date), ns.replacingCharacters(in: match.range, with: ""))
+        }
     #else
-    private static func detectNaturalDate(
-        in text: String,
-        calendar: Calendar
-    ) -> (String, String)? {
-        guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.date.rawValue)
-        else { return nil }
-        let ns = text as NSString
-        guard let match = detector.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)),
-              let date = match.date
-        else { return nil }
+        private static func detectNaturalDate(
+            in text: String,
+            calendar: Calendar
+        ) -> (String, String)? {
+            guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.date.rawValue)
+            else { return nil }
+            let ns = text as NSString
+            guard let match = detector.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)),
+                  let date = match.date
+            else { return nil }
 
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = calendar.timeZone
-        formatter.dateFormat = "yyyy-MM-dd"
-        return (formatter.string(from: date), ns.replacingCharacters(in: match.range, with: ""))
-    }
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = calendar.timeZone
+            formatter.dateFormat = "yyyy-MM-dd"
+            return (formatter.string(from: date), ns.replacingCharacters(in: match.range, with: ""))
+        }
     #endif
 }
