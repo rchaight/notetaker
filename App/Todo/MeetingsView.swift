@@ -173,11 +173,10 @@ struct MeetingsView: View {
                 waiting: waiting, followups: followups, discussed: discussed
             )
         }
-        // Kill the split view's residual toolbar strip — content was
-        // still sliding under a translucent bar (user report ×2).
-        #if os(macOS)
-        .toolbar(.hidden, for: .windowToolbar)
-        #endif
+        // The in-content header cures the translucent strip. Do NOT hide the
+        // window toolbar here: that hides NSTitlebarContainerView and the
+        // traffic lights with it. The shell's .windowStyle(.hiddenTitleBar)
+        // keeps the band transparent.
     }
 
     private func personList(

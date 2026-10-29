@@ -56,6 +56,9 @@ struct NotetakerApp: App {
             .id(activeVault)
         }
         .defaultSize(width: 1150, height: 720)
+        #if os(macOS)
+            .windowStyle(.hiddenTitleBar)
+        #endif
 
         WindowGroup("Task", id: "task-detail", for: String.self) { $taskId in
             if let taskId {

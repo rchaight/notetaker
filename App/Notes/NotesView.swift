@@ -1240,11 +1240,10 @@ struct NotesView: View {
             // translucent strip OVER the top of the content under the beta
             // toolbar bridge (user report ×3: Meetings twice, the editor's
             // format bar once). Every note action lives in `editorHeader`
-            // instead, and the residual strip is hidden outright — the
-            // same cure MeetingsView already runs.
-            #if os(macOS)
-            .toolbar(.hidden, for: .windowToolbar)
-            #else
+            // instead. The window toolbar is NOT hidden: that hides the
+            // whole NSTitlebarContainerView, traffic lights included; the
+            // shell's .windowStyle(.hiddenTitleBar) keeps the band clean.
+            #if !os(macOS)
             .navigationTitle(selectedTitle)
             .navigationBarTitleDisplayMode(.inline)
             #endif
