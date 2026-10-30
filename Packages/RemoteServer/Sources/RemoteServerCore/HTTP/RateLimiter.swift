@@ -25,6 +25,11 @@ struct TokenBucket {
         }
         return (1 - tokens) * window / capacity
     }
+
+    /// Back to full capacity (safe to forget).
+    func isIdle(now: Date) -> Bool {
+        now.timeIntervalSince(updated) >= window
+    }
 }
 
 /// Process-wide limits. Spec 07 adds its auth-endpoint buckets next to these.
@@ -35,6 +40,8 @@ public actor RateLimiter {
         public var failuresPerWindow = 20
         public var failureWindow: TimeInterval = 60
         public var tarpit: TimeInterval = 60
+        /// Spec 07: each OAuth endpoint, per client IP (or one global key).
+        public var authPerMinute = 10
 
         public init() {}
     }
@@ -50,6 +57,8 @@ public actor RateLimiter {
     private var hour: TokenBucket
     private var failures: [String: [Date]] = [:]
     private var blockedUntil: [String: Date] = [:]
+    private var authBuckets: [String: TokenBucket] = [:]
+    private var authRefusing: Set<String> = []
 
     public init(settings: Settings = Settings(), now: @escaping @Sendable () -> Date = { Date() }) {
         self.settings = settings
@@ -102,5 +111,26 @@ public actor RateLimiter {
             return true
         }
         return false
+    }
+
+    /// One OAuth endpoint request from `key` (client IP or "global").
+    /// `firstRefusal` is true only for the first 429 of a refusal streak, so a
+    /// flood produces one `auth.ratelimited` audit line, not one per request.
+    public func admitAuth(endpoint: String, key: String) -> (decision: Decision, firstRefusal: Bool) {
+        let moment = now()
+        let id = endpoint + "|" + key
+        if authBuckets.count > 10000 {
+            authBuckets = authBuckets.filter { !$0.value.isIdle(now: moment) }
+            authRefusing = authRefusing.filter { authBuckets[$0] != nil }
+        }
+        var bucket = authBuckets[id] ?? TokenBucket(capacity: settings.authPerMinute, window: 60, now: moment)
+        let wait = bucket.take(now: moment)
+        authBuckets[id] = bucket
+        guard let wait else {
+            authRefusing.remove(id)
+            return (.allowed, false)
+        }
+        let first = authRefusing.insert(id).inserted
+        return (.limited(retryAfter: max(1, Int(wait.rounded(.up)))), first)
     }
 }

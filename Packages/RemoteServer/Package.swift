@@ -20,6 +20,9 @@ let package = Package(
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", .upToNextMinor(from: "0.12.1")),
         .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.28.0"),
         .package(url: "https://github.com/apple/swift-crypto.git", from: "5.0.3"),
+        // Already resolved through IndexKit (same pin); named here because the
+        // OAuth token store (spec 07) opens its own `tokens.sqlite`.
+        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
     ],
     targets: [
         .target(
@@ -32,6 +35,9 @@ let package = Package(
                 .product(name: "MCP", package: "swift-sdk"),
                 .product(name: "Hummingbird", package: "hummingbird"),
                 .product(name: "Crypto", package: "swift-crypto", condition: .when(platforms: [.linux])),
+                // RSA (RS256) verification of Google ID tokens, on both platforms (spec 07).
+                .product(name: "_CryptoExtras", package: "swift-crypto"),
+                .product(name: "GRDB", package: "GRDB.swift"),
             ]
         ),
         .executableTarget(
@@ -46,6 +52,9 @@ let package = Package(
                 "IndexKit",
                 .product(name: "MCP", package: "swift-sdk"),
                 .product(name: "HummingbirdTesting", package: "hummingbird"),
+                .product(name: "_CryptoExtras", package: "swift-crypto"),
+                .product(name: "Crypto", package: "swift-crypto", condition: .when(platforms: [.linux])),
+                .product(name: "GRDB", package: "GRDB.swift"),
             ]
         ),
     ]

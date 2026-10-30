@@ -45,6 +45,8 @@ public actor AuditLog {
     /// Keys allowed inside `args`.
     public static let allowedArgKeys: Set<String> = [
         "path", "query", "kind", "label", "assignee", "range", "from", "to", "calendar", "limit",
+        // Spec 07 `login.denied`: a foreign account is described only by these two.
+        "email_domain", "email_hash8",
     ]
     /// Logged values stay strictly under 256 characters.
     public static let maxValueLength = 255

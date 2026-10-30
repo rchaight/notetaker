@@ -138,7 +138,8 @@ struct KillCommandTests {
         #expect(code == 0)
         #expect(actions.steps == [
             "tailscale funnel --https=443 off", "systemctl stop notetaker-remote",
-            "rm tokens.sqlite", "rm index.sqlite", "wipe replica", "write DISABLED",
+            "rm tokens.sqlite", "rm tokens.sqlite-wal", "rm tokens.sqlite-shm",
+            "rm index.sqlite", "wipe replica", "write DISABLED",
         ])
     }
 

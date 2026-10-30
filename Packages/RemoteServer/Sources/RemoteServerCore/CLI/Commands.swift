@@ -10,7 +10,7 @@ public enum Commands {
     public static func run(
         arguments: [String],
         environment: [String: String],
-        authenticator: any BearerAuthenticator = DenyAllAuthenticator(),
+        authenticator: (any BearerAuthenticator)? = nil,
         actions: any SystemActions = LiveSystemActions()
     ) async -> Int32 {
         let command = arguments.first ?? "serve"
@@ -47,8 +47,29 @@ public enum Commands {
 
     // MARK: - serve
 
-    static func serve(config: RemoteConfig, authenticator: any BearerAuthenticator, audit: AuditLog) async -> Int32 {
+    /// `authenticator == nil` (the shipped path): the spec 07 OAuth server over
+    /// `tokens.sqlite`, whose `TokenAuthenticator` guards `/mcp`. Its settings are
+    /// required here — `serve` refuses to start (exit 78) without them.
+    static func serve(config: RemoteConfig, authenticator: (any BearerAuthenticator)?, audit: AuditLog) async -> Int32 {
         do {
+            let limiter = RateLimiter()
+            let oauth: OAuthServer?
+            if authenticator == nil {
+                let settings: OAuthSettings
+                do {
+                    settings = try OAuthSettings(config: config)
+                } catch {
+                    printErr("notetaker-remote: configuration error: \(error)")
+                    return 78
+                }
+                oauth = try OAuthServer(
+                    config: config, settings: settings, store: TokenStore(url: config.tokensURL),
+                    limiter: limiter, audit: audit
+                )
+            } else {
+                oauth = nil
+            }
+            guard let guardian = authenticator ?? oauth?.authenticator else { return 78 }
             let watcher = ReplicaWatcher(config: config, audit: audit)
             await watcher.tick()
             var limits = ToolGateway.Limits()
@@ -56,11 +77,16 @@ public enum Commands {
             let gateway = ToolGateway(replica: watcher, limits: limits, audit: audit)
             let mcp = try await RemoteMCPServer(gateway: gateway)
             let app = RemoteApp.build(
-                config: config, authenticator: authenticator, mcp: mcp, limiter: RateLimiter(), audit: audit
+                config: config, authenticator: guardian, mcp: mcp, limiter: limiter, audit: audit,
+                extraRoutes: { router in oauth?.register(on: router) }
             )
             await audit.record(AuditEvent(event: "server.start", reason: "bind=\(config.bindHost):\(config.bindPort)"))
             let polling = Task { await watcher.run() }
-            defer { polling.cancel() }
+            let housekeeping = Task { await oauth?.housekeepingLoop() }
+            defer {
+                polling.cancel()
+                housekeeping.cancel()
+            }
             try await app.runService() // SIGTERM/SIGINT → graceful stop
             return 0
         } catch {
@@ -99,6 +125,14 @@ public enum Commands {
         }
         for line in config.describe() {
             print(line)
+        }
+        do {
+            let settings = try OAuthSettings(config: config)
+            print(
+                "oauth: configured (client \(settings.clientID.prefix(6))..., \(settings.redirectURIs.count) redirect URI(s))"
+            )
+        } catch {
+            print("oauth: NOT configured — serve will refuse to start (\(error))")
         }
         return 0
     }

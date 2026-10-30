@@ -32,6 +32,11 @@ public struct KillCommand: Sendable {
         step("tailscale funnel off") { actions.run("tailscale", arguments: ["funnel", "--https=443", "off"]) }
         step("systemctl stop notetaker-remote") { actions.run("systemctl", arguments: ["stop", "notetaker-remote"]) }
         step("delete tokens.sqlite") { actions.removeFile(at: config.tokensURL) }
+        // WAL mode: recent token rows can live only in the -wal sidecar.
+        for suffix in ["-wal", "-shm"] {
+            let sidecar = URL(fileURLWithPath: config.tokensURL.path + suffix)
+            step("delete tokens.sqlite\(suffix)") { actions.removeFile(at: sidecar) }
+        }
         step("delete index.sqlite") { actions.removeFile(at: config.indexURL) }
         step("remove replica contents") { actions.removeContents(of: config.replicaDir) }
         step("write DISABLED marker") { actions.writeMarker(at: config.disabledMarkerURL) }

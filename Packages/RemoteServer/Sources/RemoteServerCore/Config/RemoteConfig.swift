@@ -15,14 +15,22 @@ public struct RemoteConfig: Sendable, Equatable {
         }
     }
 
-    /// OAuth keys: parsed here, validated by spec 07.
+    /// OAuth keys: parsed here, validated by spec 07 (`OAuthSettings`).
     public struct OAuthKeys: Sendable, Equatable {
         public var allowedEmail: String?
         public var clientID: String?
         public var redirectURIs: [String]
         public var allowLoopback: Bool
         public var googleClientID: String?
-        public var googleClientSecret: String?
+        /// Read once from the environment; prints as `<redacted>` everywhere.
+        public var googleClientSecret: SecretValue?
+        public var googleIssuer: String
+        /// Optional confidential-client hook: lowercase hex SHA-256 of a client secret.
+        public var clientSecretSHA256: String?
+        public var accessTTLSeconds: Int
+        public var refreshIdleDays: Int
+        public var refreshAbsoluteDays: Int
+        public var codeTTLSeconds: Int
     }
 
     /// `https://host` — no path, no trailing slash.
@@ -120,14 +128,27 @@ public struct RemoteConfig: Sendable, Equatable {
         func nonEmpty(_ key: String) -> String? {
             env[key].map { $0.trimmingCharacters(in: .whitespaces) }.flatMap { $0.isEmpty ? nil : $0 }
         }
-        oauth = OAuthKeys(
+        func positive(_ key: String, default value: Int) throws -> Int {
+            guard let raw = nonEmpty(key) else { return value }
+            guard let parsed = Int(raw), parsed > 0 else {
+                throw ConfigError.invalid(key, "must be a positive integer")
+            }
+            return parsed
+        }
+        oauth = try OAuthKeys(
             allowedEmail: nonEmpty("NR_ALLOWED_EMAIL"),
             clientID: nonEmpty("NR_OAUTH_CLIENT_ID"),
             redirectURIs: (env["NR_OAUTH_REDIRECT_URIS"] ?? "").split(separator: ",")
                 .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty },
             allowLoopback: env["NR_ALLOW_LOOPBACK"] == "1",
             googleClientID: nonEmpty("NR_GOOGLE_CLIENT_ID"),
-            googleClientSecret: nonEmpty("NR_GOOGLE_CLIENT_SECRET")
+            googleClientSecret: nonEmpty("NR_GOOGLE_CLIENT_SECRET").map(SecretValue.init),
+            googleIssuer: nonEmpty("NR_GOOGLE_ISSUER") ?? "https://accounts.google.com",
+            clientSecretSHA256: nonEmpty("NR_OAUTH_CLIENT_SECRET_SHA256")?.lowercased(),
+            accessTTLSeconds: positive("NR_ACCESS_TTL_SEC", default: 900),
+            refreshIdleDays: positive("NR_REFRESH_IDLE_DAYS", default: 14),
+            refreshAbsoluteDays: positive("NR_REFRESH_ABSOLUTE_DAYS", default: 30),
+            codeTTLSeconds: positive("NR_CODE_TTL_SEC", default: 60)
         )
     }
 
@@ -156,6 +177,10 @@ public struct RemoteConfig: Sendable, Equatable {
             guard let value, !value.isEmpty else { return "(unset)" }
             return "set (\(value.count) chars, masked)"
         }
+        func mask(_ value: SecretValue?) -> String {
+            guard let value, value.count > 0 else { return "(unset)" }
+            return "set (\(value.count) chars, masked)"
+        }
         var lines = [
             "public_url: \(publicURL)",
             "resource_url: \(resourceURL)",
@@ -173,10 +198,44 @@ public struct RemoteConfig: Sendable, Equatable {
             "oauth.allow_loopback: \(oauth.allowLoopback)",
             "oauth.google_client_id: \(oauth.googleClientID ?? "(unset)")",
             "oauth.google_client_secret: \(mask(oauth.googleClientSecret))",
+            "oauth.google_issuer: \(oauth.googleIssuer)",
+            "oauth.client_secret_sha256: \(mask(oauth.clientSecretSHA256))",
+            "oauth.ttl: access \(oauth.accessTTLSeconds)s, code \(oauth.codeTTLSeconds)s, refresh idle \(oauth.refreshIdleDays)d / absolute \(oauth.refreshAbsoluteDays)d",
         ]
         if oauth.allowLoopback {
             lines.append("WARNING: NR_ALLOW_LOOPBACK=1 is a stage-1 (tailnet-only) setting; turn it off before Funnel.")
         }
+        if !oauth.googleIssuer.hasPrefix("https://") {
+            lines.append("WARNING: NR_GOOGLE_ISSUER is not https (test-only setting).")
+        }
         return lines
+    }
+}
+
+/// A secret read from the environment (the Google client secret). Every printing
+/// path — `description`, `debugDescription`, `dump`/reflection — yields
+/// `<redacted>`; only code inside this module can reach `value`.
+public struct SecretValue: Sendable, Equatable, CustomStringConvertible, CustomDebugStringConvertible,
+    CustomReflectable {
+    let value: String
+
+    public init(_ value: String) {
+        self.value = value
+    }
+
+    public var count: Int {
+        value.count
+    }
+
+    public var description: String {
+        "<redacted>"
+    }
+
+    public var debugDescription: String {
+        "<redacted>"
+    }
+
+    public var customMirror: Mirror {
+        Mirror(self, children: [], displayStyle: .struct)
     }
 }
