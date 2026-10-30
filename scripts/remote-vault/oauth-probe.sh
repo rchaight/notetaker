@@ -95,30 +95,121 @@ AUTH_URL="$BASE/authorize?response_type=code&client_id=$(urlencode "$CLIENT_ID")
 AUTH_URL+="&redirect_uri=$(urlencode "$REDIRECT")&code_challenge=$CHALLENGE&code_challenge_method=S256"
 AUTH_URL+="&state=$STATE&scope=vault%3Aread&resource=$(urlencode "$RESOURCE")"
 
-REQUEST_LINE=""
-if command -v nc > /dev/null; then
-  RESPONSE=$'HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 46\r\nConnection: close\r\n\r\nnotetaker oauth-probe: you can close this tab\n'
-  : > "$WORK/request"
-  (printf '%s' "$RESPONSE" | nc -l 127.0.0.1 "$PORT" > "$WORK/request" 2> /dev/null) &
+# --- loopback callback listener -------------------------------------------
+# One `nc -l` per connection. The HTTP response is held back on a FIFO until
+# the browser's GET has actually arrived: piping a canned response into nc's
+# stdin makes nc send it the instant it accepts, before the client has written
+# its request, and a client that sees an unsolicited response can drop the
+# connection without ever sending the GET (that race lost the callback).
+RESPONSE=$'HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 46\r\nConnection: close\r\n\r\nnotetaker oauth-probe: you can close this tab\n'
+LISTEN_ATTEMPT=0
+
+# Is something LISTENing on 127.0.0.1:$PORT? (No connect: that would consume nc.)
+# 0 = yes, 1 = no, 2 = cannot tell on this system.
+port_listening() {
+  if command -v lsof > /dev/null; then
+    lsof -nP -iTCP@127.0.0.1:"$PORT" -sTCP:LISTEN -t > /dev/null 2>&1
+  elif command -v ss > /dev/null; then
+    ss -Hltn "sport = :$PORT" 2> /dev/null | grep -q .
+  else
+    return 2
+  fi
+}
+
+# Starts one listener. Returns 0 when it is accepting, 1 if nc died first.
+start_listener() {
+  LISTEN_ATTEMPT=$((LISTEN_ATTEMPT + 1))
+  local dir="$WORK/listen$LISTEN_ATTEMPT" state
+  # macOS nc binds with SO_REUSEPORT, so a second listener on a busy port
+  # "succeeds" and the callback could land in the other process: refuse instead.
+  if port_listening; then
+    echo "listener: 127.0.0.1:$PORT is already in use by another process (set PROBE_PORT)" >&2
+    return 1
+  fi
+  mkdir "$dir"
+  mkfifo "$dir/response"
+  : > "$dir/request"
+  (
+    nc -l 127.0.0.1 "$PORT" < "$dir/response" > "$dir/request" 2> "$dir/nc.err"
+    echo "$?" > "$dir/nc.status"
+  ) &
   NC_PID=$!
-  step "open this URL in a browser on this machine and sign in with Google:"
-  echo "AUTHORIZE_URL $AUTH_URL"
-  waited=0
-  until grep -q '^GET ' "$WORK/request" 2> /dev/null; do
-    sleep 0.2
-    waited=$((waited + 1))
-    ((waited < TIMEOUT * 5)) || fail "no callback on 127.0.0.1:$PORT within ${TIMEOUT}s"
+  disown "$NC_PID" 2> /dev/null || true # no "Terminated" job notice on cleanup
+  LISTEN_DIR="$dir"
+  exec 4> "$dir/response" # unblocks the reader; nc's stdin stays open and empty
+  for _ in $(seq 1 100); do
+    if [[ -e "$dir/nc.status" ]]; then
+      echo "listener: nc exited (status $(cat "$dir/nc.status")) before accepting: $(head -c 300 "$dir/nc.err")" >&2
+      exec 4>&-
+      return 1
+    fi
+    state=0
+    port_listening || state=$?
+    if [[ $state -eq 0 ]]; then
+      return 0
+    elif [[ $state -eq 2 ]]; then
+      sleep 0.3 # no lsof/ss: cannot observe the bind; give nc a moment
+      [[ -e "$dir/nc.status" ]] && continue
+      return 0
+    fi
+    sleep 0.05
   done
-  sleep 0.3
-  kill "$NC_PID" 2> /dev/null || true
+  echo "listener: 127.0.0.1:$PORT never reached LISTEN within 5s" >&2
+  exec 4>&-
+  return 1
+}
+
+stop_listener() {
+  { exec 4>&-; } 2> /dev/null || true # group: a bare `exec ... 2>` would silence stderr for good
+  if [[ -n "$NC_PID" ]]; then kill "$NC_PID" 2> /dev/null || true; fi
   NC_PID=""
-  REQUEST_LINE="$(head -1 "$WORK/request" | tr -d '\r')"
-  CALLBACK_QUERY="${REQUEST_LINE#GET }"
-  CALLBACK_QUERY="${CALLBACK_QUERY%% HTTP/*}"
-else
-  step "nc not found: open this URL, sign in, then paste the full URL the browser ends on:"
+}
+
+paste_callback() {
+  step "$1: open this URL, sign in, then paste the full URL the browser ends on:"
   echo "AUTHORIZE_URL $AUTH_URL"
-  read -r -p "redirected URL: " CALLBACK_QUERY
+  read -r -t "$TIMEOUT" -p "redirected URL: " CALLBACK_QUERY || fail "nothing pasted within ${TIMEOUT}s"
+}
+
+CALLBACK_QUERY=""
+if command -v nc > /dev/null && command -v mkfifo > /dev/null; then
+  if start_listener; then
+    echo "LISTENING 127.0.0.1:$PORT"
+    step "open this URL in a browser on this machine and sign in with Google:"
+    echo "AUTHORIZE_URL $AUTH_URL"
+    deadline=$((SECONDS + TIMEOUT))
+    while [[ -z "$CALLBACK_QUERY" ]]; do
+      if grep -q '^GET ' "$LISTEN_DIR/request" 2> /dev/null; then
+        printf '%s' "$RESPONSE" >&4 # answer only now that the request is in
+        exec 4>&-
+        REQUEST_LINE="$(head -1 "$LISTEN_DIR/request" | tr -d '\r')"
+        CALLBACK_QUERY="${REQUEST_LINE#GET }"
+        CALLBACK_QUERY="${CALLBACK_QUERY%% HTTP/*}"
+        for _ in $(seq 1 20); do # let nc flush the response, then stop it
+          [[ -e "$LISTEN_DIR/nc.status" ]] && break
+          sleep 0.05
+        done
+        stop_listener
+        break
+      fi
+      if [[ -e "$LISTEN_DIR/nc.status" ]]; then
+        # A connection came and went without a GET (stray probe, browser preconnect).
+        echo "listener: connection closed without a request ($(wc -c < "$LISTEN_DIR/request" | tr -d ' ') bytes, nc status $(cat "$LISTEN_DIR/nc.status")); listening again" >&2
+        stop_listener
+        start_listener || {
+          paste_callback "listener failed"
+          break
+        }
+      fi
+      ((SECONDS < deadline)) || fail "no callback on 127.0.0.1:$PORT within ${TIMEOUT}s (listener attempts: $LISTEN_ATTEMPT)"
+      sleep 0.1
+    done
+  else
+    stop_listener
+    paste_callback "could not listen on 127.0.0.1:$PORT"
+  fi
+else
+  paste_callback "nc or mkfifo not found"
 fi
 CALLBACK_QUERY="${CALLBACK_QUERY#*\?}"
 

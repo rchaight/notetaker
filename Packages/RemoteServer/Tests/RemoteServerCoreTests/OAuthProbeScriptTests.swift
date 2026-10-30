@@ -65,7 +65,9 @@ struct OAuthProbeScriptTests {
             defer { harness.fixture.cleanUp() }
             try await harness.app().test(.live) { client in
                 let base = try "http://localhost:\(#require(client.port))"
-                let probePort = Int.random(in: 30000 ... 60000)
+                // Below both ephemeral ranges (macOS 49152+, Linux 32768+), so the
+                // listener never collides with a client socket's source port.
+                let probePort = Int.random(in: 20000 ... 29999)
                 let output = FileManager.default.temporaryDirectory
                     .appendingPathComponent("probe-\(UUID().uuidString).log")
                 FileManager.default.createFile(atPath: output.path, contents: nil)
@@ -87,17 +89,24 @@ struct OAuthProbeScriptTests {
                     }
                 }
 
-                // Wait for the authorize URL the script prints.
+                func log() -> String {
+                    (try? String(contentsOf: output, encoding: .utf8)) ?? ""
+                }
+                // Wait until the script reports its listener is in LISTEN (it checks
+                // the socket state, never by connecting) and prints the authorize URL.
                 var authorizeURL: String?
-                for _ in 0 ..< 300 where authorizeURL == nil {
-                    let text = (try? String(contentsOf: output, encoding: .utf8)) ?? ""
-                    authorizeURL = text.split(separator: "\n").first { $0.hasPrefix("AUTHORIZE_URL ") }
-                        .map { String($0.dropFirst("AUTHORIZE_URL ".count)) }
+                let ready = ContinuousClock.now + .seconds(30)
+                while authorizeURL == nil, process.isRunning, ContinuousClock.now < ready {
+                    let lines = log().split(separator: "\n")
+                    if lines.contains("LISTENING 127.0.0.1:\(probePort)") {
+                        authorizeURL = lines.first { $0.hasPrefix("AUTHORIZE_URL ") }
+                            .map { String($0.dropFirst("AUTHORIZE_URL ".count)) }
+                    }
                     if authorizeURL == nil {
-                        try await Task.sleep(for: .milliseconds(100))
+                        try await Task.sleep(for: .milliseconds(50))
                     }
                 }
-                let start = try #require(authorizeURL, "probe never printed the authorize URL")
+                let start = try #require(authorizeURL, "probe listener never became ready:\n\(log())")
 
                 // Play the browser: /authorize → Google → callback → consent → loopback.
                 let http = URLSessionOIDCClient()
@@ -118,26 +127,36 @@ struct OAuthProbeScriptTests {
                 #expect(consent.status == 302)
                 let loopback = try #require(consent.headers["location"])
                 #expect(loopback.hasPrefix("http://127.0.0.1:\(probePort)/cb?code="))
-                var delivered = false
-                var lastError = ""
+                // Deliver the redirect. The listener is already in LISTEN, so the only
+                // retryable failure is a refused connection while the script re-arms
+                // after a stray connection; anything else fails at once.
                 let loopbackURL = try #require(URL(string: loopback))
-                for _ in 0 ..< 25 where !delivered {
+                var delivery: Result<Int, any Error> = .failure(URLError(.cannotConnectToHost))
+                let deliveryDeadline = ContinuousClock.now + .seconds(10)
+                while ContinuousClock.now < deliveryDeadline {
                     do {
-                        delivered = try await http.get(loopbackURL).status == 200
+                        delivery = try await .success(http.get(loopbackURL).status)
+                        break
+                    } catch let error as URLError where error.code == .cannotConnectToHost {
+                        delivery = .failure(error)
+                        try await Task.sleep(for: .milliseconds(50))
                     } catch {
-                        lastError = "\(error)"
-                    }
-                    if !delivered {
-                        try await Task.sleep(for: .milliseconds(200))
+                        delivery = .failure(error)
+                        break
                     }
                 }
-                #expect(delivered, "\(lastError.prefix(300))")
+                switch delivery {
+                case let .success(status):
+                    #expect(status == 200, "\(log())")
+                case let .failure(error):
+                    Issue.record("loopback delivery failed: \(error)\n--- probe log ---\n\(log())")
+                }
 
                 for _ in 0 ..< 600 where process.isRunning {
                     try await Task.sleep(for: .milliseconds(100))
                 }
-                let log = (try? String(contentsOf: output, encoding: .utf8)) ?? ""
-                #expect(!process.isRunning)
+                let log = log()
+                #expect(!process.isRunning, "probe still running:\n\(log)")
                 #expect(process.terminationStatus == 0, "\(log)")
                 let lines = log.split(separator: "\n")
                 #expect(lines.last == "reuse detected: invalid_grant; family revoked: 401", "\(log)")
