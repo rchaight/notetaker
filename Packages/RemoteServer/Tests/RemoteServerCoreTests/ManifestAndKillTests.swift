@@ -137,8 +137,8 @@ struct KillCommandTests {
         let code = try await KillCommand(config: fixture.config(), actions: actions).run(report: { _ in })
         #expect(code == 0)
         #expect(actions.steps == [
+            "tailscale funnel --https=443 off", "systemctl stop notetaker-remote",
             "rm tokens.sqlite", "rm index.sqlite", "wipe replica", "write DISABLED",
-            "systemctl stop notetaker-remote", "tailscale funnel --https=443 off",
         ])
     }
 
@@ -150,7 +150,7 @@ struct KillCommandTests {
         var output: [String] = []
         let code = try await KillCommand(config: fixture.config(), actions: actions).run(report: { output.append($0) })
         #expect(code == 1)
-        #expect(actions.steps.last == "tailscale funnel --https=443 off")
+        #expect(actions.steps.last == "write DISABLED")
         #expect(output.contains { $0.contains("systemctl stop notetaker-remote: FAILED") })
     }
 
