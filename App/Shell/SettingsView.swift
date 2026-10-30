@@ -103,6 +103,11 @@ struct SettingsView: View {
             Tab("Calendar", systemImage: "calendar") {
                 calendarPane
             }
+            #if os(macOS)
+                Tab("Remote", systemImage: "antenna.radiowaves.left.and.right") {
+                    RemoteSettingsPane()
+                }
+            #endif
             Tab("AI & Import", systemImage: "sparkles") {
                 aiPane
             }
@@ -431,6 +436,9 @@ struct SettingsView: View {
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                Text("Locked notes are never included in the remote copy (Settings › Remote).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -761,6 +769,208 @@ struct SettingsView: View {
         }
     #endif
 }
+
+#if os(macOS)
+    /// Settings › Remote (specs/remote-vault/04). All state lives in
+    /// `RemoteReplicaService`; this view only edits the `remote*` defaults.
+    private struct RemoteSettingsPane: View {
+        @AppStorage(RemoteReplicaService.Key.enabled) private var enabled = false
+        @AppStorage(RemoteReplicaService.Key.host) private var host = ""
+        @AppStorage(RemoteReplicaService.Key.user) private var user = RemoteReplicaService.defaultUser
+        @AppStorage(RemoteReplicaService.Key.rsyncPath) private var rsyncPath = RemoteReplicaService.defaultRsync
+        @AppStorage(RemoteReplicaService.Key.includeCalendar) private var includeCalendar = true
+        @AppStorage(RemoteReplicaService.Key.excludedFolders) private var excludedFolders = ""
+        @AppStorage(RemoteReplicaService.Key.hostKeyTrusted) private var trusted = false
+        @State private var service = RemoteReplicaService.shared
+        @State private var confirmRegenerate = false
+        @State private var copied = false
+
+        private var trimmedHost: String {
+            host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        }
+
+        private var hostValid: Bool {
+            RemoteReplicaService.isValidHost(trimmedHost)
+        }
+
+        private var calendarGranted: Bool {
+            CalendarService.accessState() == .granted
+        }
+
+        var body: some View {
+            Form {
+                accessSection
+                containerSection
+                keySection
+                scopeSection
+                statusSection
+            }
+            .formStyle(.grouped)
+            .task { await service.prepare() }
+        }
+
+        private var accessSection: some View {
+            Section("Remote access") {
+                Toggle("Copy my notes to my container for claude.ai", isOn: $enabled)
+                caption(
+                    "Every unlocked note (full text) and, if enabled below, your calendar — title, time, location, status, organizer and attendee names — are copied to your own container over Tailscale for the read-only MCP server you connect to claude.ai. Never copied: locked notes, _index.md files, hidden files, non-markdown files, folders you exclude below, notes with remote: false in their frontmatter, event notes, links, or email addresses. Turning this off wipes the copy."
+                )
+                if let paused = service.pausedMessage {
+                    Text(paused)
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+                if !service.pushedTargets.isEmpty {
+                    caption(
+                        "Containers that may hold a copy: \(service.pushedTargets.joined(separator: ", ")). Turning access off wipes all of them."
+                    )
+                }
+                if !enabled, service.wipePending {
+                    Button("Retry wipe") { service.retryWipe() }
+                }
+            }
+        }
+
+        private var containerSection: some View {
+            Section("Container") {
+                TextField("Tailscale address", text: $host, prompt: Text("100.x.y.z or name.ts.net"))
+                    .autocorrectionDisabled()
+                if !trimmedHost.isEmpty, !hostValid {
+                    caption("Use the container's Tailscale address, never a LAN address.")
+                } else {
+                    caption(
+                        "The container's Tailscale IPv4 (100.64.0.0/10), IPv6 (fd7a:115c:a1e0::/48) or *.ts.net name."
+                    )
+                }
+                TextField("ssh user", text: $user)
+                    .autocorrectionDisabled()
+                if !RemoteReplicaService.isValidUser(user) {
+                    caption("Not a valid user name.")
+                }
+                TextField("rsync path", text: $rsyncPath)
+                    .autocorrectionDisabled()
+                if !RemoteReplicaService.isUsableRsync(rsyncPath) {
+                    caption("That path is not an executable.")
+                } else {
+                    caption(
+                        "/usr/bin/rsync is openrsync. If the first push is refused, install Homebrew rsync and use /opt/homebrew/bin/rsync."
+                    )
+                }
+                LabeledContent("Host key") {
+                    Text(service.hostFingerprint ?? "not fetched")
+                        .font(.callout.monospaced())
+                        .textSelection(.enabled)
+                        .foregroundStyle(trusted ? .primary : .secondary)
+                }
+                HStack {
+                    Button("Fetch host key") { Task { await service.fetchHostKey() } }
+                        .disabled(!hostValid)
+                    Button("Trust this host") { service.trustHost() }
+                        .disabled(service.hostFingerprint == nil || trusted)
+                    if trusted {
+                        Label("Trusted", systemImage: "checkmark.seal").foregroundStyle(.green)
+                    }
+                }
+                if let message = service.hostKeyMessage {
+                    caption(message)
+                }
+                caption(
+                    "Compare the fingerprint with ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub inside the container before trusting it."
+                )
+            }
+        }
+
+        private var keySection: some View {
+            Section("This Mac's key") {
+                Text(service.publicKey.isEmpty ? "No key yet" : service.publicKey)
+                    .font(.caption.monospaced())
+                    .textSelection(.enabled)
+                HStack {
+                    Button(copied ? "Copied" : "Copy") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(service.publicKey, forType: .string)
+                        copied = true
+                    }
+                    .disabled(service.publicKey.isEmpty)
+                    Button("Regenerate key", role: .destructive) { confirmRegenerate = true }
+                }
+                caption(
+                    "Paste this into the container's authorized_keys as described in the runbook (restricted to upload-only)."
+                )
+            }
+            .confirmationDialog(
+                "Generate a new key?", isPresented: $confirmRegenerate, titleVisibility: .visible
+            ) {
+                Button("Regenerate", role: .destructive) { Task { await service.regenerateKey() } }
+            } message: {
+                Text("Nothing on the container changes. You must repeat the authorized_keys step with the new key.")
+            }
+        }
+
+        private var scopeSection: some View {
+            Section("Scope") {
+                Toggle("Include calendar", isOn: $includeCalendar)
+                    .disabled(!calendarGranted)
+                if !calendarGranted {
+                    caption("Calendar access is not granted (Settings › Calendar).")
+                } else {
+                    caption(
+                        "Writes the next 60 days (and the last 7). Calendars you excluded in Settings › Calendar stay excluded."
+                    )
+                }
+                Text("Excluded folders")
+                TextEditor(text: $excludedFolders)
+                    .font(.body.monospaced())
+                    .frame(minHeight: 70)
+                caption("One vault-relative folder per line, for example: Work Notes/Personnel")
+            }
+        }
+
+        private var statusSection: some View {
+            Section("Status") {
+                if let last = service.lastPush {
+                    LabeledContent("Last export") {
+                        Text(last.exportedAt.map { $0.formatted(date: .abbreviated, time: .standard) } ?? "never")
+                    }
+                    LabeledContent("Notes exported", value: "\(last.notes)")
+                    LabeledContent("Locked, excluded", value: "\(last.lockedExcluded)")
+                    LabeledContent("Index files, excluded", value: "\(last.indexExcluded)")
+                    LabeledContent("Other, excluded", value: "\(last.otherExcluded)")
+                    LabeledContent("Not downloaded", value: "\(last.notDownloaded)")
+                    LabeledContent("Calendar", value: last.calendarIncluded ? "included" : "not included")
+                    LabeledContent("Last push") {
+                        Text(
+                            "\(last.at.formatted(date: .abbreviated, time: .standard)) — \(last.pushed ? (last.ok ? "ok" : "failed") : "not pushed")"
+                        )
+                    }
+                    Text(last.message)
+                        .font(.caption)
+                        .foregroundStyle(last.ok ? Color.secondary : Color.orange)
+                        .textSelection(.enabled)
+                } else {
+                    caption("No export has run yet.")
+                }
+                HStack {
+                    Button("Push now") { service.pushNow() }
+                        .disabled(!enabled || service.busy)
+                    Button("Verify export") { Task { await service.verifyExport() } }
+                    Button("Reveal staging folder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([RemoteReplicaService.baseDirectory])
+                    }
+                }
+                if let message = service.verifyMessage {
+                    caption(message)
+                }
+            }
+        }
+
+        private func caption(_ text: String) -> some View {
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+#endif
 
 #Preview {
     SettingsView()

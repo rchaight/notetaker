@@ -26,6 +26,7 @@ struct AppShell: View {
     @State private var backgroundedAt: Date?
     #if os(macOS)
         @State private var calendarSnapshotPublisher = CalendarSnapshotPublisher()
+        @State private var remoteReplicaService = RemoteReplicaService.shared
         @AppStorage("calendarShareWithMCP") private var calendarShareWithMCP = false
     #endif
 
@@ -120,6 +121,7 @@ struct AppShell: View {
             }
         #if os(macOS)
             .task { calendarSnapshotPublisher.start() }
+            .task { remoteReplicaService.start(indexService: indexService) }
             .onChange(of: calendarShareWithMCP) { calendarSnapshotPublisher.settingsChanged() }
             .task {
                 // Scene storage restores window frames independently of the

@@ -741,7 +741,7 @@ public struct ReplicaExporter: Sendable {
     /// Removes `<name>.tmp-<uuid>` / `<name>.old-<uuid>` siblings (exactly that
     /// pattern, nothing else): leftovers of a killed or failed export hold a
     /// full plaintext copy of the vault.
-    static func sweepStale(staging: URL) {
+    public static func sweepStale(staging: URL) {
         let parent = staging.deletingLastPathComponent()
         let name = staging.lastPathComponent
         guard let entries = try? FileManager.default.contentsOfDirectory(atPath: parent.path) else { return }

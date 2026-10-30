@@ -20,6 +20,9 @@ import WidgetKit
 @MainActor
 @Observable
 final class VaultIndexService {
+    /// Posted after every indexing pass; the remote replica service debounces on it.
+    static let didSettleNotification = Notification.Name("com.rchaight.notetaker.vaultIndexDidSettle")
+
     enum State: Equatable {
         case starting
         case ready
@@ -203,6 +206,7 @@ final class VaultIndexService {
         // changed (favorites/pins read the db before it opened otherwise).
         tasksVersion += 1
         publishWidgetSnapshot()
+        NotificationCenter.default.post(name: Self.didSettleNotification, object: nil)
         scheduleIndexFileRegeneration()
     }
 
