@@ -90,6 +90,7 @@ public enum Commands {
                 forwarded.cancel()
             }
             try await app.runService() // SIGTERM/SIGINT → graceful stop
+            await audit.flush() // pending `audit.suppressed` summaries
             return 0
         } catch {
             printErr("notetaker-remote: \(error)")
@@ -140,6 +141,7 @@ public enum Commands {
         for line in config.describe() {
             print(line)
         }
+        print(AuditFileSummary.scan(config.auditLog).statusLine)
         let unparseable = ForwardedFor.unparseableInAudit(at: config.auditLog)
         if config.trustForwardedFor || unparseable > 0 {
             print("x_forwarded_for: \(unparseable) request(s) had an unparseable X-Forwarded-For (audit log)")

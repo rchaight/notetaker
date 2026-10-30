@@ -19,10 +19,12 @@ set -euo pipefail
 
 # --- pure helpers (sourceable for tests: PROBE_SOURCE_ONLY=1 . oauth-probe.sh) ---
 step() { echo "== $*"; }
-# Everything printed that came from the network goes through this: strips
-# control characters (ESC, BEL, CR, ...) so a hostile callback or server cannot
-# drive the terminal.
-printable() { printf '%s' "$1" | LC_ALL=C tr -d '\000-\037\177'; }
+# Everything printed that came from the network goes through this. It keeps
+# printable ASCII only: C0 controls (ESC, BEL, CR, ...), DEL, and every byte
+# >= 0x80 go — which removes C1 controls (U+0080-U+009F, e.g. the 8-bit CSI
+# 0x9B) whether they arrive UTF-8 encoded or raw. Every value this probe prints
+# (URLs, error codes, issuer, token tails) is ASCII by protocol.
+printable() { printf '%s' "$1" | LC_ALL=C tr -d '\000-\037\177-\377'; }
 b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
 last4() { printf '...%s' "$(printable "${1: -4}")"; }
 # Flat JSON only (every document this probe reads is compact and flat enough).
@@ -155,7 +157,7 @@ start_listener() {
   exec 4> "$dir/response" # unblocks the reader; nc's stdin stays open and empty
   for _ in $(seq 1 100); do
     if [[ -e "$dir/nc.status" ]]; then
-      echo "listener: nc exited (status $(cat "$dir/nc.status")) before accepting: $(head -c 300 "$dir/nc.err")" >&2
+      echo "listener: nc exited (status $(cat "$dir/nc.status")) before accepting: $(printable "$(head -c 300 "$dir/nc.err")")" >&2
       exec 4>&-
       return 1
     fi
@@ -274,7 +276,7 @@ echo "rotated: access $(last4 "$(cat "$WORK/access2")"), refresh $(last4 "$(cat 
 step "re-use of the old refresh token (must be rejected and revoke the family)"
 STATUS="$(token_call "$WORK/refresh-form" "$WORK/reuse.json")"
 REUSE_ERROR="$(json_field error < "$WORK/reuse.json")"
-[[ "$STATUS" == "400" && "$REUSE_ERROR" == "invalid_grant" ]] || fail "reuse returned HTTP $STATUS ${REUSE_ERROR:-}"
+[[ "$STATUS" == "400" && "$REUSE_ERROR" == "invalid_grant" ]] || fail "reuse returned HTTP $(printable "$STATUS") $(printable "${REUSE_ERROR:-}")"
 AFTER="$(mcp_call "$WORK/access2" '{"jsonrpc":"2.0","id":4,"method":"tools/list","params":{}}' "$WORK/mcp")"
 [[ "$AFTER" == "401" ]] || fail "rotated access token still works after reuse (HTTP $AFTER)"
 echo "reuse detected: invalid_grant; family revoked: 401"

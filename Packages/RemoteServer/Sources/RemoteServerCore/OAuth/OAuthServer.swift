@@ -102,7 +102,14 @@ public final class OAuthServer: Sendable {
     /// which also covers error redirects and RFC 7009's 200-for-unknown).
     final class FailureMark: Sendable {
         let failed = Mutex(false)
+        /// The request presented a real (already used) code or refresh token:
+        /// its answer (`invalid_grant` after reuse detection) is never replaced by
+        /// a junk-budget 429. Junk cannot set this — it needs a real secret.
+        let presentedRealSecret = Mutex(false)
     }
+
+    /// Reuse detections: a real secret was presented (see `FailureMark`).
+    static let reuseEvents: Set<String> = ["refresh.reuse", "code.reuse"]
 
     @TaskLocal static var failureMark: FailureMark?
     /// Set once an endpoint's failure budget is spent: failure events are not
@@ -144,7 +151,7 @@ public final class OAuthServer: Sendable {
         }
         // A 429 from a work cap is already a refusal: it does not also spend the failure budget.
         let failed = mark.failed.withLock { $0 } || (response.status.code >= 400 && response.status != .tooManyRequests)
-        guard failed else { return response }
+        guard failed, !mark.presentedRealSecret.withLock({ $0 }) else { return response }
         let (decision, first) = await limiter.spendAuthFailure(endpoint: endpoint)
         if case let .limited(retryAfter) = decision {
             return await tooMany(endpoint, retryAfter: retryAfter, audit: first, ip: nil)
@@ -165,6 +172,9 @@ public final class OAuthServer: Sendable {
         _ event: String, status: String? = nil, family: String? = nil, reason: String? = nil,
         args: [String: String] = [:], request: Request
     ) async {
+        if Self.reuseEvents.contains(event) {
+            Self.failureMark?.presentedRealSecret.withLock { $0 = true }
+        }
         let failure = Self.failureEvents.contains(event) || (event == "revoke" && status != "200")
             || (event == "revoke" && reason == "unknown")
         if failure {

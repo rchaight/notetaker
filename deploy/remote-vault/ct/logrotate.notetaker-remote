@@ -1,0 +1,27 @@
+# /etc/logrotate.d/notetaker-remote — the remote vault audit log (specs 06/07/08).
+#
+# Required settings (Packages/RemoteServer AuditLog depends on them):
+#   copytruncate  the service keeps its O_APPEND descriptor; truncation is seen
+#                 on the next write and logging continues in the same file.
+#                 (A rename+create rotation is also detected — inode check at
+#                 most once a minute and whenever the size ceiling trips — but
+#                 copytruncate is the supported mode.)
+#   maxsize 64M   rotate early under a flood, far below the service's 256 MB
+#                 ceiling, past which only forensic events (login.denied,
+#                 refresh.reuse, code.reuse, kill) are written.
+#   rotate 90     90 days of history (design 00 §4.8).
+#   (maxsize is only evaluated when logrotate runs: spec 08 should run the
+#   logrotate timer hourly, not just daily, for it to bite during a flood.)
+#   su            the log directory is notetaker:adm 0750 (spec 08); logrotate
+#                 refuses a non-root-writable directory without it.
+# Spec 08's ct/setup.sh installs this file as /etc/logrotate.d/notetaker-remote.
+/var/log/notetaker-remote/audit.jsonl {
+    su notetaker adm
+    daily
+    copytruncate
+    maxsize 64M
+    rotate 90
+    compress
+    missingok
+    notifempty
+}

@@ -39,7 +39,7 @@ public enum ForwardedFor {
             let inside = String(hop[hop.index(after: hop.startIndex) ..< close])
             let rest = hop[hop.index(after: close)...]
             guard rest.isEmpty || isPort(rest.dropFirst()) && rest.first == ":" else { return nil }
-            return canonical(inside, family: AF_INET6)
+            return canonical(inside, family: AF_INET6).map(unmapped)
         }
         if let v4 = canonical(hop, family: AF_INET) {
             return v4
@@ -48,7 +48,13 @@ public enum ForwardedFor {
         if colons == 1, let colon = hop.firstIndex(of: ":"), isPort(hop[hop.index(after: colon)...]) {
             return canonical(String(hop[..<colon]), family: AF_INET)
         }
-        return canonical(hop, family: AF_INET6)
+        return canonical(hop, family: AF_INET6).map(unmapped)
+    }
+
+    /// `::ffff:1.2.3.4` (IPv4-mapped IPv6) is the IPv4 client: one limiter key.
+    private static func unmapped(_ v6: String) -> String {
+        guard v6.hasPrefix("::ffff:"), let v4 = canonical(String(v6.dropFirst(7)), family: AF_INET) else { return v6 }
+        return v4
     }
 
     private static func isPort(_ text: Substring) -> Bool {

@@ -53,8 +53,13 @@ public actor AuditLog {
 
     /// Flood bounds. Unauthenticated traffic can trigger audit lines, so every
     /// event type is capped per minute (excess counted, then one
-    /// `audit.suppressed` line with `result_count=N`), and the file has a hard
-    /// size ceiling (one `audit.truncated` line, then nothing until rotation).
+    /// `audit.suppressed` line with `result_count=N`), and the file has a size
+    /// ceiling: past it, one `audit.truncated` line, then only ceiling-exempt
+    /// events until the file is rotated (logrotate: see
+    /// `deploy/remote-vault/ct/logrotate.notetaker-remote` — `daily`,
+    /// `copytruncate`, `maxsize 64M`, `rotate 90`, `compress`, `missingok`,
+    /// `notifempty`). Both copytruncate (size shrinks) and rename+create (inode
+    /// changes) are detected and writing resumes in the live file.
     public struct Limits: Sendable {
         public var linesPerEventPerMinute = 120
         public var maxFileBytes: UInt64 = 256 * 1024 * 1024
@@ -66,6 +71,21 @@ public actor AuditLog {
     public static let unlimitedEvents: Set<String> = [
         "kill", "server.start", "replica.contaminated", "audit.suppressed", "audit.truncated",
     ]
+
+    /// The anomaly cues: written even past the size ceiling. Their growth stays
+    /// bounded without it: `login.denied` ≤ 20/min (Google-exchange cap) and
+    /// `refresh.reuse` / `code.reuse` ≤ 120/min each (per-event cap; each also
+    /// needs a real, already-used secret); `kill` is an operator action. Worst
+    /// case past the ceiling ≈ 260 lines/min ≈ 65 KB/min, and logrotate's
+    /// `maxsize 64M` rotates the file long before that matters.
+    public static let forensicEvents: Set<String> = ["login.denied", "refresh.reuse", "code.reuse", "kill"]
+
+    /// Events whose `reason` gets its own per-minute bucket, so junk cannot
+    /// crowd out the real thing (`revoke` reason=unknown vs the owner's revokes).
+    static let reasonBucketedEvents: Set<String> = ["revoke"]
+
+    /// How often the live path is compared with the open file (rename rotation).
+    static let rotationCheckInterval: TimeInterval = 60
 
     private struct Window {
         var start: Date
@@ -81,6 +101,7 @@ public actor AuditLog {
     private var windows: [String: Window] = [:]
     private var bytesWritten: UInt64?
     private var truncated = false
+    private var lastRotationCheck: Date = .distantPast
 
     public init(url: URL, limits: Limits = Limits(), now: @escaping @Sendable () -> Date = { Date() }) {
         self.url = url
@@ -92,53 +113,88 @@ public actor AuditLog {
         let moment = now()
         flushEndedWindows(at: moment)
         if !Self.unlimitedEvents.contains(event.event) {
-            var window = windows[event.event] ?? Window(start: moment)
+            let key = Self.bucketKey(event)
+            var window = windows[key] ?? Window(start: moment)
             if window.count >= limits.linesPerEventPerMinute {
                 window.suppressed += 1
-                windows[event.event] = window
+                windows[key] = window
                 return
             }
             window.count += 1
-            windows[event.event] = window
+            windows[key] = window
         }
-        write(Self.encode(event, at: moment))
+        write(Self.encode(event, at: moment), exempt: Self.isCeilingExempt(event.event))
     }
 
-    /// Writes one `audit.suppressed` line per event type whose window ended
-    /// with refusals. The key space is the fixed set of event names in code.
+    /// Writes every pending `audit.suppressed` summary now (graceful shutdown).
+    public func flush() {
+        let moment = now()
+        for (key, window) in windows where window.suppressed > 0 {
+            windows[key] = Window(start: window.start, count: window.count, suppressed: 0)
+            write(Self.summary(key, window.suppressed, at: moment), exempt: true)
+        }
+    }
+
+    static func bucketKey(_ event: AuditEvent) -> String {
+        guard reasonBucketedEvents.contains(event.event), let reason = event.reason else { return event.event }
+        return event.event + "|" + reason
+    }
+
+    static func isCeilingExempt(_ event: String) -> Bool {
+        unlimitedEvents.contains(event) || forensicEvents.contains(event)
+    }
+
+    private static func summary(_ key: String, _ count: Int, at moment: Date) -> Data {
+        encode(AuditEvent(event: "audit.suppressed", resultCount: count, reason: key), at: moment)
+    }
+
+    /// Writes one `audit.suppressed` line per bucket whose window ended with
+    /// refusals. The key space is the fixed set of event names (and revoke
+    /// reasons) in code.
     private func flushEndedWindows(at moment: Date) {
-        for (name, window) in windows where moment.timeIntervalSince(window.start) >= 60 {
-            windows[name] = nil
+        for (key, window) in windows where moment.timeIntervalSince(window.start) >= 60 {
+            windows[key] = nil
             if window.suppressed > 0 {
-                write(Self.encode(
-                    AuditEvent(event: "audit.suppressed", resultCount: window.suppressed, reason: name), at: moment
-                ))
+                write(Self.summary(key, window.suppressed, at: moment), exempt: true)
             }
         }
     }
 
-    private func write(_ line: Data) {
+    private func write(_ line: Data, exempt: Bool) {
+        let moment = now()
+        // Rotation check: at most once a minute normally; on every write while
+        // the ceiling has tripped (two stat calls), so the first line after a
+        // rename+create rotation — junk or forensic — lands in the new file.
+        if truncated || moment.timeIntervalSince(lastRotationCheck) >= Self.rotationCheckInterval {
+            reopenIfRotated(at: moment)
+        }
         guard let handle = openIfNeeded() else { return }
         do {
             if bytesWritten == nil {
                 bytesWritten = try handle.seekToEnd()
             }
-            if let size = bytesWritten, size + UInt64(line.count) > limits.maxFileBytes {
-                // Re-check the real size first: logrotate may have truncated the file.
-                bytesWritten = try handle.seekToEnd()
+            if !exempt, let size = bytesWritten, size + UInt64(line.count) > limits.maxFileBytes {
+                // Over the ceiling: first make sure we are not looking at a file
+                // logrotate already replaced (rename) or emptied (copytruncate).
+                reopenIfRotated(at: moment)
+                guard let current = openIfNeeded() else { return }
+                bytesWritten = try current.seekToEnd()
                 if let real = bytesWritten, real + UInt64(line.count) > limits.maxFileBytes {
                     if !truncated {
                         truncated = true
                         let marker = Self.encode(
                             AuditEvent(event: "audit.truncated", reason: "max_file_bytes"),
-                            at: now()
+                            at: moment
                         )
-                        try handle.write(contentsOf: marker)
+                        try current.write(contentsOf: marker)
                         bytesWritten = real + UInt64(marker.count)
                     }
                     return
                 }
                 truncated = false
+                try current.write(contentsOf: line)
+                bytesWritten = (bytesWritten ?? 0) + UInt64(line.count)
+                return
             }
             try handle.write(contentsOf: line)
             bytesWritten = (bytesWritten ?? 0) + UInt64(line.count)
@@ -146,6 +202,23 @@ public actor AuditLog {
             warnOnce("audit write failed: \(error)")
             self.handle = nil
             bytesWritten = nil
+        }
+    }
+
+    /// Rename rotation: if the path no longer names the open file (different
+    /// inode/device, or missing), close it; the next write reopens (creating) the path.
+    private func reopenIfRotated(at moment: Date) {
+        lastRotationCheck = moment
+        guard let handle else { return }
+        var open = stat()
+        var live = stat()
+        let openOK = fstat(handle.fileDescriptor, &open) == 0
+        let liveOK = stat(url.path, &live) == 0
+        if !openOK || !liveOK || open.st_ino != live.st_ino || open.st_dev != live.st_dev {
+            try? handle.close()
+            self.handle = nil
+            bytesWritten = nil
+            truncated = false
         }
     }
 
@@ -222,5 +295,49 @@ public actor AuditLog {
         guard !warned else { return }
         warned = true
         FileHandle.standardError.write(Data((message + "\n").utf8))
+    }
+}
+
+/// What `status` reports about the audit file itself.
+public struct AuditFileSummary: Sendable, Equatable {
+    /// An `audit.truncated` line exists in the current file (detail lines were dropped).
+    public var truncated = false
+    /// Sum of `audit.suppressed` counts over the last 24 hours.
+    public var suppressedLastDay = 0
+
+    /// Streams the whole file in 1 MB chunks (bounded memory).
+    public static func scan(_ url: URL, now: Date = Date()) -> AuditFileSummary {
+        var summary = AuditFileSummary()
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return summary }
+        defer { try? handle.close() }
+        let since = now.addingTimeInterval(-86400)
+        var carry = Data()
+        func consume(_ line: Data) {
+            guard let text = String(data: line, encoding: .utf8) else { return }
+            if text.contains("\"event\":\"audit.truncated\"") {
+                summary.truncated = true
+            } else if text.contains("\"event\":\"audit.suppressed\""),
+                      let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
+                      let ts = (object["ts"] as? String).flatMap(DateParsing.iso8601), ts >= since,
+                      let count = object["result_count"] as? Int {
+                summary.suppressedLastDay += count
+            }
+        }
+        while let chunk = try? handle.read(upToCount: 1 << 20), !chunk.isEmpty {
+            carry.append(chunk)
+            while let newline = carry.firstIndex(of: 0x0A) {
+                consume(carry[carry.startIndex ..< newline])
+                carry = Data(carry[carry.index(after: newline)...])
+            }
+        }
+        if !carry.isEmpty {
+            consume(carry)
+        }
+        return summary
+    }
+
+    public var statusLine: String {
+        "audit: \(truncated ? "TRUNCATED (size ceiling hit; check logrotate)" : "not truncated"), "
+            + "\(suppressedLastDay) line(s) suppressed by the per-minute cap in the last 24 h"
     }
 }

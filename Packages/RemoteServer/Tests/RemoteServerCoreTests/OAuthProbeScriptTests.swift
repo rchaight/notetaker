@@ -60,6 +60,8 @@ struct OAuthProbeScriptTests {
         echo
         printable "$(urldecode 'https%3A%2F%2Fnr-test.ts.net')"
         echo
+        printable "$(printf 'A\\302\\23331mB\\2332JC\\342\\200\\256D')"
+        echo
         valid_code 'abc-_09XYZ' && echo ok1
         valid_code 'a&grant_type=x' || echo refused1
         valid_code "$(printf '\\033[2J')" || echo refused2
@@ -69,8 +71,10 @@ struct OAuthProbeScriptTests {
         let lines = output.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         #expect(lines.first == "[31mRED\\x1b]0;pwned end%zz", "\(lines.first ?? "")")
         #expect(lines.dropFirst().first == "https://nr-test.ts.net")
+        // C1 controls (UTF-8 C2 9B and raw 9B = CSI) and other non-ASCII are gone.
+        #expect(lines.dropFirst(2).first == "A31mB2JCD")
         #expect(lines.contains("ok1") && lines.contains("refused1") && lines.contains("refused2"))
-        #expect(!output.unicodeScalars.contains { $0.value < 0x20 && $0 != "\n" || $0.value == 0x7F })
+        #expect(!output.unicodeScalars.contains { $0.value < 0x20 && $0 != "\n" || $0.value >= 0x7F })
     }
 
     @Test(.enabled(if: which("shellcheck") != nil, "shellcheck is not installed"))
