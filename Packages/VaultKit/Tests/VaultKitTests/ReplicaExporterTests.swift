@@ -917,6 +917,15 @@ struct ReplicaExporterTests {
         #expect(ReplicaManifest.digest(of: one) != ReplicaManifest.digest(of: two))
     }
 
+    /// Pinned vector shared with RemoteServer's `digestMatchesTheSpecFormula`: the Mac writes the digest and the
+    /// server recomputes it, so a framing change on either side silently rejects every push. Change both together.
+    @Test func digestMatchesTheVectorTheServerVerifies() throws {
+        let json = #"[{"path":"a.md","sha256":"11","bytes":1},{"path":"b.md","sha256":"22","bytes":1}]"#
+        let entries = try JSONDecoder().decode([ReplicaManifest.Entry].self, from: Data(json.utf8))
+        let vector = "f0b7f9294fdfc49da618d2b2e37ee093924406769a6acbe10b736c453325cc94"
+        #expect(ReplicaManifest.digest(of: entries) == vector)
+    }
+
     private static func block(on semaphore: DispatchSemaphore) {
         semaphore.wait()
     }

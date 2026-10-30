@@ -67,7 +67,9 @@ struct ManifestParityTests {
             .init(path: "a.md", sha256: "11", bytes: 1),
             .init(path: "b.md", sha256: "22", bytes: 1),
         ]
-        #expect(ReplicaManifest.digest(of: files) == Hashing.sha256Hex(Data("a.md\n11\nb.md\n22\n".utf8)))
+        #expect(ReplicaManifest.digest(of: files) == Hashing.sha256Hex(Data("4:a.md\n11\n4:b.md\n22\n".utf8)))
+        // Same vector as VaultKit's digestMatchesTheVectorTheServerVerifies (the Mac writes, this side verifies).
+        #expect(ReplicaManifest.digest(of: files) == "f0b7f9294fdfc49da618d2b2e37ee093924406769a6acbe10b736c453325cc94")
         // Known SHA-256 vector.
         #expect(Hashing
             .sha256Hex(Data("abc".utf8)) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")

@@ -68,11 +68,12 @@ public struct ReplicaManifest: Codable, Equatable, Sendable {
         self.appVersion = appVersion
     }
 
-    /// sha256 over `"\(path)\n\(sha256)\n"` concatenated in listed order.
+    /// sha256 over `"\(path.utf8.count):\(path)\n\(sha256)\n"` concatenated in listed order. The byte-length
+    /// prefix must stay identical to `VaultKit.ReplicaManifest.digest` (the Mac writes the digest; this verifies it).
     public static func digest(of files: [Entry]) -> String {
         var data = Data()
         for entry in files {
-            data.append(Data("\(entry.path)\n\(entry.sha256)\n".utf8))
+            data.append(Data("\(entry.path.utf8.count):\(entry.path)\n\(entry.sha256)\n".utf8))
         }
         return Hashing.sha256Hex(data)
     }

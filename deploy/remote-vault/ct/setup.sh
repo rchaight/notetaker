@@ -161,6 +161,8 @@ if [[ -n "$PUBKEY_FILE" ]]; then
 else
   [[ -f /etc/ssh/authorized_keys.replica ]] || echo "    no authorized key yet: re-run with --pubkey-file <file containing the Mac's public key>"
 fi
+# Ubuntu 24.04 starts sshd via socket activation, so /run/sshd (privilege separation) does not exist yet and `sshd -t` fails.
+install -d -m 0755 /run/sshd
 sshd -t
 systemctl enable ssh > /dev/null 2>&1 || true
 systemctl reload ssh 2> /dev/null || systemctl restart ssh

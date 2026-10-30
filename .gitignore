@@ -1,6 +1,8 @@
 # Xcode / Swift
 DerivedData/
 build/
+# deploy/remote-vault/build holds the CT build scripts (build-ct.sh, deploy.sh), not build output
+!deploy/remote-vault/build/
 dist/
 *.xcuserstate
 xcuserdata/
