@@ -1,6 +1,7 @@
 import Foundation
 import HTTPTypes
 import Hummingbird
+import Synchronization
 
 /// The authorization server (spec 07): one pre-registered public client
 /// (claude.ai, PKCE S256), one human (the allowlisted Google account). There is
@@ -62,11 +63,21 @@ public final class OAuthServer: Sendable {
                 )
             }
         }
-        router.get("/authorize") { request, _ in await self.authorize(request) }
-        router.get("/auth/google/callback") { request, _ in await self.googleCallback(request) }
-        router.post("/consent") { request, _ in await self.consent(request) }
-        router.post("/token") { request, _ in await self.token(request) }
-        router.post("/revoke") { request, _ in await self.revoke(request) }
+        router.get("/authorize") { request, _ in
+            await self.guarded("authorize", request) { await self.authorize(request) }
+        }
+        router.get("/auth/google/callback") { request, _ in
+            await self.guarded("callback", request) { await self.googleCallback(request) }
+        }
+        router.post("/consent") { request, _ in
+            await self.guarded("consent", request) { await self.consent(request) }
+        }
+        router.post("/token") { request, _ in
+            await self.guarded("token", request) { await self.token(request) }
+        }
+        router.post("/revoke") { request, _ in
+            await self.guarded("revoke", request) { await self.revoke(request) }
+        }
     }
 
     /// Hourly: drop rows whose lifetime ended more than a day ago.
@@ -83,13 +94,63 @@ public final class OAuthServer: Sendable {
         MCPEndpoint.clientIP(of: request, trustForwardedFor: trustForwardedFor)
     }
 
-    /// 10/min per endpoint per client IP (one global bucket without a trusted IP).
-    func rateLimited(_ endpoint: String, _ request: Request) async -> Response? {
+    /// Marks the current request as failed (set by `record` for failure events,
+    /// which also covers error redirects and RFC 7009's 200-for-unknown).
+    final class FailureMark: Sendable {
+        let failed = Mutex(false)
+    }
+
+    @TaskLocal static var failureMark: FailureMark?
+    /// Set once an endpoint's failure budget is spent: failure events are not
+    /// audited individually (one `auth.ratelimited` line covers the streak).
+    @TaskLocal static var quietFailures = false
+
+    /// Audit events that mean "this request failed". `login.denied` is always
+    /// written (it is the anomaly cue, and Google exchanges are capped anyway).
+    static let failureEvents: Set<String> = [
+        "authorize.rejected", "callback.rejected", "consent.rejected", "token.rejected", "login.denied",
+    ]
+
+    /// Rate limiting for every AS endpoint (spec 07, revised after critique).
+    ///
+    /// - Trusted client IP (`NR_TRUST_FORWARDED_FOR=1`): 10/min per endpoint per
+    ///   IP, checked before anything else.
+    /// - No trusted IP (one global key — assume this until stage 2 proves what
+    ///   Funnel forwards): nothing is gated up front. Requests are validated
+    ///   (cheap: parsing, constant-time compares, one primary-key lookup) and only
+    ///   FAILED ones spend the endpoint's 10/min budget; once it is spent, failures
+    ///   become a quiet 429. A request carrying a valid code, refresh token or
+    ///   consent token is therefore never blocked by internet junk. The steps that
+    ///   cost real work are capped separately in both modes: new pending
+    ///   authorizations (30/min) and Google code exchanges (20/min), so junk can at
+    ///   worst delay the interactive login, never refresh or `/mcp`.
+    func guarded(_ endpoint: String, _ request: Request, _ handle: () async -> Response) async -> Response {
         let ip = clientIP(request)
-        let (decision, firstRefusal) = await limiter.admitAuth(endpoint: endpoint, key: ip ?? "global")
-        guard case let .limited(retryAfter) = decision else { return nil }
-        if firstRefusal {
-            await audit?.record(AuditEvent(event: "auth.ratelimited", status: "429", ip: ip, reason: endpoint))
+        if let ip {
+            let (decision, first) = await limiter.admitAuth(endpoint: endpoint, key: ip)
+            if case let .limited(retryAfter) = decision {
+                return await tooMany(endpoint, retryAfter: retryAfter, audit: first, ip: ip)
+            }
+            return await handle()
+        }
+        let mark = FailureMark()
+        let quiet = await limiter.authFailuresExhausted(endpoint: endpoint)
+        let response = await Self.$failureMark.withValue(mark) {
+            await Self.$quietFailures.withValue(quiet) { await handle() }
+        }
+        // A 429 from a work cap is already a refusal: it does not also spend the failure budget.
+        let failed = mark.failed.withLock { $0 } || (response.status.code >= 400 && response.status != .tooManyRequests)
+        guard failed else { return response }
+        let (decision, first) = await limiter.spendAuthFailure(endpoint: endpoint)
+        if case let .limited(retryAfter) = decision {
+            return await tooMany(endpoint, retryAfter: retryAfter, audit: first, ip: nil)
+        }
+        return response
+    }
+
+    func tooMany(_ reason: String, retryAfter: Int, audit shouldAudit: Bool, ip: String?) async -> Response {
+        if shouldAudit {
+            await audit?.record(AuditEvent(event: "auth.ratelimited", status: "429", ip: ip, reason: reason))
         }
         var response = MCPEndpoint.tooManyRequests(retryAfter: retryAfter)
         response.headers[OAuthHTTP.pragma] = "no-cache"
@@ -100,6 +161,14 @@ public final class OAuthServer: Sendable {
         _ event: String, status: String? = nil, family: String? = nil, reason: String? = nil,
         args: [String: String] = [:], request: Request
     ) async {
+        let failure = Self.failureEvents.contains(event) || (event == "revoke" && status != "200")
+            || (event == "revoke" && reason == "unknown")
+        if failure {
+            Self.failureMark?.failed.withLock { $0 = true }
+            if Self.quietFailures, event != "login.denied" {
+                return
+            }
+        }
         await audit?.record(AuditEvent(
             event: event, args: args, status: status, clientID: settings.clientID, tokenFamily: family,
             ip: clientIP(request), reason: reason

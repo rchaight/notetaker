@@ -9,9 +9,6 @@ extension OAuthServer {
     /// `redirect_uri` is never a redirect target). After that, failures go back
     /// to the validated `redirect_uri` with `error`, `state` and `iss`.
     func authorize(_ request: Request) async -> Response {
-        if let limited = await rateLimited("authorize", request) {
-            return limited
-        }
         guard let form = FormData.parse(request.uri.query ?? "") else {
             await record("authorize.rejected", status: "400", reason: "malformed_query", request: request)
             return Self.badRequestPage()
@@ -79,6 +76,10 @@ extension OAuthServer {
             clientState: state, redirectURI: redirectURI, codeChallenge: challenge,
             resource: settings.resourceURL, createdAt: now()
         )
+        // Each success creates server state: capped globally (see `guarded`).
+        if case let .limited(retryAfter) = await limiter.admitAuthorization().decision {
+            return await tooMany("authorizations", retryAfter: retryAfter, audit: true, ip: clientIP(request))
+        }
         let googleURL: String
         do throws(LoginFailure) {
             googleURL = try await google.authorizationURL(for: authorization)
@@ -92,9 +93,6 @@ extension OAuthServer {
     // MARK: - GET /auth/google/callback
 
     func googleCallback(_ request: Request) async -> Response {
-        if let limited = await rateLimited("callback", request) {
-            return limited
-        }
         guard let form = FormData.parse(request.uri.query ?? ""),
               case let .one(gstate) = form.value("state"),
               let authorization = await pending.take(gstate: gstate)
@@ -114,6 +112,18 @@ extension OAuthServer {
             ]))
         }
 
+        // Outbound Google work is capped globally: anyone can mint a pending
+        // request and present a junk code, and each one would cost a Google call.
+        let (exchange, firstRefusal) = await limiter.admitGoogleExchange()
+        if case let .limited(retryAfter) = exchange {
+            _ = await tooMany("google_exchange", retryAfter: retryAfter, audit: firstRefusal, ip: clientIP(request))
+            var page = OAuthHTTP.html(
+                .tooManyRequests, title: "Too many sign-in attempts",
+                message: "Too many sign-in attempts right now. Wait a minute, then start again from Claude."
+            )
+            page.headers[.retryAfter] = String(retryAfter)
+            return page
+        }
         let login: VerifiedLogin
         do throws(LoginFailure) {
             guard case let .one(code) = form.value("code") else { throw LoginFailure("missing_code") }

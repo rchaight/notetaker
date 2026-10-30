@@ -189,7 +189,10 @@ public struct RemoteConfig: Sendable, Equatable {
             "state_dir: \(stateDir.path)",
             "audit_log: \(auditLog.path)",
             "allowed_hosts: \(allowedHosts.joined(separator: ","))",
-            "trust_forwarded_for: \(trustForwardedFor)",
+            "trust_forwarded_for: \(trustForwardedFor)"
+                +
+                (trustForwardedFor ?
+                    " (uses the LAST X-Forwarded-For hop; stage 2 must verify what tailscaled/Funnel sends)" : ""),
             "anthropic_ip_allowlist: \(anthropicIPAllowlist)",
             "stale_after_hours: \(staleAfterHours)",
             "oauth.allowed_email: \(oauth.allowedEmail ?? "(unset)")",
@@ -204,6 +207,17 @@ public struct RemoteConfig: Sendable, Equatable {
         ]
         if oauth.allowLoopback {
             lines.append("WARNING: NR_ALLOW_LOOPBACK=1 is a stage-1 (tailnet-only) setting; turn it off before Funnel.")
+        }
+        if anthropicIPAllowlist, !trustForwardedFor {
+            lines.append(
+                "WARNING: NR_ANTHROPIC_IP_ALLOWLIST=1 has no effect without NR_TRUST_FORWARDED_FOR=1 (no client IP to check)."
+            )
+        }
+        if !trustForwardedFor {
+            lines
+                .append(
+                    "note: no trusted client IP; OAuth limits count failed requests globally (see OAuthServer.guarded)."
+                )
         }
         if !oauth.googleIssuer.hasPrefix("https://") {
             lines.append("WARNING: NR_GOOGLE_ISSUER is not https (test-only setting).")

@@ -9,9 +9,6 @@ extension OAuthServer {
     /// the logged-in browser has seen) is the defence; as depth, a cross-site
     /// `Origin` or `Sec-Fetch-Site: cross-site` is refused outright.
     func consent(_ request: Request) async -> Response {
-        if let limited = await rateLimited("consent", request) {
-            return limited
-        }
         if let origin = request.headers[.origin], origin != "null", origin != settings.issuer {
             await record("consent.rejected", status: "403", reason: "cross_origin", request: request)
             return OAuthHTTP.html(

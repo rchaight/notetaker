@@ -6,9 +6,6 @@ extension OAuthServer {
     // MARK: - POST /token
 
     func token(_ request: Request) async -> Response {
-        if let limited = await rateLimited("token", request) {
-            return limited
-        }
         guard let form = await Self.formBody(request) else {
             return OAuthHTTP.oauthError(
                 .badRequest,

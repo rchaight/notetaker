@@ -42,6 +42,7 @@ struct OAuthHarness: Sendable {
     static func run(
         env extra: [String: String] = [:],
         authPerMinute: Int = 1000,
+        workPerMinute: Int = 1000,
         configure: @Sendable (FakeGoogle) -> Void = { _ in },
         _ body: @Sendable (OAuthHarness, any TestClientProtocol) async throws -> Void
     ) async throws {
@@ -53,7 +54,8 @@ struct OAuthHarness: Sendable {
                 google: google,
                 clock: clock,
                 env: extra,
-                authPerMinute: authPerMinute
+                authPerMinute: authPerMinute,
+                workPerMinute: workPerMinute
             )
             defer { harness.fixture.cleanUp() }
             try await harness.app().test(.router) { client in
@@ -65,7 +67,7 @@ struct OAuthHarness: Sendable {
 
     static func make(
         google: FakeGoogle, clock: TestClock, env extra: [String: String], authPerMinute: Int,
-        fixture existing: ReplicaFixture? = nil
+        workPerMinute: Int = 1000, fixture existing: ReplicaFixture? = nil
     ) async throws -> OAuthHarness {
         let fixture = try existing ?? ReplicaFixture()
         if existing == nil {
@@ -84,6 +86,9 @@ struct OAuthHarness: Sendable {
         let audit = AuditLog(url: fixture.auditURL, now: clock.clock)
         var limits = RateLimiter.Settings()
         limits.authPerMinute = authPerMinute
+        // Production: 30 new authorizations / 20 Google exchanges per minute.
+        limits.authorizationsPerMinute = workPerMinute
+        limits.googleExchangesPerMinute = workPerMinute
         let limiter = RateLimiter(settings: limits, now: clock.clock)
         let store = try TokenStore(url: config.tokensURL)
         let server = OAuthServer(

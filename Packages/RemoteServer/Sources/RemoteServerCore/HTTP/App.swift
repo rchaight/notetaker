@@ -8,6 +8,9 @@ import MCP
 /// response ever carries a framework error body or a `Server` header.
 public enum RemoteApp {
     public static let maxBodyBytes = 64 * 1024
+    /// Connections with no HTTP activity for this long are closed (a request head
+    /// dribbled in byte by byte produces no activity and is closed too).
+    public static let idleTimeoutSeconds: Int64 = 30
 
     /// Extra routes (spec 07 adds the OAuth endpoints here without touching this router).
     public typealias RouteContributor = @Sendable (Router<BasicRequestContext>) -> Void
@@ -18,6 +21,7 @@ public enum RemoteApp {
         mcp: RemoteMCPServer,
         limiter: RateLimiter,
         audit: AuditLog?,
+        idleTimeoutSeconds: Int64 = RemoteApp.idleTimeoutSeconds,
         extraRoutes: RouteContributor = { _ in }
     ) -> some ApplicationProtocol {
         let router = Router<BasicRequestContext>()
@@ -65,6 +69,7 @@ public enum RemoteApp {
 
         return Application(
             router: router,
+            server: .http1(configuration: .init(idleTimeout: .seconds(idleTimeoutSeconds))),
             configuration: ApplicationConfiguration(
                 address: .hostname(config.bindHost, port: config.bindPort),
                 serverName: nil
@@ -270,13 +275,20 @@ struct MCPEndpoint: Sendable {
         return out
     }
 
-    /// First `X-Forwarded-For` address, only when explicitly trusted and well-formed.
+    /// The LAST `X-Forwarded-For` address, only when explicitly trusted and
+    /// well-formed. Exactly one trusted proxy (tailscaled) fronts this service,
+    /// so the last hop is the one it appended; earlier hops are client-supplied
+    /// and trivially rotated. All `X-Forwarded-For` field lines are considered.
+    /// Stage 2 must verify what tailscaled/Funnel actually sends before relying on it.
     static func clientIP(of request: Request, trustForwardedFor: Bool) -> String? {
-        guard trustForwardedFor, let header = request.headers[HTTPField.Name("X-Forwarded-For")!] else { return nil }
-        let first = header.split(separator: ",").first.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
+        guard trustForwardedFor else { return nil }
+        let lines = request.headers[values: HTTPField.Name("X-Forwarded-For")!]
+        guard !lines.isEmpty else { return nil }
+        let last = lines.joined(separator: ",").split(separator: ",", omittingEmptySubsequences: false).last
+            .map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
         let allowed = Set("0123456789abcdefABCDEF.:")
-        guard !first.isEmpty, first.count <= 45, first.allSatisfy({ allowed.contains($0) }) else { return nil }
-        return first
+        guard !last.isEmpty, last.count <= 45, last.allSatisfy({ allowed.contains($0) }) else { return nil }
+        return last
     }
 }
 

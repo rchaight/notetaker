@@ -40,8 +40,17 @@ public actor RateLimiter {
         public var failuresPerWindow = 20
         public var failureWindow: TimeInterval = 60
         public var tarpit: TimeInterval = 60
-        /// Spec 07: each OAuth endpoint, per client IP (or one global key).
+        /// Spec 07, per OAuth endpoint. With a trusted client IP: every request
+        /// from that IP. Without one (one global key): only FAILED requests, so
+        /// internet junk can never lock out a request that presents a valid secret.
         public var authPerMinute = 10
+        /// Global caps on the steps junk could otherwise use to burn real work:
+        /// new pending authorizations (server state) and outbound Google code
+        /// exchanges (network + quota). Only the interactive login can be delayed.
+        public var authorizationsPerMinute = 30
+        public var googleExchangesPerMinute = 20
+        /// Ceiling on tracked keys (client IPs) in the 401 tarpit maps.
+        public var maxTrackedKeys = 10000
 
         public init() {}
     }
@@ -102,10 +111,24 @@ public actor RateLimiter {
     @discardableResult
     public func recordAuthFailure(key: String) -> Bool {
         let moment = now()
+        if failures.count >= settings.maxTrackedKeys {
+            // Rotating client IPs must not grow this map without bound.
+            failures = failures.filter { $0.value.contains { moment.timeIntervalSince($0) < settings.failureWindow } }
+            if failures.count >= settings.maxTrackedKeys {
+                failures.removeAll(keepingCapacity: true)
+            }
+        }
         var recent = (failures[key] ?? []).filter { moment.timeIntervalSince($0) < settings.failureWindow }
         recent.append(moment)
         failures[key] = recent
         if recent.count >= settings.failuresPerWindow {
+            if blockedUntil.count >= settings.maxTrackedKeys {
+                blockedUntil = blockedUntil.filter { $0.value > moment }
+                while blockedUntil.count >= settings.maxTrackedKeys,
+                      let soonest = blockedUntil.min(by: { $0.value < $1.value })?.key {
+                    blockedUntil[soonest] = nil
+                }
+            }
             blockedUntil[key] = moment.addingTimeInterval(settings.tarpit)
             failures[key] = nil
             return true
@@ -113,17 +136,41 @@ public actor RateLimiter {
         return false
     }
 
-    /// One OAuth endpoint request from `key` (client IP or "global").
+    /// Per-IP mode: one OAuth endpoint request from a trusted client IP.
     /// `firstRefusal` is true only for the first 429 of a refusal streak, so a
     /// flood produces one `auth.ratelimited` audit line, not one per request.
     public func admitAuth(endpoint: String, key: String) -> (decision: Decision, firstRefusal: Bool) {
+        take("auth|\(endpoint)|\(key)", capacity: settings.authPerMinute)
+    }
+
+    /// Global mode: is the failure budget of `endpoint` already spent? (No spend.)
+    public func authFailuresExhausted(endpoint: String) -> Bool {
+        guard var bucket = authBuckets["fail|\(endpoint)"] else { return false }
+        return bucket.take(now: now()) != nil
+    }
+
+    /// Global mode: spends one failure of `endpoint`.
+    public func spendAuthFailure(endpoint: String) -> (decision: Decision, firstRefusal: Bool) {
+        take("fail|\(endpoint)", capacity: settings.authPerMinute)
+    }
+
+    /// A new pending authorization (both modes).
+    public func admitAuthorization() -> (decision: Decision, firstRefusal: Bool) {
+        take("authorizations", capacity: settings.authorizationsPerMinute)
+    }
+
+    /// One outbound Google code exchange (both modes).
+    public func admitGoogleExchange() -> (decision: Decision, firstRefusal: Bool) {
+        take("google", capacity: settings.googleExchangesPerMinute)
+    }
+
+    private func take(_ id: String, capacity: Int) -> (decision: Decision, firstRefusal: Bool) {
         let moment = now()
-        let id = endpoint + "|" + key
-        if authBuckets.count > 10000 {
+        if authBuckets.count > settings.maxTrackedKeys {
             authBuckets = authBuckets.filter { !$0.value.isIdle(now: moment) }
             authRefusing = authRefusing.filter { authBuckets[$0] != nil }
         }
-        var bucket = authBuckets[id] ?? TokenBucket(capacity: settings.authPerMinute, window: 60, now: moment)
+        var bucket = authBuckets[id] ?? TokenBucket(capacity: capacity, window: 60, now: moment)
         let wait = bucket.take(now: moment)
         authBuckets[id] = bucket
         guard let wait else {
@@ -132,5 +179,10 @@ public actor RateLimiter {
         }
         let first = authRefusing.insert(id).inserted
         return (.limited(retryAfter: max(1, Int(wait.rounded(.up)))), first)
+    }
+
+    /// Test seam: how many keys the 401 tarpit maps hold.
+    var trackedFailureKeys: (failures: Int, blocked: Int) {
+        (failures.count, blockedUntil.count)
     }
 }

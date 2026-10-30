@@ -8,9 +8,6 @@ extension OAuthServer {
     /// an unknown token still gets 200 (RFC 7009 §2.2). `token_type_hint` is
     /// ignored — both kinds are searched.
     func revoke(_ request: Request) async -> Response {
-        if let limited = await rateLimited("revoke", request) {
-            return limited
-        }
         guard let form = await Self.formBody(request) else {
             return OAuthHTTP.oauthError(
                 .badRequest,
