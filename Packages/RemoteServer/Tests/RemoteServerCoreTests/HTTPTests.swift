@@ -15,6 +15,7 @@ struct HTTPTests {
     private func withApp(
         authenticator: any BearerAuthenticator = DenyAllAuthenticator(),
         extra: [String: String] = [:],
+        now: @escaping @Sendable () -> Date = { Date() },
         _ body: @Sendable (any TestClientProtocol) async throws -> Void
     ) async throws {
         let fixture = try ReplicaFixture()
@@ -29,7 +30,7 @@ struct HTTPTests {
             config: config,
             authenticator: authenticator,
             mcp: mcp,
-            limiter: RateLimiter(),
+            limiter: RateLimiter(now: now),
             audit: audit
         )
         try await app.test(.router, body)
@@ -287,7 +288,10 @@ struct HTTPTests {
     }
 
     @Test func sixtyFirstToolCallInAMinuteIs429() async throws {
-        try await withApp(authenticator: AllowAllAuthenticator()) { client in
+        // Frozen clock: on a loaded CI runner 60 calls can take seconds, and a
+        // wall-clock bucket refills one token per second.
+        let frozen = Date()
+        try await withApp(authenticator: AllowAllAuthenticator(), now: { frozen }) { client in
             for attempt in 1 ... 60 {
                 try await client.execute(uri: "/mcp", method: .post, headers: bearer(), body: rpc(
                     attempt,

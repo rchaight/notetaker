@@ -299,6 +299,30 @@ struct OAuthHardeningTests {
         #expect(Base64URL.decode("YQ") == Data("a".utf8))
     }
 
+    @Test func jwksParsingDropsAmbiguousWeakAndForeignKeys() throws {
+        func document(_ keys: [[String: Any]]) throws -> Data {
+            try JSONSerialization.data(withJSONObject: ["keys": keys])
+        }
+        let k1 = TestKeys.jwk(TestKeys.primary, kid: "k1")
+        var encryption = TestKeys.jwk(TestKeys.secondary, kid: "enc")
+        encryption["use"] = "enc"
+        var otherAlg = TestKeys.jwk(TestKeys.secondary, kid: "ps")
+        otherAlg["alg"] = "PS256"
+        var weak = TestKeys.jwk(TestKeys.secondary, kid: "weak")
+        weak["n"] = Base64URL.encode([UInt8](repeating: 0xC3, count: 128)) // 1024-bit modulus
+        let ec: [String: Any] = ["kty": "EC", "kid": "ec", "crv": "P-256", "x": "AA", "y": "AA"]
+        let set = try #require(JWKSet.parse(document([
+            k1, encryption, otherAlg, weak, ec,
+            TestKeys.jwk(TestKeys.primary, kid: "dup"), TestKeys.jwk(TestKeys.secondary, kid: "dup"),
+        ])))
+        #expect(Set(set.keys.keys) == ["k1"])
+        #expect(JWKSet.parse(Data("not json".utf8)) == nil)
+        #expect(JWKSCache.maxAge(from: "public, max-age=19000, must-revalidate") == 19000)
+        #expect(JWKSCache.maxAge(from: "max-age=5") == 300)
+        #expect(JWKSCache.maxAge(from: "max-age=9999999") == 86400)
+        #expect(JWKSCache.maxAge(from: nil) == 300)
+    }
+
     @Test func formParsingFollowsRFC6749() throws {
         let form = try #require(FormData.parse("a=1&b=&c=x+y&d=%2F&a2=%E2%9C%93"))
         #expect(form.value("a") == .one("1"))
