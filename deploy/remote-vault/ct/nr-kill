@@ -29,7 +29,7 @@ fail=0
 step() { local name="$1"; shift; if "$@"; then echo "nr-kill: $name: ok"; else echo "nr-kill: $name: FAILED" >&2; fail=1; fi; }
 step "1. tailscale funnel off" tailscale funnel --https=443 off
 step "2. systemctl stop notetaker-remote" systemctl stop notetaker-remote
-step "3a. delete token + index databases" bash -c "rm -f '$STATE'/tokens.sqlite '$STATE'/tokens.sqlite-wal '$STATE'/tokens.sqlite-shm '$STATE'/index.sqlite '$STATE'/index.sqlite-wal '$STATE'/index.sqlite-shm"
+step "3a. delete token + index databases" bash -c "rm -f '$STATE'/tokens.sqlite '$STATE'/tokens.sqlite-wal '$STATE'/tokens.sqlite-shm '$STATE'/index.sqlite '$STATE'/index.sqlite-wal '$STATE'/index.sqlite-shm '$STATE'/index.tmp-*"
 step "3b. wipe replica inbox" bash -c "find '$INBOX' -mindepth 1 -delete"
 step "3c. write DISABLED marker" bash -c "install -m 0644 /dev/null '$INBOX/DISABLED'"
 exit "$fail"

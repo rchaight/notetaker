@@ -38,6 +38,9 @@ public struct KillCommand: Sendable {
             step("delete tokens.sqlite\(suffix)") { actions.removeFile(at: sidecar) }
         }
         step("delete index.sqlite") { actions.removeFile(at: config.indexURL) }
+        // A rebuild in flight leaves `index.tmp-*.sqlite` (+ journal) holding note text; the service only sweeps
+        // those on its next start, so a kill must not leave them behind.
+        step("delete index leftovers") { actions.removeFiles(in: config.stateDir, withPrefix: "index") }
         step("remove replica contents") { actions.removeContents(of: config.replicaDir) }
         step("write DISABLED marker") { actions.writeMarker(at: config.disabledMarkerURL) }
         await audit?.record(AuditEvent(event: "kill", status: allOK ? "ok" : "partial"))

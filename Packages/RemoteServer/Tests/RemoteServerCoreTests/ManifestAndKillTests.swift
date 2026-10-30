@@ -111,6 +111,10 @@ final class RecordingActions: SystemActions, @unchecked Sendable {
         note("wipe \(directory.lastPathComponent)")
     }
 
+    func removeFiles(in directory: URL, withPrefix prefix: String) -> Bool {
+        note("rm \(prefix)* in \(directory.lastPathComponent)")
+    }
+
     func writeMarker(at url: URL) -> Bool {
         note("write \(url.lastPathComponent)")
     }
@@ -141,7 +145,7 @@ struct KillCommandTests {
         #expect(actions.steps == [
             "tailscale funnel --https=443 off", "systemctl stop notetaker-remote",
             "rm tokens.sqlite", "rm tokens.sqlite-wal", "rm tokens.sqlite-shm",
-            "rm index.sqlite", "wipe replica", "write DISABLED",
+            "rm index.sqlite", "rm index* in state", "wipe replica", "write DISABLED",
         ])
     }
 
@@ -155,6 +159,20 @@ struct KillCommandTests {
         #expect(code == 1)
         #expect(actions.steps.last == "write DISABLED")
         #expect(output.contains { $0.contains("systemctl stop notetaker-remote: FAILED") })
+    }
+
+    @Test func liveActionsRemoveIndexLeftoversButKeepOtherFiles() throws {
+        let fixture = try ReplicaFixture()
+        defer { fixture.cleanUp() }
+        let state = try fixture.config().stateDir
+        try FileManager.default.createDirectory(at: state, withIntermediateDirectories: true)
+        for name in ["index.sqlite", "index.tmp-ABC.sqlite", "index.tmp-ABC.sqlite-journal", "tokens.sqlite"] {
+            FileManager.default.createFile(atPath: state.appendingPathComponent(name).path, contents: Data("x".utf8))
+        }
+        #expect(LiveSystemActions().removeFiles(in: state, withPrefix: "index"))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: state.path) == ["tokens.sqlite"])
+        // A directory that does not exist is not a failure.
+        #expect(LiveSystemActions().removeFiles(in: state.appendingPathComponent("nope"), withPrefix: "index"))
     }
 
     @Test func liveActionsWipeAReplicaDirectory() throws {

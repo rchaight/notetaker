@@ -7,6 +7,8 @@ public protocol SystemActions: Sendable {
     /// Best-effort; returns whether it succeeded.
     func removeFile(at url: URL) -> Bool
     func removeContents(of directory: URL) -> Bool
+    /// Removes every direct child of `directory` whose name starts with `prefix` (a missing directory is success).
+    func removeFiles(in directory: URL, withPrefix prefix: String) -> Bool
     func writeMarker(at url: URL) -> Bool
     func run(_ executable: String, arguments: [String]) -> Bool
 }
@@ -29,6 +31,18 @@ public struct LiveSystemActions: SystemActions {
         guard let names = try? fileManager.contentsOfDirectory(atPath: directory.path) else { return true }
         var ok = true
         for name in names {
+            if (try? fileManager.removeItem(at: directory.appendingPathComponent(name))) == nil {
+                ok = false
+            }
+        }
+        return ok
+    }
+
+    public func removeFiles(in directory: URL, withPrefix prefix: String) -> Bool {
+        let fileManager = FileManager.default
+        guard let names = try? fileManager.contentsOfDirectory(atPath: directory.path) else { return true }
+        var ok = true
+        for name in names where name.hasPrefix(prefix) {
             if (try? fileManager.removeItem(at: directory.appendingPathComponent(name))) == nil {
                 ok = false
             }
