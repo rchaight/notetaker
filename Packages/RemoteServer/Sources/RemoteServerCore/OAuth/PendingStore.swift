@@ -26,7 +26,11 @@ struct PendingConsent: Sendable, Equatable {
 /// In-memory, single-use, TTL-bound and capped (oldest evicted). Keys are the
 /// SHA-256 of the secret handle (`gstate`, `consent_token`), never the handle.
 actor PendingStore {
-    static let capacity = 100
+    /// Default ceiling. It must exceed what the authorization cap can admit in
+    /// one TTL (30/min × 10 min = 300), so only the TTL — never junk — evicts a
+    /// pending sign-in. ~0.5 KB per entry: the bound is a few hundred KB.
+    static let defaultCapacity = 400
+    nonisolated let capacity: Int
 
     private let now: OAuthClock
     private let pendingTTL: TimeInterval
@@ -34,7 +38,11 @@ actor PendingStore {
     private var authorizations: [String: PendingAuthorization] = [:]
     private var consents: [String: PendingConsent] = [:]
 
-    init(now: @escaping OAuthClock, pendingTTL: TimeInterval = 600, consentTTL: TimeInterval = 300) {
+    init(
+        now: @escaping OAuthClock, pendingTTL: TimeInterval = 600, consentTTL: TimeInterval = 300,
+        capacity: Int = PendingStore.defaultCapacity
+    ) {
+        self.capacity = capacity
         self.now = now
         self.pendingTTL = pendingTTL
         self.consentTTL = consentTTL
@@ -51,7 +59,7 @@ actor PendingStore {
     func insert(_ pending: PendingAuthorization) {
         let moment = now()
         authorizations = authorizations.filter { moment.timeIntervalSince($0.value.createdAt) < pendingTTL }
-        while authorizations.count >= Self.capacity,
+        while authorizations.count >= capacity,
               let oldest = authorizations.min(by: { $0.value.createdAt < $1.value.createdAt })?.key {
             authorizations[oldest] = nil
         }
@@ -68,7 +76,7 @@ actor PendingStore {
     func insertConsent(_ consent: PendingConsent) -> String {
         let moment = now()
         consents = consents.filter { moment.timeIntervalSince($0.value.createdAt) < consentTTL }
-        while consents.count >= Self.capacity,
+        while consents.count >= capacity,
               let oldest = consents.min(by: { $0.value.createdAt < $1.value.createdAt })?.key {
             consents[oldest] = nil
         }

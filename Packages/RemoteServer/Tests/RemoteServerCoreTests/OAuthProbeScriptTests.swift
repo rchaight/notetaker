@@ -48,6 +48,31 @@ struct OAuthProbeScriptTests {
         #expect(status == 0, "\(output)")
     }
 
+    /// Values from the network are decoded without interpreting backslash
+    /// escapes, printed only with control characters stripped, and a callback
+    /// code that is not base64url is refused before it reaches a form body.
+    @Test(.enabled(if: which("bash") != nil, "bash is not installed"))
+    func untrustedCallbackValuesCannotDriveTheTerminal() throws {
+        let script = """
+        PROBE_SOURCE_ONLY=1
+        . "\(Self.script.path)"
+        printable "$(urldecode '%1B%5B31mRED%07%0D%0A%5Cx1b%1B%5D0%3Bpwned%07+end%zz')"
+        echo
+        printable "$(urldecode 'https%3A%2F%2Fnr-test.ts.net')"
+        echo
+        valid_code 'abc-_09XYZ' && echo ok1
+        valid_code 'a&grant_type=x' || echo refused1
+        valid_code "$(printf '\\033[2J')" || echo refused2
+        """
+        let (status, output) = try Self.run(#require(Self.which("bash")), ["-c", script])
+        #expect(status == 0, "\(output)")
+        let lines = output.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        #expect(lines.first == "[31mRED\\x1b]0;pwned end%zz", "\(lines.first ?? "")")
+        #expect(lines.dropFirst().first == "https://nr-test.ts.net")
+        #expect(lines.contains("ok1") && lines.contains("refused1") && lines.contains("refused2"))
+        #expect(!output.unicodeScalars.contains { $0.value < 0x20 && $0 != "\n" || $0.value == 0x7F })
+    }
+
     @Test(.enabled(if: which("shellcheck") != nil, "shellcheck is not installed"))
     func scriptIsShellcheckClean() throws {
         let (status, output) = try Self.run(#require(Self.which("shellcheck")), [Self.script.path])

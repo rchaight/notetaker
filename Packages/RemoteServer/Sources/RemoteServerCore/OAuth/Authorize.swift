@@ -77,8 +77,9 @@ extension OAuthServer {
             resource: settings.resourceURL, createdAt: now()
         )
         // Each success creates server state: capped globally (see `guarded`).
-        if case let .limited(retryAfter) = await limiter.admitAuthorization().decision {
-            return await tooMany("authorizations", retryAfter: retryAfter, audit: true, ip: clientIP(request))
+        let (admission, firstRefusal) = await limiter.admitAuthorization()
+        if case let .limited(retryAfter) = admission {
+            return await tooMany("authorizations", retryAfter: retryAfter, audit: firstRefusal, ip: clientIP(request))
         }
         let googleURL: String
         do throws(LoginFailure) {

@@ -83,15 +83,29 @@ public enum Commands {
             await audit.record(AuditEvent(event: "server.start", reason: "bind=\(config.bindHost):\(config.bindPort)"))
             let polling = Task { await watcher.run() }
             let housekeeping = Task { await oauth?.housekeepingLoop() }
+            let forwarded = Task { await reportUnparseableForwardedFor(audit: audit) }
             defer {
                 polling.cancel()
                 housekeeping.cancel()
+                forwarded.cancel()
             }
             try await app.runService() // SIGTERM/SIGINT → graceful stop
             return 0
         } catch {
             printErr("notetaker-remote: \(error)")
             return 1
+        }
+    }
+
+    /// Once a minute: how many requests carried an X-Forwarded-For whose last
+    /// hop was not an address (one audit line, only when non-zero).
+    static func reportUnparseableForwardedFor(audit: AuditLog, every interval: Duration = .seconds(60)) async {
+        while !Task.isCancelled {
+            try? await Task.sleep(for: interval)
+            let count = ForwardedFor.drainUnparseable()
+            if count > 0 {
+                await audit.record(AuditEvent(event: "xff.unparseable", resultCount: count))
+            }
         }
     }
 
@@ -125,6 +139,10 @@ public enum Commands {
         }
         for line in config.describe() {
             print(line)
+        }
+        let unparseable = ForwardedFor.unparseableInAudit(at: config.auditLog)
+        if config.trustForwardedFor || unparseable > 0 {
+            print("x_forwarded_for: \(unparseable) request(s) had an unparseable X-Forwarded-For (audit log)")
         }
         do {
             let settings = try OAuthSettings(config: config)

@@ -51,24 +51,101 @@ public actor AuditLog {
     /// Logged values stay strictly under 256 characters.
     public static let maxValueLength = 255
 
+    /// Flood bounds. Unauthenticated traffic can trigger audit lines, so every
+    /// event type is capped per minute (excess counted, then one
+    /// `audit.suppressed` line with `result_count=N`), and the file has a hard
+    /// size ceiling (one `audit.truncated` line, then nothing until rotation).
+    public struct Limits: Sendable {
+        public var linesPerEventPerMinute = 120
+        public var maxFileBytes: UInt64 = 256 * 1024 * 1024
+
+        public init() {}
+    }
+
+    /// Never rate-limited: operator actions and the bound's own summary lines.
+    public static let unlimitedEvents: Set<String> = [
+        "kill", "server.start", "replica.contaminated", "audit.suppressed", "audit.truncated",
+    ]
+
+    private struct Window {
+        var start: Date
+        var count = 0
+        var suppressed = 0
+    }
+
     private let url: URL
     private var handle: FileHandle?
     private var warned = false
     private let now: @Sendable () -> Date
+    private let limits: Limits
+    private var windows: [String: Window] = [:]
+    private var bytesWritten: UInt64?
+    private var truncated = false
 
-    public init(url: URL, now: @escaping @Sendable () -> Date = { Date() }) {
+    public init(url: URL, limits: Limits = Limits(), now: @escaping @Sendable () -> Date = { Date() }) {
         self.url = url
+        self.limits = limits
         self.now = now
     }
 
     public func record(_ event: AuditEvent) {
-        let line = Self.encode(event, at: now())
+        let moment = now()
+        flushEndedWindows(at: moment)
+        if !Self.unlimitedEvents.contains(event.event) {
+            var window = windows[event.event] ?? Window(start: moment)
+            if window.count >= limits.linesPerEventPerMinute {
+                window.suppressed += 1
+                windows[event.event] = window
+                return
+            }
+            window.count += 1
+            windows[event.event] = window
+        }
+        write(Self.encode(event, at: moment))
+    }
+
+    /// Writes one `audit.suppressed` line per event type whose window ended
+    /// with refusals. The key space is the fixed set of event names in code.
+    private func flushEndedWindows(at moment: Date) {
+        for (name, window) in windows where moment.timeIntervalSince(window.start) >= 60 {
+            windows[name] = nil
+            if window.suppressed > 0 {
+                write(Self.encode(
+                    AuditEvent(event: "audit.suppressed", resultCount: window.suppressed, reason: name), at: moment
+                ))
+            }
+        }
+    }
+
+    private func write(_ line: Data) {
         guard let handle = openIfNeeded() else { return }
         do {
+            if bytesWritten == nil {
+                bytesWritten = try handle.seekToEnd()
+            }
+            if let size = bytesWritten, size + UInt64(line.count) > limits.maxFileBytes {
+                // Re-check the real size first: logrotate may have truncated the file.
+                bytesWritten = try handle.seekToEnd()
+                if let real = bytesWritten, real + UInt64(line.count) > limits.maxFileBytes {
+                    if !truncated {
+                        truncated = true
+                        let marker = Self.encode(
+                            AuditEvent(event: "audit.truncated", reason: "max_file_bytes"),
+                            at: now()
+                        )
+                        try handle.write(contentsOf: marker)
+                        bytesWritten = real + UInt64(marker.count)
+                    }
+                    return
+                }
+                truncated = false
+            }
             try handle.write(contentsOf: line)
+            bytesWritten = (bytesWritten ?? 0) + UInt64(line.count)
         } catch {
             warnOnce("audit write failed: \(error)")
             self.handle = nil
+            bytesWritten = nil
         }
     }
 

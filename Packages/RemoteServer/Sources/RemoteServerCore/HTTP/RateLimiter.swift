@@ -60,7 +60,7 @@ public actor RateLimiter {
         case limited(retryAfter: Int)
     }
 
-    private let settings: Settings
+    public nonisolated let settings: Settings
     private let now: @Sendable () -> Date
     private var minute: TokenBucket
     private var hour: TokenBucket

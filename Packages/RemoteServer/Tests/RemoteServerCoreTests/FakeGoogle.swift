@@ -32,12 +32,12 @@ final class TestClock: Sendable {
     }
 }
 
-/// Test RSA keys, generated once per test process (RSA-2048 keygen is slow).
+/// Test RSA keys (fixed PEMs in `TestKeyMaterial`; no keygen at test time).
 enum TestKeys {
-    static let primary = try! _RSA.Signing.PrivateKey(keySize: .bits2048)
-    static let secondary = try! _RSA.Signing.PrivateKey(keySize: .bits2048)
+    static let primary = try! _RSA.Signing.PrivateKey(pemRepresentation: TestKeyMaterial.primary)
+    static let secondary = try! _RSA.Signing.PrivateKey(pemRepresentation: TestKeyMaterial.secondary)
     /// Never published in any JWKS.
-    static let rogue = try! _RSA.Signing.PrivateKey(keySize: .bits2048)
+    static let rogue = try! _RSA.Signing.PrivateKey(pemRepresentation: TestKeyMaterial.rogue)
 
     static func jwk(_ key: _RSA.Signing.PrivateKey, kid: String) -> [String: Any] {
         let primitives = try! key.publicKey.getKeyPrimitives()

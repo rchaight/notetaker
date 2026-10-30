@@ -115,23 +115,12 @@ struct OAuthConsentTests {
         }
     }
 
-    @Test func pendingStoreCapsAt100AndEvictsTheOldest() async throws {
-        try await OAuthHarness.run { harness, client in
-            var first: String?
-            for index in 0 ..< 101 {
-                let response = try await harness.authorize(client, .init())
-                if index == 0 {
-                    first = response.headers[.location]
-                }
-                harness.clock.advance(0.001)
-            }
-            #expect(await harness.server.pending.pendingCount == 100)
-            let callback = try await harness.googleApprove(#require(first))
-            #expect(try await client.execute(uri: callback, method: .get).status == .badRequest)
-        }
+    @Test func pendingStoreEvictsTheOldestOnlyWhenFull() async {
+        // (Sizing so that the authorization cap can never fill it within one TTL
+        // is covered in OAuthFloodTests; this pins the eviction mechanics.)
         // And at the unit level: the 101st insert evicts exactly the oldest.
         let clock = TestClock()
-        let store = PendingStore(now: clock.clock)
+        let store = PendingStore(now: clock.clock, capacity: 100)
         var gstates: [String] = []
         for _ in 0 ..< 101 {
             let gstate = OAuthCrypto.token()

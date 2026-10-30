@@ -275,20 +275,15 @@ struct MCPEndpoint: Sendable {
         return out
     }
 
-    /// The LAST `X-Forwarded-For` address, only when explicitly trusted and
-    /// well-formed. Exactly one trusted proxy (tailscaled) fronts this service,
-    /// so the last hop is the one it appended; earlier hops are client-supplied
-    /// and trivially rotated. All `X-Forwarded-For` field lines are considered.
-    /// Stage 2 must verify what tailscaled/Funnel actually sends before relying on it.
+    /// The client address from the LAST `X-Forwarded-For` hop, only when
+    /// explicitly trusted. Exactly one trusted proxy (tailscaled) fronts this
+    /// service, so the last hop is the one it appended; earlier hops are
+    /// client-supplied and trivially rotated. All field lines are considered;
+    /// parsing is strict (see `ForwardedFor`). Stage 2 must verify what
+    /// tailscaled/Funnel actually sends before relying on it.
     static func clientIP(of request: Request, trustForwardedFor: Bool) -> String? {
         guard trustForwardedFor else { return nil }
-        let lines = request.headers[values: HTTPField.Name("X-Forwarded-For")!]
-        guard !lines.isEmpty else { return nil }
-        let last = lines.joined(separator: ",").split(separator: ",", omittingEmptySubsequences: false).last
-            .map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
-        let allowed = Set("0123456789abcdefABCDEF.:")
-        guard !last.isEmpty, last.count <= 45, last.allSatisfy({ allowed.contains($0) }) else { return nil }
-        return last
+        return ForwardedFor.lastHop(request.headers[values: HTTPField.Name("X-Forwarded-For")!])
     }
 }
 

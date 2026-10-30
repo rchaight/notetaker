@@ -17,6 +17,44 @@
 # Exit 0 only if every step behaved as expected.
 set -euo pipefail
 
+# --- pure helpers (sourceable for tests: PROBE_SOURCE_ONLY=1 . oauth-probe.sh) ---
+step() { echo "== $*"; }
+# Everything printed that came from the network goes through this: strips
+# control characters (ESC, BEL, CR, ...) so a hostile callback or server cannot
+# drive the terminal.
+printable() { printf '%s' "$1" | LC_ALL=C tr -d '\000-\037\177'; }
+b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+last4() { printf '...%s' "$(printable "${1: -4}")"; }
+# Flat JSON only (every document this probe reads is compact and flat enough).
+json_field() { sed -n 's/.*"'"$1"'":"\([^"]*\)".*/\1/p' | head -1; }
+urlencode() {
+  local s="$1" out="" c i
+  for ((i = 0; i < ${#s}; i++)); do
+    c="${s:i:1}"
+    case "$c" in
+      [a-zA-Z0-9.~_-]) out+="$c" ;;
+      *) out+="$(printf '%%%02X' "'$c")" ;;
+    esac
+  done
+  printf '%s' "$out"
+}
+# Percent-decoding only: backslashes are escaped first, so printf %b expands
+# nothing but the \xHH this function itself produced. The result is still
+# untrusted — print it only through `printable`.
+urldecode() {
+  local s="${1//+/ }"
+  s="${s//\\/\\\\}"
+  printf '%b' "$(printf '%s' "$s" | sed -E 's/%([0-9A-Fa-f]{2})/\\x\1/g')"
+}
+query_param() { printf '%s' "$2" | tr '&' '\n' | sed -n "s/^$1=//p" | head -1; }
+# Our authorization codes are base64url; anything else is refused before it is
+# echoed or spliced into a form body.
+valid_code() { [[ ${#1} -le 512 && "$1" =~ ^[A-Za-z0-9_-]+$ ]]; }
+
+if [[ -n "${PROBE_SOURCE_ONLY:-}" ]]; then
+  return 0
+fi
+
 if [[ $# -ne 2 ]]; then
   echo "usage: $0 <PUBLIC_URL> <client_id>" >&2
   exit 64
@@ -47,28 +85,6 @@ fail() {
   echo "FAIL: $*" >&2
   exit 1
 }
-step() { echo "== $*"; }
-b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
-last4() { printf '...%s' "${1: -4}"; }
-# Flat JSON only (every document this probe reads is compact and flat enough).
-json_field() { sed -n 's/.*"'"$1"'":"\([^"]*\)".*/\1/p' | head -1; }
-urlencode() {
-  local s="$1" out="" c i
-  for ((i = 0; i < ${#s}; i++)); do
-    c="${s:i:1}"
-    case "$c" in
-      [a-zA-Z0-9.~_-]) out+="$c" ;;
-      *) out+="$(printf '%%%02X' "'$c")" ;;
-    esac
-  done
-  printf '%s' "$out"
-}
-urldecode() {
-  local s="${1//+/ }"
-  printf '%b' "${s//%/\\x}"
-}
-query_param() { printf '%s' "$2" | tr '&' '\n' | sed -n "s/^$1=//p" | head -1; }
-
 # curl with the bearer token read from a file, never from argv.
 mcp_call() { # <token-file> <json-body> <out-file> → prints HTTP status
   printf 'Authorization: Bearer %s\n' "$(cat "$1")" > "$WORK/auth-header"
@@ -85,7 +101,7 @@ step "discovery"
 RESOURCE="$(curl -fsS "$BASE/.well-known/oauth-protected-resource/mcp" | json_field resource)"
 ISSUER="$(curl -fsS "$BASE/.well-known/oauth-authorization-server" | json_field issuer)"
 [[ -n "$RESOURCE" && -n "$ISSUER" ]] || fail "metadata documents are missing resource/issuer"
-echo "resource=$RESOURCE issuer=$ISSUER"
+echo "resource=$(printable "$RESOURCE") issuer=$(printable "$ISSUER")"
 
 VERIFIER="$(openssl rand 32 | b64url)"
 CHALLENGE="$(printf '%s' "$VERIFIER" | openssl dgst -sha256 -binary | b64url)"
@@ -214,9 +230,10 @@ fi
 CALLBACK_QUERY="${CALLBACK_QUERY#*\?}"
 
 ERROR="$(query_param error "$CALLBACK_QUERY")"
-[[ -z "$ERROR" ]] || fail "authorization error: $(urldecode "$ERROR")"
+[[ -z "$ERROR" ]] || fail "authorization error: $(printable "$(urldecode "$ERROR")")"
 CODE="$(query_param code "$CALLBACK_QUERY")"
 [[ -n "$CODE" ]] || fail "no code in the callback"
+valid_code "$CODE" || fail "the callback's code is not a well-formed authorization code"
 [[ "$(query_param state "$CALLBACK_QUERY")" == "$STATE" ]] || fail "state mismatch (possible CSRF)"
 [[ "$(urldecode "$(query_param iss "$CALLBACK_QUERY")")" == "$ISSUER" ]] || fail "iss mismatch (RFC 9207 mix-up check)"
 echo "code received $(last4 "$CODE")"

@@ -35,8 +35,12 @@ public final class OAuthServer: Sendable {
         self.audit = audit
         self.now = now
         trustForwardedFor = config.trustForwardedFor
+        // Room for everything the authorization cap admits within one TTL, plus a
+        // third: at the capped rate junk can never evict the owner's entry.
+        let admittable = limiter.settings.authorizationsPerMinute * Int((settings.timings.pendingTTL / 60).rounded(.up))
         pending = PendingStore(
-            now: now, pendingTTL: settings.timings.pendingTTL, consentTTL: settings.timings.consentTTL
+            now: now, pendingTTL: settings.timings.pendingTTL, consentTTL: settings.timings.consentTTL,
+            capacity: max(PendingStore.defaultCapacity, admittable + admittable / 3)
         )
         google = GoogleOIDC(
             settings: settings.google, client: httpClient, now: now, discoveryTTL: settings.timings.discoveryTTL
