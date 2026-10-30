@@ -1,0 +1,3 @@
+# Remote vault: container deployment
+
+Everything in this directory supports the step-by-step `RUNBOOK.md` (design: `specs/remote-vault/00-security-design.md`, plan: `specs/remote-vault/08-container-runbook.md`): host-side LUKS unlock and kill-switch helpers (`host/`), the serve-container provisioning script, systemd units, nftables, sshd, logrotate and env template (`ct/`), the throwaway build-container and deploy scripts (`build/`), and a Mac-side transport test (`test/`); nothing here is run by an agent, every command is executed by you in the order the runbook gives, and every secret is a `<PLACEHOLDER>` you supply on the machine itself, never in this repository.

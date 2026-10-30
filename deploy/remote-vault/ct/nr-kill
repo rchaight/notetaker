@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# /usr/local/sbin/nr-kill — container kill switch wrapper (design 00 §4.8).
+# Order, identical to `notetaker-remote kill`:
+#   1. Funnel off   2. stop the service   3. revoke (delete tokens + index),
+#   wipe the replica inbox, write DISABLED.
+# The binary does all of it, but it needs the NR_* environment to start; this
+# wrapper supplies it. If the binary cannot run (bad env, missing binary) or
+# reports any failed step, the SAME ORDER is repeated by hand below. Safe to
+# run repeatedly. Run as root: `pct exec <CTID> -- /usr/local/sbin/nr-kill`.
+set -uo pipefail
+[[ $EUID -eq 0 ]] || { echo "nr-kill: must run as root" >&2; exit 64; }
+ENVF=/etc/notetaker-remote/env
+BIN=/usr/local/bin/notetaker-remote
+INBOX=/srv/replica/inbox
+STATE=/srv/replica/state
+
+rc=1
+if [[ -x "$BIN" && -r "$ENVF" ]]; then
+  systemd-run --quiet --wait --pipe --collect -p EnvironmentFile="$ENVF" "$BIN" kill
+  rc=$?
+fi
+if [[ $rc -eq 0 ]]; then
+  echo "nr-kill: notetaker-remote kill completed (all steps ok)"
+  exit 0
+fi
+
+echo "nr-kill: binary kill did not complete (rc=$rc); repeating the steps by hand, same order" >&2
+fail=0
+step() { local name="$1"; shift; if "$@"; then echo "nr-kill: $name: ok"; else echo "nr-kill: $name: FAILED" >&2; fail=1; fi; }
+step "1. tailscale funnel off" tailscale funnel --https=443 off
+step "2. systemctl stop notetaker-remote" systemctl stop notetaker-remote
+step "3a. delete token + index databases" bash -c "rm -f '$STATE'/tokens.sqlite '$STATE'/tokens.sqlite-wal '$STATE'/tokens.sqlite-shm '$STATE'/index.sqlite '$STATE'/index.sqlite-wal '$STATE'/index.sqlite-shm"
+step "3b. wipe replica inbox" bash -c "find '$INBOX' -mindepth 1 -delete"
+step "3c. write DISABLED marker" bash -c "install -m 0644 /dev/null '$INBOX/DISABLED'"
+exit "$fail"

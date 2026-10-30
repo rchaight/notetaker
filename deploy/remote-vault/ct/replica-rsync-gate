@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# replica-rsync-gate — forced-command replacement for rrsync. USE ONLY IF the
+# RUNBOOK's rrsync test (stage 1) FAILS. Install as
+# /usr/local/sbin/replica-rsync-gate (root:root 0755) and switch the key to
+# authorized_keys.gate.template.
+#
+# It accepts exactly one thing: an rsync SERVER-side receiver command line (the
+# client is PUSHING), with a short allowlist of options, and rewrites the
+# destination to live under the inbox. It rejects: --sender (any read), --daemon,
+# --config, --rsync-path, --files-from, --partial-dir/--temp-dir/--backup(-dir)/
+# --*-dest (paths outside the inbox), -e/--rsh, protect-args (-s: the destination
+# would arrive on stdin, where it cannot be validated), shell metacharacters,
+# and any ".." in the destination. Filter rules are NOT on the server command
+# line (rsync sends them in the protocol), so they do not matter here.
+#
+#   SSH_ORIGINAL_COMMAND="rsync --server -logDtpre.iLsfxCIvu --delete-during . /" \
+#     replica-rsync-gate --dry-run        # prints what it would exec, runs nothing
+set -euo pipefail
+INBOX="${REPLICA_INBOX:-/srv/replica/inbox}"
+RSYNC=/usr/bin/rsync
+DRY=0
+[[ "${1:-}" == "--dry-run" ]] && DRY=1
+
+deny() { echo "replica-rsync-gate: refused: $*" >&2; logger -t replica-rsync-gate "refused: $* [${SSH_ORIGINAL_COMMAND:-}]" 2> /dev/null || true; exit 126; }
+
+cmd="${SSH_ORIGINAL_COMMAND:-}"
+[[ -n "$cmd" ]] || deny "no command"
+# Only plain characters: no quotes, $, backticks, ;, &, |, <, >, newline, spaces other than ' '.
+[[ "$cmd" =~ ^[A-Za-z0-9\ ._=/,+:@-]+$ ]] || deny "unexpected characters"
+# shellcheck disable=SC2206  # word splitting on single spaces is the point; the charset is already validated
+tok=($cmd)
+[[ ${#tok[@]} -ge 4 && ${#tok[0]} -gt 0 ]] || deny "too short"
+[[ "${tok[0]}" == "rsync" && "${tok[1]}" == "--server" ]] || deny "not an rsync --server command"
+
+opts=()
+pos=()
+for ((i = 2; i < ${#tok[@]}; i++)); do
+  t="${tok[$i]}"
+  case "$t" in
+    --delete | --delete-before | --delete-during | --delete-delay | --delete-after) opts+=("$t") ;;
+    --timeout=[0-9] | --timeout=[0-9][0-9] | --timeout=[0-9][0-9][0-9]) opts+=("$t") ;;
+    --sender) deny "--sender (read access) is not allowed" ;;
+    --*) deny "option $t is not allowed" ;;
+    -?*)
+      # short bundle: letters before the first 'e' are the real flags; from 'e' on is the capability string.
+      flags="${t#-}"
+      real="${flags%%e*}"
+      [[ "$real" =~ ^[lrtpogDvquHdSIxn]*$ ]] || deny "short options '$real' are not allowed"
+      [[ "$flags" == "$real" || "$flags" =~ ^[lrtpogDvquHdSIxn]*e[.A-Za-z0-9]*$ ]] || deny "malformed option bundle"
+      opts+=("$t")
+      ;;
+    *) pos+=("$t") ;;
+  esac
+done
+[[ ${#pos[@]} -eq 2 && "${pos[0]}" == "." ]] || deny "expected exactly '. <destination>'"
+dest="${pos[1]}"
+[[ "$dest" == /* ]] || dest="/$dest"
+[[ "$dest" != *..* ]] || deny "'..' in destination"
+[[ "$dest" =~ ^/[A-Za-z0-9._/-]*$ ]] || deny "bad destination"
+target="${INBOX%/}${dest}"
+
+if [[ $DRY -eq 1 ]]; then
+  echo "WOULD EXEC: $RSYNC --server ${opts[*]} . $target"
+  exit 0
+fi
+umask 022
+exec "$RSYNC" --server "${opts[@]}" . "$target"

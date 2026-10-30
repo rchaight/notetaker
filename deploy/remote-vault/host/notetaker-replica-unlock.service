@@ -1,0 +1,24 @@
+# /etc/systemd/system/notetaker-replica-unlock.service (hildanet, root)
+# Opens the LUKS thin LV that holds the remote-vault replica and mounts it
+# BEFORE Proxmox starts guests. If this unit fails, the CT's mp0 source path
+# does not exist and the CT does not start: fail closed, nothing is served.
+# Config lives in /etc/notetaker-replica/unlock.conf (see unlock.sh).
+[Unit]
+Description=Unlock and mount the Notetaker remote-vault replica volume (LUKS)
+Documentation=file:///usr/local/sbin/notetaker-replica-unlock
+After=lvm2-monitor.service local-fs.target systemd-udev-settle.service
+Wants=lvm2-monitor.service
+Before=pve-guests.service
+ConditionPathExists=/etc/notetaker-replica/unlock.conf
+
+[Service]
+Type=oneshot
+# A hung cryptsetup/mount must not block every guest (Before=pve-guests.service).
+TimeoutStartSec=90
+ExecStartPre=-/sbin/lvchange -ay pve/nr-replica
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/notetaker-replica-unlock open
+ExecStop=/usr/local/sbin/notetaker-replica-unlock close
+
+[Install]
+WantedBy=multi-user.target

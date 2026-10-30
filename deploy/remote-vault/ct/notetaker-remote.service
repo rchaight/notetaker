@@ -1,0 +1,44 @@
+# /etc/systemd/system/notetaker-remote.service (serve CT, root-installed by setup.sh)
+# Hardening per design 00 §4.7 (verbatim set) plus RequiresMountsFor so the
+# unit never starts against an absent replica volume.
+[Unit]
+Description=Notetaker remote vault (read-only MCP over a filtered replica)
+Documentation=file:///usr/share/doc/notetaker-remote/README
+After=network-online.target tailscaled.service
+Wants=network-online.target
+RequiresMountsFor=/srv/replica
+
+[Service]
+Type=simple
+User=notetaker
+Group=notetaker
+EnvironmentFile=/etc/notetaker-remote/env
+ExecStart=/usr/local/bin/notetaker-remote serve
+Restart=on-failure
+RestartSec=5
+# Exit 78 = configuration error (bad/missing env): do not loop every 5 s.
+RestartPreventExitStatus=78
+
+# --- sandbox ---
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallFilter=@system-service
+MemoryDenyWriteExecute=yes
+LockPersonality=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+RestrictNamespaces=yes
+UMask=0077
+# The replica volume is read-only to the service; only its own state (index +
+# token DB, which live on the encrypted volume so they never reach a vzdump
+# archive) and the audit log directory are writable.
+ReadOnlyPaths=/srv/replica
+ReadWritePaths=/srv/replica/state /var/log/notetaker-remote
+
+[Install]
+WantedBy=multi-user.target

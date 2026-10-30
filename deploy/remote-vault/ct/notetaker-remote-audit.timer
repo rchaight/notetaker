@@ -1,0 +1,11 @@
+# /etc/systemd/system/notetaker-remote-audit.timer
+[Unit]
+Description=Daily replica audit for the Notetaker remote vault
+
+[Timer]
+OnCalendar=*-*-* 04:10:00
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,1 @@
+command="/usr/bin/rrsync -wo /srv/replica/inbox",restrict <PUBKEY>

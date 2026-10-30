@@ -1,0 +1,1 @@
+command="/usr/local/sbin/replica-rsync-gate",restrict <PUBKEY>

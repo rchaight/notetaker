@@ -1,0 +1,22 @@
+# /etc/pve/firewall/<CTID>.fw  (copy from this example; replace nothing here
+# unless your admin addresses differ). PVE firewall for the serve CT.
+#
+# Mirrors the in-CT nftables inbound policy (design 00 §4.7). Tailnet traffic
+# (the Mac's push, Funnel/serve) rides WireGuard/DERP and never matches an
+# inbound rule here beyond UDP 41641. The CT's net0 must carry firewall=1 or
+# this file is ignored (runbook stage 0 sets it).
+[OPTIONS]
+enable: 1
+policy_in: DROP
+policy_out: ACCEPT
+log_level_in: info
+ndp: 0
+dhcp: 0
+radv: 0
+macfilter: 1
+ipfilter: 0
+
+[RULES]
+IN ACCEPT -source 192.168.5.100 -p tcp -dport 22 -log nolog # hildanet admin ssh
+IN ACCEPT -source 192.168.2.3 -p tcp -dport 22 -log nolog # admin Mac (LAN)
+IN ACCEPT -p udp -dport 41641 -log nolog # tailscale direct paths

@@ -1,0 +1,24 @@
+# /etc/systemd/system/notetaker-remote-audit.service
+# Daily belt-and-braces: re-apply the Mac's export policy to the replica and
+# delete anything it would have kept home (design 00 §4.8/§5). Exit 2 =
+# contamination found and removed: the unit shows "failed" on purpose so it is
+# visible in `systemctl --failed`; investigate the Mac exporter.
+# Runs as root because it must delete from the inbox (the serve unit cannot).
+[Unit]
+Description=Notetaker remote vault: audit the replica against the export policy
+RequiresMountsFor=/srv/replica
+
+[Service]
+Type=oneshot
+User=root
+EnvironmentFile=/etc/notetaker-remote/env
+ExecStart=/usr/local/bin/notetaker-remote audit-replica
+# Sandbox (root, but only the inbox and audit log are writable)
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+ReadWritePaths=/srv/replica/inbox /var/log/notetaker-remote
+LockPersonality=yes
+RestrictNamespaces=yes
+UMask=0077
