@@ -21,8 +21,8 @@ App target:
 
 Packages:
 
-- `Packages/VaultKit` — iCloud Drive file layer: NSFileCoordinator/NSFilePresenter, NSMetadataQuery observation, conflict detection. Owns ALL file I/O.
-- `Packages/MarkdownKit` — swift-markdown parsing/AST, frontmatter, todo/tag/wikilink extraction, style ranges. Pure; no I/O.
+- `Packages/VaultKit` — iCloud Drive file layer: NSFileCoordinator/NSFilePresenter, NSMetadataQuery observation, conflict detection. Owns ALL file I/O. Also `ReplicaExporter` (builds the filtered replica image and manifest).
+- `Packages/MarkdownKit` — swift-markdown parsing/AST, frontmatter, todo/tag/wikilink extraction, style ranges, + `ExportPolicy` (the remote-export gate: decides what may leave the Mac). Pure; no I/O.
 - `Packages/EditorKit` — TextKit 2 live-preview editor (NS/UIViewRepresentable), Liquid Glass chrome, heading folding.
 - `Packages/IndexKit` — GRDB derived index + FTS5. Rebuildable; schema-version guard drops + rescans.
 - `Packages/TaskEngine` — dates, priorities, recurrence, token parsing (ONE engine for every surface), filters. Pure; no I/O.
@@ -33,8 +33,19 @@ Packages:
 - `Packages/SecurityKit` — app lock (LocalAuthentication), per-note locking, Keychain.
 - `Packages/AppIntentsKit` — App Intents (Add Task / Create Note) feeding Siri/Shortcuts/widgets.
 - `Packages/MCPKit` + the `notetaker-mcp` target (macOS only) — bundled read-only stdio MCP server (Claude Code/Desktop) over the vault + GRDB index, with scan fallback and locked-note redaction, + opt-in calendar snapshot tools (`calendar_agenda`, `calendar_list`; the app writes `Index/calendar-snapshot.json` only while Settings › Calendar sharing is on).
+- `Packages/RemoteServer` → the `notetaker-remote` binary (Linux, container-hosted, never shipped in the .app): read-only HTTP MCP server over a pushed replica of the vault, plus the OAuth authorization server (Google login, one allowlisted account, pre-registered client). Opt-in remote vault for claude.ai; see "Remote vault" below.
 
 Dependencies point downward only (App → packages; packages never import App). Pure packages (MarkdownKit, TaskEngine) must stay I/O-free.
+
+## Remote vault (opt-in, off by default)
+
+Settings › Remote → `App/Services/RemoteReplicaService` → `ReplicaExporter` (gated by `ExportPolicy`) → rsync over ssh to a homelab container → `notetaker-remote` behind Tailscale Funnel → claude.ai. Runbook: `deploy/remote-vault/RUNBOOK.md`; scripts and drills: `scripts/remote-vault/`; design and the accepted residual risks: `specs/remote-vault/00-security-design.md`. Invariants to keep:
+
+- **The replica is derived.** The vault `.md` files stay the only truth; the container's copy and index are rebuildable from a push and deletable at any time. Never make the Mac depend on state that exists only on the container.
+- **Locked notes never leave the Mac.** `ExportPolicy` fails closed (locked, `_index.md`, hidden, non-`.md`, excluded folders, `remote: false`); the server's title-only redaction is a second gate, not a substitute. A change to either gate extends its table tests in the same pass.
+- **Kill switch.** Mac toggle off = empty push + `DISABLED` marker (server answers `available: false`); container `nr-kill` = Funnel off, stop, wipe tokens/index/replica. Keep both working and drilled.
+- **Public URL gate.** Only `/mcp`, `/.well-known/*`, `/authorize`, `/auth/google/callback`, `/consent`, `/token`, `/revoke` are routed publicly (no `/register`, no `/healthz`); exactly the seven `notetaker-mcp` tools, all read-only, none takes a URL or writes. A new route or tool is a security change: update the design doc and `scripts/remote-vault/stage1-check.sh` first.
+- **Secrets, never read/print/commit:** `/etc/notetaker-remote/env` (Google client secret) on the container and `~/Library/Application Support/Notetaker/RemoteExport/id_ed25519` (the Mac's push key). The audit log holds no bodies, snippets or tokens and stays that way.
 
 ## Task syntax — the domain vocabulary
 
@@ -69,6 +80,7 @@ Two hard environment rules:
 - iOS: same with `-destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO` (iOS 27.0 simulator runtime is installed)
 - Package tests: `cd Packages/<Kit> && DEVELOPER_DIR=/Applications/Xcode-beta.app swift test --scratch-path ~/.cache/notetaker-build/<Kit>`
 - Formatting: `swiftformat --lint .`
+- **Linux:** no Docker on the dev Mac, so Linux is verified by the GitHub Actions `linux-packages` job (TaskEngine, MarkdownKit, CalendarKit, ProjectKit, IndexKit, AIKit, MCPKit, RemoteServer on `swift:6.4-noble`); check it when a change touches those packages' portability.
 - **Full verify gate (run before every commit): `scripts/verify.sh 3 --install`** — all package tests ×3, both builds, launch check. Cross-module flows belong in IndexKit's PipelineIntegrationTests.
 - Deployment floor is 26.0 (runs on 26 and 27, built with the 27 SDK). Raise to 27.0 only when a 27-only API is required — check CI runner Xcode availability first.
 
@@ -82,6 +94,9 @@ Automatic signing, `DEVELOPMENT_TEAM 6A2NHN89Q8`. Apple Development certs are in
 - **iCloud xattrs vs codesign** — see Build & verify rule 2.
 - **`Notetaker 2/3/4.xcodeproj`** are iCloud sync duplicates that got committed. Ignore them; only `Notetaker.xcodeproj` is real — and it is generated.
 - **`_index.md` files are app-generated.** Written per-folder by `VaultIndexService` as machine-readable tables of contents for AI assistants; treat them as derived output, never edit by hand, and never add them to the notes list, search, or the To-Do index — they're excluded at the `VaultFileStore` enumeration choke point on purpose.
+- **`/usr/bin/rsync` on macOS is openrsync.** The remote push uses only `-rlt --delete --timeout --exclude/filters -e` (pass 2: `-lt`); the rsync path is a setting so Homebrew's rsync can be used. Don't add flags openrsync lacks without testing both.
+- **`verify.sh` tests every `Packages/*/`, including `RemoteServer` (Hummingbird).** It must keep building and testing on macOS although it ships on Linux only.
+- **No Docker on the dev Mac** — see the Linux bullet under Build & verify.
 
 ## Current phase
 

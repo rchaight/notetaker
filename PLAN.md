@@ -348,7 +348,19 @@ De-risking order is deliberate: **storage/sync first** (hardest to retrofit), th
 ### M9.9 — Ongoing shakedown (current phase, 2026-08-17)
 **The user is driving daily:** using the app day-by-day, reporting issues and improvement requests as they surface. Reported items jump the queue; each fix follows the usual gate-and-commit loop. M10 starts only on the user's explicit go — do not begin release work proactively.
 
+**Remote vault for claude.ai (opt-in; specs in `specs/remote-vault/`).** Built as part of the shakedown phase; a stage is "done" only when the user records it in PROGRESS.
+- [x] Spec 02 — `MarkdownKit.ExportPolicy`, the fail-closed export gate (`Remote vault 02:`).
+- [x] Spec 03 — `VaultKit.ReplicaExporter` + manifest (`Remote vault 03:`).
+- [x] Spec 04 — `RemoteReplicaService` + Settings › Remote: ssh key, host-key pin, rsync push, Mac-side kill switch (`Remote vault 04:`).
+- [x] Spec 05 — Linux-ready packages + `linux-packages` CI job (`Remote vault 05:`, `Linux:`).
+- [x] Spec 06 — `Packages/RemoteServer`: Hummingbird + stateless MCP over the replica (`RemoteServer:`).
+- [x] Spec 07 — OAuth authorization server with Google login, `scripts/remote-vault/oauth-probe.sh` (`OAuth:`).
+- [ ] Spec 08 — container runbook and scripts in `deploy/remote-vault/` (`Remote vault 08:`); the user executes it (stages 0-2).
+- [ ] Spec 09 — stage checks, drills, audit summary, docs: `scripts/remote-vault/` (`Remote vault 09:`).
+- [ ] Rollout: stage 1 (tailnet), stage 2 (Funnel), stage 3 (drills + one week of audit review) — recorded in PROGRESS by the user.
+
 ### M10 — DEFERRED (user decision 2026-08-17) — Release / distribution
+**Remote vault note:** the Developer ID build must still embed `notetaker-mcp` only — `notetaker-remote` is never shipped in the .app.
 **Goal:** macOS signed+notarized+stapled `.dmg`; iOS on TestFlight.
 **Steps:**
 - [ ] **macOS:** Developer ID Application signing of the `.app` (+ embedded XPC helper/extensions) with Hardened Runtime; `codesign --deep` verification.
