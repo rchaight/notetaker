@@ -61,7 +61,17 @@ public extension VaultItem.DownloadState {
 public enum VaultPath {
     /// Path of `url` relative to `root`, "" when url IS the root.
     public static func relativePath(of url: URL, in root: URL) -> String {
-        let rootComponents = root.standardizedFileURL.pathComponents
+        relativePath(of: url, inRootComponents: components(of: root))
+    }
+
+    /// `root`'s standardized path components, for callers that resolve many URLs against
+    /// one root (a vault snapshot is ~2000 items; re-standardizing the root per item showed
+    /// up as a third of the main thread's time on the phone).
+    public static func components(of root: URL) -> [String] {
+        root.standardizedFileURL.pathComponents
+    }
+
+    public static func relativePath(of url: URL, inRootComponents rootComponents: [String]) -> String {
         let urlComponents = url.standardizedFileURL.pathComponents
         guard urlComponents.count >= rootComponents.count,
               Array(urlComponents.prefix(rootComponents.count)) == rootComponents
