@@ -573,10 +573,11 @@ struct ReadingRenderingTests {
 
     @Test func headingSizesMatchTheEditorLadder() {
         let style = ReadingStyle(baseFontSize: 16)
-        #expect(style.headingSize(level: 1) == 26) // 16 * 1.6 rounded
+        #expect(style.headingSize(level: 1) == (16 * ReadingStyle.headingScales[0]).rounded())
+        #expect(style.headingSize(level: 1) > style.headingSize(level: 2))
         #expect(style.headingSize(level: 6) == 16)
         #expect(style.headingSize(level: 99) == 16, "out-of-range levels clamp")
-        #expect(style.headingSize(level: 0) == 26)
+        #expect(style.headingSize(level: 0) == style.headingSize(level: 1))
     }
 
     @Test func escapedMarkdownRendersWithoutItsBackslash() {

@@ -18,13 +18,17 @@ import Testing
 @Suite(.serialized) @MainActor struct ThemeTests {
     let theme = MarkdownTheme.default
 
+    /// System ladder: H1/H2 are the system Title 2/3 sizes, H3-H6 are body size (bold).
     @Test func headingFontsScaleDownByLevel() {
         let h1 = theme.headingFont(level: 1).pointSize
+        let h2 = theme.headingFont(level: 2).pointSize
         let h3 = theme.headingFont(level: 3).pointSize
         let h6 = theme.headingFont(level: 6).pointSize
-        #expect(h1 > h3)
-        #expect(h3 > h6)
+        #expect(h1 > h2)
+        #expect(h2 > h3)
+        #expect(h3 == h6)
         #expect(h1 > theme.baseFont.pointSize)
+        #expect(h3 == theme.baseFont.pointSize.rounded())
     }
 
     @Test func codeUsesMonospacedFont() {

@@ -31,8 +31,12 @@ public struct MarkdownTheme: @unchecked Sendable {
     public var codeBackground: PlatformColor
     public var secondaryColor: PlatformColor
 
+    /// The platform's own Body size: 17 pt on iPhone at the default Dynamic Type setting,
+    /// 13 pt on macOS. Every editor mode defaults to it, so text matches the system's.
+    public static let systemBodySize: CGFloat = PlatformFont.preferredFont(forTextStyle: .body).pointSize
+
     public static let `default` = MarkdownTheme(
-        baseFontSize: 16,
+        baseFontSize: systemBodySize,
         textColor: .labelColorCompat,
         accentColor: .tintColorCompat,
         codeBackground: .codeBackgroundCompat,
@@ -118,8 +122,20 @@ public struct MarkdownTheme: @unchecked Sendable {
         [.font: baseFont, .foregroundColor: textColor]
     }
 
-    /// Multipliers for heading levels 1–6.
-    static let headingScales: [CGFloat] = [1.6, 1.4, 1.25, 1.15, 1.05, 1.0]
+    /// Multipliers for heading levels 1–6. macOS takes the system text styles (H1 = Title 2,
+    /// H2 = Title 3, H3-H6 = body size, bold). On iPhone those read too big, so H1 is 18 pt
+    /// (kept as a ratio so it follows the Dynamic Type body size) and H2-H6 are bold body.
+    /// `ReadingStyle.headingScales` derives the same ladder; keep the two in step.
+    static let headingScales: [CGFloat] = {
+        #if canImport(AppKit)
+            func ratio(_ style: PlatformFont.TextStyle) -> CGFloat {
+                PlatformFont.preferredFont(forTextStyle: style).pointSize / systemBodySize
+            }
+            return [ratio(.title2), ratio(.title3), 1.0, 1.0, 1.0, 1.0]
+        #else
+            return [18 / systemBodySize, 1.0, 1.0, 1.0, 1.0, 1.0]
+        #endif
+    }()
 
     public func headingFont(level: Int) -> PlatformFont {
         let scale = 1 + (Self.headingScales[min(max(level, 1), 6) - 1] - 1) * headingScale

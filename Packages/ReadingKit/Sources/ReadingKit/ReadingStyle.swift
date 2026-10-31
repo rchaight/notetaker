@@ -1,5 +1,10 @@
 import Foundation
 import SwiftUI
+#if canImport(UIKit)
+    import UIKit
+#elseif canImport(AppKit)
+    import AppKit
+#endif
 
 /// Everything Reading mode needs to look like the editor. ReadingKit can't
 /// import EditorKit (it would drag TextKit into a pure SwiftUI renderer), so
@@ -30,13 +35,39 @@ public struct ReadingStyle: Sendable {
     /// Multipliers for heading levels 1–6 — the same ladder
     /// `MarkdownTheme.headingScales` uses, so a heading is the same size in
     /// both modes.
-    public static let headingScales: [CGFloat] = [1.6, 1.4, 1.25, 1.15, 1.05, 1.0]
+    public static let headingScales: [CGFloat] = {
+        #if canImport(UIKit)
+            // iPhone: H1 is 18 pt (a ratio, so it follows Dynamic Type), the rest bold body.
+            return [18 / systemBodySize, 1.0, 1.0, 1.0, 1.0, 1.0]
+        #else
+            func ratio(_ style: SystemTextStyle) -> CGFloat {
+                systemFontSize(style) / systemBodySize
+            }
+            return [ratio(.title2), ratio(.title3), 1.0, 1.0, 1.0, 1.0]
+        #endif
+    }()
+
+    /// The platform's own Body size (17 pt on iPhone, 13 pt on macOS): the default for every
+    /// mode, same as `MarkdownTheme.systemBodySize`.
+    public static let systemBodySize: CGFloat = systemFontSize(.body)
+
+    #if canImport(UIKit)
+        private typealias SystemTextStyle = UIFont.TextStyle
+        private static func systemFontSize(_ style: SystemTextStyle) -> CGFloat {
+            UIFont.preferredFont(forTextStyle: style).pointSize
+        }
+    #else
+        private typealias SystemTextStyle = NSFont.TextStyle
+        private static func systemFontSize(_ style: SystemTextStyle) -> CGFloat {
+            NSFont.preferredFont(forTextStyle: style).pointSize
+        }
+    #endif
 
     /// Matches `MarkdownTheme.imageThumbnailHeight`.
     public static let imageMaxHeight: CGFloat = 280
 
     public init(
-        baseFontSize: CGFloat = 16,
+        baseFontSize: CGFloat = ReadingStyle.systemBodySize,
         fontDesign: Font.Design = .default,
         headingScale: CGFloat = 1.0,
         textColor: Color = .primary,

@@ -464,9 +464,11 @@ struct NotesView: View {
                         }
                     }
                 }
-                if !model.displayedRecents.isEmpty {
+                // The newest-modified notes from any device, not the ones opened here
+                // (the opened-on-this-device list hid edits made on the Mac).
+                if !model.notesByModified.isEmpty {
                     Section("Recents") {
-                        ForEach(notes(withIds: Array(model.displayedRecents.prefix(5)))) { note in
+                        ForEach(Array(model.notesByModified.prefix(5))) { note in
                             noteRow(note, showFolder: true, selectable: false, section: "recent")
                         }
                     }
@@ -2079,8 +2081,16 @@ struct NotesView: View {
             }
         }
         .modifier(SelectableTag(id: selectable ? note.id : nil) { _ in
-            sectionHighlight = section + "|" + note.id
-            listSelection = nil
+            #if os(macOS)
+                sectionHighlight = section + "|" + note.id
+                listSelection = nil
+            #else
+                // The compact split view opens the note when the list's OWN selection becomes
+                // non-nil; selecting only through the model left taps on Recents, Favorites
+                // and Areas rows doing nothing on iPhone. No persistent row highlight there.
+                sectionHighlight = nil
+                listSelection = note.id
+            #endif
             model.select(note.id)
         })
         .listRowBackground(

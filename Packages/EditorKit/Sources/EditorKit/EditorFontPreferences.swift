@@ -27,7 +27,8 @@ extension UserDefaults: EditorFontStore {
 public enum EditorFontPreferences {
     public static let minSize: CGFloat = 11
     public static let maxSize: CGFloat = 28
-    public static let defaultSize: CGFloat = 16
+    /// The system's Body size (see `MarkdownTheme.systemBodySize`).
+    public static let defaultSize: CGFloat = MarkdownTheme.systemBodySize
     public static let defaultDesign = "system"
 
     /// "system" | "serif" | "rounded" | "mono" — the vocabulary
@@ -73,6 +74,29 @@ public enum EditorFontPreferences {
     /// Runs once, safe to call on every launch: if `sourceFontDesign` is
     /// already set this is a no-op, so a second run changes nothing.
     public static func migrateIfNeeded(store: EditorFontStore) {
+        migrateLegacyKeys(store: store)
+        migrateToSystemSizes(store: store)
+    }
+
+    /// The default used to be a fixed 16 pt and the legacy migration above wrote it into
+    /// every mode, so an untouched install has `16.0` stored and would never pick up the
+    /// system sizes. Once, reset exactly-16 values to the new default; anything the user
+    /// changed (any other size) is theirs and stays.
+    private static let systemSizesMigrationKey = "fontSizesMigratedToSystemV1"
+    private static let previousDefaultSize = 16.0
+
+    private static func migrateToSystemSizes(store: EditorFontStore) {
+        guard store.get(systemSizesMigrationKey) == nil else { return }
+        for mode in [EditorMode.source, .live, .reading] {
+            let sizeKey = keys(for: mode).size
+            if let stored = store.get(sizeKey) as? Double, stored == previousDefaultSize {
+                store.set(sizeKey, Double(defaultSize))
+            }
+        }
+        store.set(systemSizesMigrationKey, true)
+    }
+
+    private static func migrateLegacyKeys(store: EditorFontStore) {
         let sourceKeys = keys(for: .source)
         guard store.get(sourceKeys.design) == nil else { return }
 

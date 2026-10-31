@@ -31,7 +31,7 @@ struct EditorFontPreferencesTests {
         let store = DictionaryStore()
         let resolved = EditorFontPreferences.resolve(mode: .reading, store: store)
         #expect(resolved.design == "system")
-        #expect(resolved.size == 16)
+        #expect(resolved.size == EditorFontPreferences.defaultSize)
     }
 
     @Test func resolveClampsBelowTheMinimum() {
@@ -120,6 +120,40 @@ struct EditorFontPreferencesTests {
         let reading = EditorFontPreferences.resolve(mode: .reading, store: store)
         #expect(reading.design == "system")
         #expect(reading.size == 18)
+    }
+
+    // MARK: - System sizes
+
+    @Test func defaultsFollowTheSystemBodySize() {
+        #expect(EditorFontPreferences.defaultSize == MarkdownTheme.systemBodySize)
+        #expect(MarkdownTheme.default.baseFontSize == MarkdownTheme.systemBodySize)
+    }
+
+    @Test func headingsUseTheSystemLadderAndNeverShrinkBelowBody() {
+        let theme = MarkdownTheme.default
+        let sizes = (1 ... 6).map { theme.headingFont(level: $0).pointSize }
+        #expect(sizes == sizes.sorted(by: >), "H1 is the biggest and sizes never grow with depth")
+        #expect(sizes[0] > theme.baseFontSize, "H1 is bigger than body")
+        #expect(sizes[5] == theme.baseFontSize.rounded(), "H6 is body size")
+        // Smaller than the old 1.6x ladder (which made H1 26 pt at a 16 pt body).
+        #expect(sizes[0] < (theme.baseFontSize * 1.6).rounded())
+    }
+
+    @Test func migrationResetsAStoredOldDefaultToTheSystemSizeOnce() {
+        let store = DictionaryStore()
+        store.set("sourceFontDesign", "mono") // already past the legacy migration
+        store.set("editorFontSize", 16.0)
+        store.set("sourceFontSize", 16.0)
+        store.set("readingFontSize", 22.0) // a deliberate choice: kept
+        EditorFontPreferences.migrateIfNeeded(store: store)
+        #expect(store.get("editorFontSize") as? Double == Double(EditorFontPreferences.defaultSize))
+        #expect(store.get("sourceFontSize") as? Double == Double(EditorFontPreferences.defaultSize))
+        #expect(store.get("readingFontSize") as? Double == 22.0)
+
+        // A later explicit 16 is the user's own and must survive subsequent launches.
+        store.set("editorFontSize", 16.0)
+        EditorFontPreferences.migrateIfNeeded(store: store)
+        #expect(store.get("editorFontSize") as? Double == 16.0)
     }
 
     // MARK: - Reset design
