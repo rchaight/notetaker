@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Privacy policy - Notetaker remote</title>
+<style>
+body{font-family:-apple-system,system-ui,sans-serif;max-width:40rem;margin:3rem auto;padding:0 1rem;color:#1d1d1f;background:#fff;line-height:1.55}
+h1{font-size:1.5rem}h2{font-size:1.15rem;margin-top:2rem}a{color:#0a66d8}.meta{font-size:.9rem;color:#6e6e73}
+@media (prefers-color-scheme: dark){body{background:#1d1d1f;color:#f5f5f7}.meta{color:#a1a1a6}a{color:#6cb1ff}}
+</style>
+</head>
+<body>
+<main>
+<p><a href="/">Notetaker remote home</a></p>
+<h1>Notetaker remote: privacy policy</h1>
+<p class="meta">Effective 2026-10-30</p>
+<p>Notetaker remote is a personal tool run by one person, Robert Haight, for his own use. He is the only permitted user. This policy describes what the service handles.</p>
+
+<h2>Google sign-in</h2>
+<p>Sign-in requests only the <code>openid</code> and <code>email</code> scopes. The email address Google returns is compared with the single address the owner has configured. If it matches, the owner is signed in. Google's own access and refresh tokens are not kept: only the identity token is read, and nothing else from Google's response is retained.</p>
+<p>For the owner's account, the address is recorded in the token database as the subject of that sign-in, next to the hashed tokens it produced. That record is deleted automatically by an hourly housekeeping pass once those tokens' 30-day absolute expiry is more than a day past (so about 31 days after sign-in), and immediately by the kill switch. The address is also the one value the server is configured to accept. If a different account tries to sign in, it is refused and the audit log records only that address's domain and a short (8 character) hash, never the address itself.</p>
+
+<h2>What the service holds and serves</h2>
+<p>The owner's Mac pushes a read-only, filtered copy of his notes, and of the events on the calendars he has chosen to include, for the past week and the next 60 days. For each event that copy holds the title, times, location, status, calendar name and the display names of the organizer and attendees, and for each calendar its name and account label; it never includes event notes, links, or the email-address fields of organizers and attendees. Free text such as an event title or location is copied as written. Locked notes, and notes or folders the owner has excluded from remote access, are never copied. The copy is returned only to the owner's own Claude conversations, when he asks. Whatever a tool call returns is sent to Anthropic's claude.ai service as part of that conversation and is handled there under Anthropic's terms and the owner's claude.ai data settings. The server returns data to no one else.</p>
+
+<h2>Tokens</h2>
+<p>After sign-in the service issues its own opaque tokens to claude.ai. They are stored only as SHA-256 hashes in a database on an encrypted volume. Access tokens last 15 minutes. Refresh tokens expire after 14 days without use, and in any case after 30 days.</p>
+
+<h2>Logs</h2>
+<p>An audit log records events such as sign-in success or failure, token issue, refresh and revocation, tool calls and rate limiting, the client ID, a token family ID, and the IP address of the request when the server is configured to trust the proxy's forwarded address. For tool calls it also records the request parameters: the note path requested, the search words, task filters such as assignee or label, calendar names and date ranges (each cut to 255 characters), plus result counts and sizes. It never records what a note says: no note bodies or search results, and no tokens, are written. The log is rotated at least daily and the most recent 90 rotations (about 90 days) are kept, then deleted.</p>
+
+<h2>Hosting</h2>
+<p>The service runs in a container on a server in the owner's own home, reachable through Tailscale Funnel. The copy of the notes and calendar, the search index and the token database live on an encrypted volume; the notes copy is also backed up, encrypted, to off-site storage controlled by the owner. The audit log lives on the container's own disk. This website is static, served by Cloudflare Pages, and sets no cookies and runs no scripts; Cloudflare sees ordinary connection data for visitors to these pages.</p>
+
+<h2>What we do not do</h2>
+<p>No data is sold. There is no advertising and no analytics. Apart from delivering tool results to claude.ai as described above, nothing is shared with third parties. The Google account information received at sign-in (your email address) is used only for the sign-in check and is never shared or transferred to any other app.</p>
+
+<h2>Revoking access and deleting data</h2>
+<p>To end access, disconnect the connector in claude.ai; the server's tokens are revoked when the client asks, and in any case expire within 30 days at most. Removing "Notetaker remote" under your <a href="https://myaccount.google.com/permissions">Google Account permissions</a> stops future sign-ins but does not by itself end a session that is already connected. The owner can also run a kill switch that takes the service offline, deletes every token, the search index and the copy of the data, and leaves the service disabled until he turns it back on. Encrypted backups of that copy, kept for the owner's own disaster recovery in storage the owner controls, are not deleted by the kill switch; they contain no tokens, no audit entries and no Google account data. The kill switch does not erase the audit log; its entries are deleted by the 90-day rotation described above.</p>
+
+<h2>Google API Services User Data Policy</h2>
+<p>Notetaker remote's use and transfer to any other app of information received from Google APIs will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements.</p>
+
+<h2>Changes</h2>
+<p>Changes to this policy will be posted on this page with an updated effective date.</p>
+
+<h2>Contact</h2>
+<p>Questions or deletion requests: <a href="mailto:rchaight@gmail.com">rchaight@gmail.com</a>.</p>
+</main>
+</body>
+</html>
