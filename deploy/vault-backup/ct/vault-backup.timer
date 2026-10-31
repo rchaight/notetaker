@@ -1,0 +1,12 @@
+# /etc/systemd/system/vault-backup.timer
+# 04:10 daily: after the 02:00 vzdump and the 03:15 offsite job (+15 min).
+[Unit]
+Description=Nightly Notetaker replica backup
+
+[Timer]
+OnCalendar=*-*-* 04:10:00
+Persistent=true
+RandomizedDelaySec=0
+
+[Install]
+WantedBy=timers.target

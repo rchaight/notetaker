@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# /usr/local/sbin/vb-maint — MAINTENANCE egress window for apt (http mirrors).
+#   vb-maint on [minutes]   open TCP 80 (any user: apt runs as _apt) to non-RFC1918, default 15, max 60;
+#                           the kernel removes it when the timeout expires
+#   vb-maint off            close it now
+#   vb-maint status
+# It only edits the `maint` set inside nftables.conf's table; nothing persists
+# across an nftables reload. Run as root; the window itself applies to any local user. Use for: apt-get update/upgrade, setup.sh.
+set -euo pipefail
+[[ $EUID -eq 0 ]] || { echo "vb-maint: must run as root" >&2; exit 64; }
+case "${1:-}" in
+  on)
+    m="${2:-15}"
+    [[ "$m" =~ ^[0-9]+$ && "$m" -ge 1 && "$m" -le 60 ]] || { echo "vb-maint: minutes must be 1-60" >&2; exit 64; }
+    nft add element inet vaultbackup maint "{ 80 timeout ${m}m }"
+    echo "vb-maint: TCP 80 open to non-RFC1918 hosts for up to ${m} minutes"
+    ;;
+  off) nft flush set inet vaultbackup maint; echo "vb-maint: closed" ;;
+  status) nft list set inet vaultbackup maint ;;
+  *) echo "usage: vb-maint on [minutes] | off | status" >&2; exit 64 ;;
+esac

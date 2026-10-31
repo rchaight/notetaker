@@ -1,0 +1,383 @@
+#!/usr/bin/env bash
+# /usr/local/sbin/vault-restic-backup — nightly restic backup of the read-only
+# replica inbox to B2 (spec 00-server-side-backup, CT 122). Root, 0750.
+#
+#   vault-restic-backup [run|check|snapshots|restore-test|status|verify-last|accept-shrink]
+#
+# Exit codes: 0 ok (incl. warn), 1 failure, 2 usage, 3 restic exit 3 (snapshot
+# made, unreadable files), 4 source guard refused (no snapshot), 5 lock held.
+# Secrets come from the env file only, parsed inside the subshell that execs
+# restic; this process never exports them and never logs argv. stderr, the
+# journal and last-run carry fixed strings plus numbers, never a note path:
+# restic output goes to the log file only.
+#
+# Test hooks (all optional): VAULT_BACKUP_ENV VAULT_BACKUP_SOURCE
+# VAULT_BACKUP_STATE VAULT_BACKUP_LOG VAULT_BACKUP_CACHE
+# VAULT_BACKUP_ALLOW_DISK_TMP=1 VAULT_BACKUP_NOW VAULT_MIN_NOTES
+# VAULT_BACKUP_POSTCHECK_HOOK (script run between restic and the post-check; tests only).
+set -euo pipefail
+umask 077
+
+ENV_FILE="${VAULT_BACKUP_ENV:-/etc/vault-backup/env}"
+SRC="${VAULT_BACKUP_SOURCE:-/srv/replica-ro}"
+STATE="${VAULT_BACKUP_STATE:-/var/lib/vault-backup}"
+LOG="${VAULT_BACKUP_LOG:-/var/log/vault-backup/backup.log}"
+CACHE="${VAULT_BACKUP_CACHE:-/var/cache/vault-backup}"
+MIN_NOTES="${VAULT_MIN_NOTES:-100}"
+BACKUP_HOST="nr-replica"
+BACKUP_TAG="notetaker-replica"
+LOG_MAX_BYTES=1048576
+LOG_KEEP_LINES=2000
+STALE_SECS=$((7 * 24 * 3600))
+OK_MAX_AGE_SECS=$((26 * 3600))
+
+if [[ -f /usr/local/lib/vault-backup/manifest-check.py ]]; then
+  MANIFEST_CHECK=/usr/local/lib/vault-backup/manifest-check.py
+else
+  MANIFEST_CHECK="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/manifest-check.py"
+fi
+
+log() {
+  mkdir -p "$(dirname "$LOG")"
+  printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$LOG"
+  printf '%s\n' "$*" >&2
+}
+
+now_iso() { date -u '+%Y-%m-%dT%H:%M:%SZ'; }
+
+# ISO-8601 (Z, offset or naive UTC, optional fraction) -> epoch seconds.
+iso_epoch() {
+  python3 -I -c '
+import re, sys, calendar, datetime
+s = sys.argv[1].strip()
+m = re.match(r"^(\d{4}-\d\d-\d\d)[T ](\d\d:\d\d:\d\d)(\.\d+)?(Z|[+-]\d\d:?\d\d)?$", s)
+if not m:
+    sys.exit(1)
+t = datetime.datetime.strptime(m.group(1) + " " + m.group(2), "%Y-%m-%d %H:%M:%S")
+e = calendar.timegm(t.timetuple())
+z = m.group(4)
+if z and z != "Z":
+    sign = 1 if z[0] == "+" else -1
+    d = z[1:].replace(":", "")
+    e -= sign * (int(d[:2]) * 3600 + int(d[2:]) * 60)
+print(e)
+' "$1"
+}
+
+now_epoch() {
+  if [[ -n "${VAULT_BACKUP_NOW:-}" ]]; then iso_epoch "$VAULT_BACKUP_NOW"; else date +%s; fi
+}
+
+rotate_log() {
+  [[ -f "$LOG" ]] || return 0
+  local size
+  size=$(wc -c < "$LOG" | tr -d ' ')
+  if [[ "$size" -gt "$LOG_MAX_BYTES" ]]; then
+    tail -n "$LOG_KEEP_LINES" "$LOG" > "$LOG.tmp" && mv "$LOG.tmp" "$LOG"
+  fi
+}
+
+# write_run <ok|warn|skip|fail> <exit code> <message>: one line, overwritten each run.
+write_run() {
+  mkdir -p "$STATE"
+  printf '%s %s %s %s\n' "$1" "$(now_iso)" "$2" "$3" > "$STATE/last-run.tmp"
+  mv "$STATE/last-run.tmp" "$STATE/last-run"
+}
+
+# --- lock: flock where available (the CT), a pid-file mkdir lock otherwise (macOS tests) ---
+LOCK_FALLBACK=""
+take_lock() {
+  mkdir -p "$STATE"
+  if command -v flock > /dev/null 2>&1; then
+    exec 9> "$STATE/lock"
+    flock -n 9 || { log "another run is in progress"; exit 5; }
+  else
+    LOCK_FALLBACK="$STATE/lock.d"
+    if ! mkdir "$LOCK_FALLBACK" 2> /dev/null; then
+      local other
+      other=$(cat "$LOCK_FALLBACK/pid" 2> /dev/null || true)
+      if [[ -n "$other" ]] && kill -0 "$other" 2> /dev/null; then
+        log "another run is in progress"; LOCK_FALLBACK=""; exit 5
+      fi
+      rm -rf "$LOCK_FALLBACK"; mkdir "$LOCK_FALLBACK"
+    fi
+    echo $$ > "$LOCK_FALLBACK/pid"
+  fi
+}
+release_lock() { [[ -z "$LOCK_FALLBACK" ]] || rm -rf "$LOCK_FALLBACK"; }
+
+file_mode() { stat -c '%a' "$1" 2> /dev/null || stat -f '%Lp' "$1" 2> /dev/null || true; }
+
+# env_preflight <cmd>: last-run is written only when the command is `run`.
+env_preflight() {
+  local wr=:
+  [[ "${1:-}" == run ]] && wr=write_run
+  command -v restic > /dev/null 2>&1 || { log "restic not found in PATH"; $wr fail 1 restic_missing; exit 1; }
+  if [[ ! -f "$ENV_FILE" ]]; then
+    log "env file missing"; $wr fail 1 env_missing; exit 1
+  fi
+  if [[ "$(file_mode "$ENV_FILE")" != 400 ]]; then
+    log "env file must be mode 0400"; $wr fail 1 env_mode; exit 1
+  fi
+  if grep -Eq '=.*<[A-Za-z0-9_]+>' "$ENV_FILE"; then
+    log "env file still contains placeholders"; $wr fail 1 env_placeholders; exit 1
+  fi
+}
+
+# Run restic with credentials in the child environment only (never argv, never this shell).
+restic_cmd() {
+  (
+    export RESTIC_CACHE_DIR="$CACHE"
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      line="${line#"${line%%[![:space:]]*}"}"
+      case "$line" in ''|'#'*) continue ;; esac
+      k="${line%%=*}"; v="${line#*=}"
+      [[ "$k" =~ ^[A-Z][A-Z0-9_]*$ ]] || continue
+      export "$k=$v"
+    done < "$ENV_FILE"
+    exec restic "$@"
+  )
+}
+
+src_is_ro_mount() {
+  mountpoint -q "$SRC" 2> /dev/null || return 1
+  local opts
+  opts=$(findmnt -no OPTIONS "$SRC" 2> /dev/null || true)
+  [[ ",$opts," == *,ro,* ]]
+}
+
+strip_gen() { local x="$1"; x="${x/ generated_at=* bytes=/ bytes=}"; printf '%s' "$x"; }
+
+cmd_run() {
+  take_lock
+  rotate_log
+  trap release_lock EXIT
+  env_preflight run
+
+  # 3. source preflight
+  if [[ -z "${VAULT_BACKUP_SOURCE:-}" ]] && ! src_is_ro_mount; then
+    log "source is not a read-only mount point"; write_run fail 1 source_not_ro; exit 1
+  fi
+
+  # 4. manifest / DISABLED / digest
+  local out rc=0 reason count generated_at
+  out=$(python3 -I "$MANIFEST_CHECK" "$SRC" 2>> "$LOG") || rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    reason="${out#reason=}"
+    [[ "$rc" -eq 4 && "$reason" =~ ^[a-z_0-9]+$ ]] || reason="manifest_check_error"
+    log "source guard refused: $reason"
+    write_run skip 4 "$reason"
+    exit 4
+  fi
+  count=$(sed -n 's/^ok count=\([0-9]*\) .*/\1/p' <<< "$out")
+  generated_at=$(sed -n 's/^ok .* generated_at=\([^ ]*\) .*/\1/p' <<< "$out")
+  [[ -n "$count" && -n "$generated_at" ]] || { log "unparseable manifest-check output"; write_run fail 1 manifest_check_output; exit 1; }
+
+  # 5. floor
+  if [[ "$count" -lt "$MIN_NOTES" ]]; then
+    log "note count $count is below the floor $MIN_NOTES"
+    write_run skip 4 "below_floor count=$count floor=$MIN_NOTES"
+    exit 4
+  fi
+
+  # 6. shrink guard (accept-shrink is consumed by this run either way)
+  local last=""
+  if [[ -f "$STATE/last-success" ]]; then
+    last=$(sed -n 's/^count=\([0-9]*\) .*/\1/p' "$STATE/last-success" | head -1)
+  fi
+  local accepted=0
+  [[ -f "$STATE/accept-shrink" ]] && accepted=1
+  rm -f "$STATE/accept-shrink"
+  if [[ -n "$last" && "$last" -ge 100 && $((count * 5)) -lt $((last * 4)) && "$accepted" -eq 0 ]]; then
+    log "note count dropped from $last to $count (more than 20 percent)"
+    write_run skip 4 "shrink last=$last now=$count"
+    exit 4
+  fi
+
+  # 7. staleness
+  local stale=0 gen_e now_e age_days=0
+  if gen_e=$(iso_epoch "$generated_at") && now_e=$(now_epoch); then
+    if [[ $((now_e - gen_e)) -gt "$STALE_SECS" ]]; then
+      stale=1; age_days=$(((now_e - gen_e) / 86400))
+      log "replica is $age_days days old (stale)"
+    fi
+  fi
+
+  # 8. backup
+  local outfile snap="unknown" brc=0
+  mkdir -p "$CACHE"
+  outfile=$(mktemp "$STATE/restic-out.XXXXXX")
+  log "backup starting ($count notes)"
+  restic_cmd backup --host "$BACKUP_HOST" --tag "$BACKUP_TAG" \
+    --exclude "$SRC/calendar-remote.json" "$SRC" > "$outfile" 2>&1 || brc=$?
+  cat "$outfile" >> "$LOG"
+  snap=$(sed -n 's/^snapshot \([0-9a-f]\{8\}\) saved.*/\1/p' "$outfile" | tail -1)
+  rm -f "$outfile"
+  snap="${snap:-unknown}"
+  if [[ "$brc" -eq 3 ]]; then
+    log "backup finished with unreadable files (exit 3)"
+    write_run fail 3 "restic_exit_3"
+    exit 3
+  elif [[ "$brc" -ne 0 ]]; then
+    log "restic backup failed (exit $brc)"
+    write_run fail "$brc" "restic_failed"
+    exit 1
+  fi
+  # TOCTOU: a push may have landed while restic read the tree. Re-run the manifest check; if the
+  # inbox changed, keep last-success, warn (the host check mails it) and let the next run decide.
+  if [[ -n "${VAULT_BACKUP_POSTCHECK_HOOK:-}" ]]; then "$VAULT_BACKUP_POSTCHECK_HOOK" || true; fi
+  local out2 rc2=0
+  out2=$(python3 -I "$MANIFEST_CHECK" "$SRC" 2>> "$LOG") || rc2=$?
+  # Compare count, bytes and digest only: the Mac re-pushes a fresh generatedAt every 5 minutes.
+  if [[ "$rc2" -ne 0 || "$(strip_gen "$out2")" != "$(strip_gen "$out")" ]]; then
+    log "the replica changed during the backup (concurrent push); last-success not updated"
+    write_run warn 0 "concurrent_push"
+    exit 0
+  fi
+  printf 'count=%s generated_at=%s snapshot=%s at=%s\n' "$count" "$generated_at" "$snap" "$(now_iso)" > "$STATE/last-success.tmp"
+  mv "$STATE/last-success.tmp" "$STATE/last-success"
+  rm -f "$STATE/last-failure"
+  if [[ "$stale" -eq 1 ]]; then
+    write_run warn 0 "stale age_days=$age_days count=$count"
+  else
+    write_run ok 0 "count=$count"
+  fi
+  log "backup finished OK"
+}
+
+cmd_check() {
+  rotate_log; env_preflight check
+  mkdir -p "$CACHE"
+  log "check starting (5 percent data subset)"
+  local rc=0
+  restic_cmd check --no-lock --read-data-subset=5% >> "$LOG" 2>&1 || rc=$?
+  [[ "$rc" -eq 0 ]] || { log "restic check failed (exit $rc)"; exit 1; }
+  log "check OK"
+}
+
+cmd_snapshots() {
+  env_preflight snapshots
+  mkdir -p "$CACHE"
+  restic_cmd snapshots --no-lock --host "$BACKUP_HOST" --tag "$BACKUP_TAG"
+}
+
+RESTORE_TMP=""
+cleanup_restore() {
+  if [[ -n "$RESTORE_TMP" ]]; then chmod -R u+w "$RESTORE_TMP" 2> /dev/null || true; rm -rf "$RESTORE_TMP"; fi
+  release_lock
+}
+
+cmd_restore_test() {
+  take_lock
+  rotate_log
+  local runbase="/run/vault-backup"
+  RESTORE_TMP=""
+  trap cleanup_restore EXIT
+  env_preflight restore-test
+  if [[ "${VAULT_BACKUP_ALLOW_DISK_TMP:-0}" = 1 ]]; then
+    runbase="$STATE/run"
+  fi
+  mkdir -p "$runbase"
+  if [[ "${VAULT_BACKUP_ALLOW_DISK_TMP:-0}" != 1 ]]; then
+    case "$(stat -f -c %T "$runbase" 2> /dev/null || true)" in
+      tmpfs|ramfs) ;;
+      *) log "restore scratch is not on tmpfs"; echo "FAIL: restore scratch is not tmpfs" >&2; exit 1 ;;
+    esac
+  fi
+  local need avail
+  need=$(python3 -I -c '
+import json, sys
+m = json.load(open(sys.argv[1] + "/manifest.json"))
+print(sum(int(f["bytes"]) for f in m["files"]) + 32 * 1024 * 1024)
+' "$SRC" 2> /dev/null) || { log "restore-test: manifest unreadable"; echo "FAIL: manifest unreadable" >&2; exit 1; }
+  avail=$(($(df -Pk "$runbase" | awk 'NR==2{print $4}') * 1024))
+  if [[ "$avail" -lt "$need" ]]; then
+    log "restore-test: need $need bytes, have $avail: raise CT 122 memory"
+    echo "FAIL: not enough scratch space: raise CT 122 memory" >&2
+    exit 1
+  fi
+  local tmp="$runbase/restore"
+  RESTORE_TMP="$tmp"
+  rm -rf "$tmp"; (umask 077; mkdir -p "$tmp")
+  mkdir -p "$CACHE"
+  log "restore test starting"
+  local rc=0
+  restic_cmd restore latest --no-lock --host "$BACKUP_HOST" --tag "$BACKUP_TAG" --path "$SRC" --target "$tmp" >> "$LOG" 2>&1 || rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    log "restore-test: restic restore failed (exit $rc)"
+    echo "FAIL: restic restore failed (exit $rc)"
+    exit 1
+  fi
+  # restic recreates the absolute source path under the target.
+  if diff -rq -x calendar-remote.json -x DISABLED "$SRC" "$tmp$SRC" >> "$LOG" 2>&1; then
+    log "restore-test PASS"
+    echo "PASS: latest snapshot matches the replica"
+  else
+    log "restore-test FAIL (differences are in the log)"
+    echo "FAIL: restored snapshot differs from the replica (a push since the last run also causes this)"
+    exit 1
+  fi
+}
+
+cmd_status() {
+  echo "source:        $SRC"
+  echo "mount options: $(findmnt -no OPTIONS "$SRC" 2> /dev/null || echo 'n/a')"
+  if [[ -e "$SRC/DISABLED" ]]; then echo "DISABLED:      present"; else echo "DISABLED:      absent"; fi
+  if [[ -f "$SRC/manifest.json" ]]; then
+    python3 -I -c '
+import json, sys
+m = json.load(open(sys.argv[1] + "/manifest.json"))
+print("manifest:      generatedAt=%s noteCount=%s disabled=%s" % (m.get("generatedAt"), m.get("noteCount"), m.get("disabled")))
+' "$SRC" 2> /dev/null || echo "manifest:      unreadable"
+  else
+    echo "manifest:      missing"
+  fi
+  echo "md on disk:    $({ find "$SRC/vault" -type f -name '*.md' 2> /dev/null || true; } | wc -l | tr -d ' ')"
+  echo "last-success:  $(cat "$STATE/last-success" 2> /dev/null || echo none)"
+  echo "last-run:      $(cat "$STATE/last-run" 2> /dev/null || echo none)"
+  if command -v systemctl > /dev/null 2>&1; then
+    echo "timer:         $(systemctl list-timers vault-backup.timer --no-pager 2> /dev/null | sed -n '2p' || true)"
+  fi
+}
+
+cmd_verify_last() {
+  local f="$STATE/last-run" line status ts t_e now_e
+  if [[ ! -f "$f" ]]; then
+    echo "last-run missing"; exit 1
+  fi
+  line=$(head -1 "$f")
+  echo "$line"
+  if [[ -f "$STATE/last-failure" ]]; then head -20 "$STATE/last-failure"; fi
+  status="${line%% *}"; ts="${line#* }"; ts="${ts%% *}"
+  case "$status" in
+    warn) exit 2 ;;
+    ok)
+      t_e=$(iso_epoch "$ts") || exit 1
+      now_e=$(now_epoch) || exit 1
+      [[ $((now_e - t_e)) -lt "$OK_MAX_AGE_SECS" ]] || { echo "last-run is older than 26 hours"; exit 1; }
+      exit 0 ;;
+    *) exit 1 ;;
+  esac
+}
+
+cmd_accept_shrink() {
+  mkdir -p "$STATE"
+  touch "$STATE/accept-shrink"
+  echo "accept-shrink set: the next run may go below the 20 percent floor once; that run removes the file whether or not it was needed."
+}
+
+usage() {
+  echo "Usage: ${0##*/} [run|check|snapshots|restore-test|status|verify-last|accept-shrink]" >&2
+  exit 2
+}
+
+case "${1:-run}" in
+  run) cmd_run ;;
+  check) cmd_check ;;
+  snapshots) cmd_snapshots ;;
+  restore-test) cmd_restore_test ;;
+  status) cmd_status ;;
+  verify-last) cmd_verify_last ;;
+  accept-shrink) cmd_accept_shrink ;;
+  *) usage ;;
+esac

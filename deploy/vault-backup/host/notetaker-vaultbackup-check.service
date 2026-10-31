@@ -1,0 +1,13 @@
+# /etc/systemd/system/notetaker-vaultbackup-check.service (hildanet, root)
+# Daily host-side check of the CT 122 replica backup: runs verify-last inside
+# the CT (no restic call, no network). Exit 1 = last run missing/failed/skipped/
+# older than 26 h; exit 2 = stale replica (warn). Both fail this unit by design,
+# which is how "alert, not fail" reaches the inbox via OnFailure.
+[Unit]
+Description=Check the last Notetaker replica backup inside CT 122
+After=pve-guests.service
+OnFailure=notetaker-vaultbackup-check-failed.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/pct exec 122 -- /usr/local/sbin/vault-restic-backup verify-last

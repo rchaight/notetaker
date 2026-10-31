@@ -1,0 +1,18 @@
+# /etc/pve/firewall/122.fw  (copy from this example). PVE firewall for the
+# vault-backup CT 122. Install: install -m 0644 pve-firewall.122.fw.example /etc/pve/firewall/122.fw
+# CT 122 has no sshd and no listener, so [RULES] is empty on purpose: inbound
+# is DROP for everyone. Admin access is `pct enter 122` only. The CT's net0 must
+# carry firewall=1 or this file is ignored. Outbound policy is enforced inside
+# the CT by nftables.conf (no RFC1918 egress).
+[OPTIONS]
+enable: 1
+policy_in: DROP
+policy_out: ACCEPT
+log_level_in: info
+ndp: 0
+dhcp: 0
+radv: 0
+macfilter: 1
+ipfilter: 0
+
+[RULES]

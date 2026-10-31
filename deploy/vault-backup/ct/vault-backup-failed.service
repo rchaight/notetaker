@@ -1,0 +1,10 @@
+# /etc/systemd/system/vault-backup-failed.service
+# OnFailure target of vault-backup.service: records the journal tail that the
+# host check (notetaker-vaultbackup-check) shows and mails. The wrapper's stderr
+# holds no note paths, so neither does this file. The CT has no mail relay.
+[Unit]
+Description=Record the failure of the Notetaker replica backup
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'journalctl -u vault-backup.service -n 40 --no-pager > /var/lib/vault-backup/last-failure'

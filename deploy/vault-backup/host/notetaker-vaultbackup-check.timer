@@ -1,0 +1,11 @@
+# /etc/systemd/system/notetaker-vaultbackup-check.timer (hildanet)
+# 06:30 daily, after the 04:10 backup in CT 122.
+[Unit]
+Description=Daily check of the Notetaker replica backup
+
+[Timer]
+OnCalendar=*-*-* 06:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

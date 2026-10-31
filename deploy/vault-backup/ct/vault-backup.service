@@ -1,0 +1,39 @@
+# /etc/systemd/system/vault-backup.service
+# Nightly restic backup of the read-only replica inbox (spec 4.5). Exit 3
+# (unreadable files) and 4 (source guard refused) are failures on purpose
+# (SuccessExitStatus is empty) so the host check sees them. The service runs
+# as root only to read directories owned by CT 120's uids; the capability
+# bounding set keeps CAP_DAC_READ_SEARCH and nothing else. MemoryDenyWriteExecute
+# is omitted (Go runtime); add it only if a run on the CT proves restic tolerates it.
+# EnvironmentFile puts the secrets in the service environment; the wrapper never prints env.
+[Unit]
+Description=Notetaker replica backup (restic to B2)
+RequiresMountsFor=/srv/replica-ro
+After=network-online.target
+Wants=network-online.target
+OnFailure=vault-backup-failed.service
+
+[Service]
+Type=oneshot
+User=root
+EnvironmentFile=/etc/vault-backup/env
+ExecStart=/usr/local/sbin/vault-restic-backup run
+SuccessExitStatus=
+TimeoutStartSec=2h
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallFilter=@system-service
+LockPersonality=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+RestrictNamespaces=yes
+UMask=0077
+ReadOnlyPaths=/srv/replica-ro
+ReadWritePaths=/var/lib/vault-backup /var/cache/vault-backup /var/log/vault-backup
+RuntimeDirectory=vault-backup
+RuntimeDirectoryMode=0700

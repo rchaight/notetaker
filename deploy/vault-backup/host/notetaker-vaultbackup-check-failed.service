@@ -1,0 +1,10 @@
+# /etc/systemd/system/notetaker-vaultbackup-check-failed.service (hildanet, root)
+# Mirrors pve-offsite-backup-failed.service: the orchestrator compares the two
+# at install time and adjusts the subject/pipe to match the live unit. Path:
+# `mail` -> /etc/aliases -> PVE notification (gmail).
+[Unit]
+Description=Mail the failure of the Notetaker replica backup check
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'journalctl -u notetaker-vaultbackup-check.service -n 40 --no-pager | mail -s "hildanet: Notetaker replica backup needs attention" root'
