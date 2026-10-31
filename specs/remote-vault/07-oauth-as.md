@@ -331,7 +331,7 @@ Must not change: 06's router contract beyond adding routes, `ToolGateway`,
 ## Verification commands
 
 ```bash
-cd ~/Developer/Notetaker/Packages/RemoteServer && DEVELOPER_DIR=/Applications/Xcode-beta.app \
+cd ~/Developer/Notetaker/Packages/RemoteServer && DEVELOPER_DIR=/Applications/Xcode.app \
   swift test --scratch-path ~/.cache/notetaker-build/RemoteServer --filter OAuth
 bash -n scripts/remote-vault/oauth-probe.sh && (command -v shellcheck && shellcheck scripts/remote-vault/oauth-probe.sh || true)
 cd ~/Developer/Notetaker && swiftformat --lint . && scripts/verify.sh 3 --install   # exit code captured directly

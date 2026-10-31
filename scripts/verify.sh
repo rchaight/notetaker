@@ -6,7 +6,7 @@
 # process-checks the launch (crash windows are shorter than a glance).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode-beta.app}"
+export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app}"
 ROUNDS="${1:-3}"
 
 # Fresh project first — new source files are invisible until regeneration.

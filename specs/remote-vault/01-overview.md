@@ -124,7 +124,7 @@ Everything else is untouched. Specs state "must not change" lists.
    Keychain, or the user's real vault note contents. Acceptance steps that
    look at the user's real export staging dir use **counts only**
    (`grep -c`, `find | wc -l`), never `cat`.
-4. **Toolchain + build locations** per CLAUDE.md: `DEVELOPER_DIR=/Applications/Xcode-beta.app`,
+4. **Toolchain + build locations** per CLAUDE.md: `DEVELOPER_DIR=/Applications/Xcode.app`,
    scratch paths under `~/.cache/notetaker-build/<Kit>`, never `build/` or
    `.build/` in the repo. `scripts/verify.sh 3 --install` before every
    commit. Note that `verify.sh` runs `swift test` for **every**

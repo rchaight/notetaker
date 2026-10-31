@@ -117,7 +117,7 @@ drawn (verified against the probe), so screenshots are the oracle. List the
 app's windows with CGWindowIDs and capture one:
 
 ```swift
-// winid.swift — compile: DEVELOPER_DIR=/Applications/Xcode-beta.app xcrun swiftc -O winid.swift -o winid
+// winid.swift — compile: DEVELOPER_DIR=/Applications/Xcode.app xcrun swiftc -O winid.swift -o winid
 import CoreGraphics
 import Foundation
 let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []

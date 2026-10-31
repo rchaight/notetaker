@@ -286,7 +286,7 @@ package, any app file, docs other than PROGRESS.
 ## Verification commands
 
 ```bash
-cd ~/Developer/Notetaker/Packages/MarkdownKit && DEVELOPER_DIR=/Applications/Xcode-beta.app \
+cd ~/Developer/Notetaker/Packages/MarkdownKit && DEVELOPER_DIR=/Applications/Xcode.app \
   swift test --scratch-path ~/.cache/notetaker-build/MarkdownKit --filter ExportPolicyTests
 cd ~/Developer/Notetaker && swiftformat --lint . && xcodegen generate
 scripts/verify.sh 3 --install   # before commit; capture its exit code directly, never through a pipe

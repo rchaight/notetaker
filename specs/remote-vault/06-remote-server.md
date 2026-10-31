@@ -294,9 +294,9 @@ beyond the one-line hardening, `IndexKit`/`AIKit` (report gaps to 05).
 ## Verification commands
 
 ```bash
-cd ~/Developer/Notetaker/Packages/RemoteServer && DEVELOPER_DIR=/Applications/Xcode-beta.app \
+cd ~/Developer/Notetaker/Packages/RemoteServer && DEVELOPER_DIR=/Applications/Xcode.app \
   swift test --scratch-path ~/.cache/notetaker-build/RemoteServer
-DEVELOPER_DIR=/Applications/Xcode-beta.app swift build -c release --product notetaker-remote \
+DEVELOPER_DIR=/Applications/Xcode.app swift build -c release --product notetaker-remote \
   --scratch-path ~/.cache/notetaker-build/RemoteServer
 NR_PUBLIC_URL=https://example.ts.net NR_REPLICA_DIR=/tmp/nr-fixture NR_STATE_DIR=/tmp/nr-state NR_AUDIT_LOG=/tmp/nr-audit.jsonl \
   ~/.cache/notetaker-build/RemoteServer/release/notetaker-remote status

@@ -72,13 +72,13 @@ Adding a `?kind` means touching parser, rewriter, style ranges, chips, autocompl
 
 Two hard environment rules:
 
-1. **Toolchain: Xcode 27 beta.** Prefix every xcodebuild/swift command with `DEVELOPER_DIR=/Applications/Xcode-beta.app` (macOS 27 / iOS 27 SDKs; the App Store Xcode 26.6 at /Applications/Xcode.app is the fallback).
+1. **Toolchain: Xcode 27 (App Store).** Prefix every xcodebuild/swift command with `DEVELOPER_DIR=/Applications/Xcode.app` (Xcode 27.2, macOS 27 / iOS 27 SDKs). The 27.0 beta still installed at Xcode-beta.app is older and superseded; do not use it.
 2. **Build products must live OUTSIDE the repo.** This repo now sits at `~/Developer/Notetaker` (not iCloud-synced), but it formerly lived under iCloud-synced `~/Documents`, where the file provider decorated in-repo build artifacts with xattrs mid-build and codesign failed with "resource fork/detritus" errors, intermittently and on random targets. Always pass an external scratch/derived-data path; never create `build/` or `.build/` inside the repo.
 
 - `Notetaker.xcodeproj` is GENERATED — edit `project.yml`, then `xcodegen generate`. Never hand-edit the pbxproj.
-- Build: `DEVELOPER_DIR=/Applications/Xcode-beta.app xcodebuild -project Notetaker.xcodeproj -scheme Notetaker -destination 'platform=macOS' -derivedDataPath ~/.cache/notetaker-build/DerivedData build`
+- Build: `DEVELOPER_DIR=/Applications/Xcode.app xcodebuild -project Notetaker.xcodeproj -scheme Notetaker -destination 'platform=macOS' -derivedDataPath ~/.cache/notetaker-build/DerivedData build`
 - iOS: same with `-destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO` (iOS 27.0 simulator runtime is installed)
-- Package tests: `cd Packages/<Kit> && DEVELOPER_DIR=/Applications/Xcode-beta.app swift test --scratch-path ~/.cache/notetaker-build/<Kit>`
+- Package tests: `cd Packages/<Kit> && DEVELOPER_DIR=/Applications/Xcode.app swift test --scratch-path ~/.cache/notetaker-build/<Kit>`
 - Formatting: `swiftformat --lint .`
 - **Linux:** no Docker on the dev Mac, so Linux is verified by the GitHub Actions `linux-packages` job (TaskEngine, MarkdownKit, CalendarKit, ProjectKit, IndexKit, AIKit, MCPKit, RemoteServer on `swift:6.4-noble`); check it when a change touches those packages' portability.
 - **Full verify gate (run before every commit): `scripts/verify.sh 3 --install`** — all package tests ×3, both builds, launch check. Cross-module flows belong in IndexKit's PipelineIntegrationTests.

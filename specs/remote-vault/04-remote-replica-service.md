@@ -197,7 +197,7 @@ files only — `UserKnownHostsFile` and `IdentitiesOnly` guarantee it).
 
 ```bash
 cd ~/Developer/Notetaker && xcodegen generate && swiftformat --lint .
-DEVELOPER_DIR=/Applications/Xcode-beta.app xcodebuild -project Notetaker.xcodeproj -scheme Notetaker \
+DEVELOPER_DIR=/Applications/Xcode.app xcodebuild -project Notetaker.xcodeproj -scheme Notetaker \
   -destination 'generic/platform=iOS Simulator' -derivedDataPath ~/.cache/notetaker-build/DerivedData build CODE_SIGNING_ALLOWED=NO
 scripts/verify.sh 1 --install     # loop; then the manual criteria above
 ls -la ~/Library/Application\ Support/Notetaker/RemoteExport/

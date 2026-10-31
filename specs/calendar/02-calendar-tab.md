@@ -250,12 +250,12 @@ VStack(spacing: 0) {
 ## Verification commands
 
 ```bash
-cd ~/Developer/Notetaker/Packages/CalendarKit && DEVELOPER_DIR=/Applications/Xcode-beta.app \
+cd ~/Developer/Notetaker/Packages/CalendarKit && DEVELOPER_DIR=/Applications/Xcode.app \
   swift test --scratch-path ~/.cache/notetaker-build/CalendarKit
 cd ~/Developer/Notetaker && xcodegen generate && swiftformat --lint .
-DEVELOPER_DIR=/Applications/Xcode-beta.app xcodebuild -project Notetaker.xcodeproj -scheme Notetaker \
+DEVELOPER_DIR=/Applications/Xcode.app xcodebuild -project Notetaker.xcodeproj -scheme Notetaker \
   -destination 'platform=macOS' -derivedDataPath ~/.cache/notetaker-build/DerivedData build
-DEVELOPER_DIR=/Applications/Xcode-beta.app xcodebuild -project Notetaker.xcodeproj -scheme Notetaker \
+DEVELOPER_DIR=/Applications/Xcode.app xcodebuild -project Notetaker.xcodeproj -scheme Notetaker \
   -destination 'generic/platform=iOS Simulator' -derivedDataPath ~/.cache/notetaker-build/DerivedData build CODE_SIGNING_ALLOWED=NO
 scripts/verify.sh 3 --install
 ```

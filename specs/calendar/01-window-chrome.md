@@ -152,7 +152,7 @@ report why instead of changing it.
 
 ```bash
 cd ~/Developer/Notetaker
-DEVELOPER_DIR=/Applications/Xcode-beta.app xcodebuild -project Notetaker.xcodeproj -scheme Notetaker \
+DEVELOPER_DIR=/Applications/Xcode.app xcodebuild -project Notetaker.xcodeproj -scheme Notetaker \
   -destination 'platform=macOS' -derivedDataPath ~/.cache/notetaker-build/DerivedData build
 scripts/verify.sh 1 --install          # during the loop
 # screenshot every tab per 00-overview.md; view each PNG with Read

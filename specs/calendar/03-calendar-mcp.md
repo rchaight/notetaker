@@ -268,7 +268,7 @@ signature beyond the location field, `~/.claude.json` or any Claude config.
 ## Verification commands
 
 ```bash
-cd ~/Developer/Notetaker/Packages/MCPKit && DEVELOPER_DIR=/Applications/Xcode-beta.app \
+cd ~/Developer/Notetaker/Packages/MCPKit && DEVELOPER_DIR=/Applications/Xcode.app \
   swift test --scratch-path ~/.cache/notetaker-build/MCPKit
 cd ~/Developer/Notetaker && xcodegen generate && swiftformat --lint .
 scripts/verify.sh 1 --install          # loop

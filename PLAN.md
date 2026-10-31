@@ -1,6 +1,6 @@
 # Notetaker — Implementation Plan (PLAN.md)
 
-> Native macOS 26+/iOS 26+ universal SwiftUI app, built with the Xcode 27 beta SDKs. Markdown-first notes stored as real `.md` files in iCloud, with an inline-todo → master-task engine, an import/conversion pipeline reusing File-Parser/Docling, a private-by-default AI layer, and a project/Gantt view on top. This document is the build order for a solo developer working with Claude Code. Today: 2026-07-10. Repo: `rchaight/notetaker` (empty).
+> Native macOS 26+/iOS 26+ universal SwiftUI app, built with the Xcode 27 SDKs. Markdown-first notes stored as real `.md` files in iCloud, with an inline-todo → master-task engine, an import/conversion pipeline reusing File-Parser/Docling, a private-by-default AI layer, and a project/Gantt view on top. This document is the build order for a solo developer working with Claude Code. Today: 2026-07-10. Repo: `rchaight/notetaker` (empty).
 
 ---
 

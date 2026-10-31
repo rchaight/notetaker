@@ -224,7 +224,7 @@ package edges), docs other than PROGRESS.
 ## Verification commands
 
 ```bash
-cd ~/Developer/Notetaker/Packages/VaultKit && DEVELOPER_DIR=/Applications/Xcode-beta.app \
+cd ~/Developer/Notetaker/Packages/VaultKit && DEVELOPER_DIR=/Applications/Xcode.app \
   swift test --scratch-path ~/.cache/notetaker-build/VaultKit --filter ReplicaExporterTests
 cd ~/Developer/Notetaker && xcodegen generate && swiftformat --lint .
 scripts/verify.sh 3 --install   # exit code captured directly

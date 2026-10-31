@@ -8,7 +8,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT="${TMPDIR:-/tmp}/remote-replica-tests.$$"
 mkdir -p "$OUT"
 trap 'rm -rf "$OUT"' EXIT
-DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode-beta.app}" xcrun swiftc -O \
+DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app}" xcrun swiftc -O \
   "$ROOT/App/Services/RemoteReplicaSupport.swift" \
   "$ROOT/scripts/remote-vault/replica-service-tests/main.swift" \
   -o "$OUT/tests"
