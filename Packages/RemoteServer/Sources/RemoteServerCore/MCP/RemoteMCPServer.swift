@@ -61,6 +61,29 @@ public actor RemoteMCPServer {
         await server.stop()
     }
 
+    /// The SDK `Server` keeps one initialized flag per instance and answers every
+    /// `initialize` after the first with "Server is already initialized" (-32600).
+    /// This instance serves every client, so the second connection since a restart
+    /// failed its handshake, and current clients treat that error as fatal. There are
+    /// no sessions to set up, so answer `initialize` here, statelessly, with the same
+    /// result the SDK would build.
+    private func initializeReply(id: Any, params: [String: Any]?) -> HTTPResponse {
+        // Same rule as the SDK's `Version.negotiate`, which is internal there: echo a
+        // version we support, otherwise answer with our latest.
+        let requested = params?["protocolVersion"] as? String ?? ""
+        let result: [String: Any] = [
+            "protocolVersion": Version.supported.contains(requested) ? requested : Version.latest,
+            "capabilities": ["tools": ["listChanged": false]],
+            "serverInfo": ["name": NotetakerMCPServer.serverName, "version": NotetakerMCPServer.version],
+            "instructions": RemoteToolCatalog.instructions,
+        ]
+        let reply: [String: Any] = ["jsonrpc": "2.0", "id": id, "result": result]
+        guard let data = try? JSONSerialization.data(withJSONObject: reply, options: [.withoutEscapingSlashes]) else {
+            return .error(statusCode: 500, .internalError("initialize reply could not be encoded"))
+        }
+        return .data(data, headers: ["Content-Type": "application/json"])
+    }
+
     /// The stateless transport correlates responses by JSON-RPC id alone, so two
     /// clients that both send `id: 1` at once would clobber each other's waiter
     /// and one request would hang. Give every request a unique wire id and put
@@ -71,6 +94,9 @@ public actor RemoteMCPServer {
               let original = message["id"], original is String || original is NSNumber
         else {
             return await transport.handleRequest(request)
+        }
+        if request.method == "POST", message["method"] as? String == "initialize" {
+            return initializeReply(id: original, params: message["params"] as? [String: Any])
         }
         nextRequestNumber += 1
         message["id"] = "nr-\(nextRequestNumber)"

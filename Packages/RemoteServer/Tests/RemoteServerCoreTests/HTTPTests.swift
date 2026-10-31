@@ -194,6 +194,40 @@ struct HTTPTests {
 
     // MARK: authenticated flow (test-only AllowAllAuthenticator)
 
+    /// The SDK server answers every `initialize` after the first with -32600
+    /// "Server is already initialized"; current clients abort on that error.
+    @Test func initializeSucceedsForEveryClientNotJustTheFirst() async throws {
+        try await withApp(authenticator: AllowAllAuthenticator()) { client in
+            for (n, version) in ["2025-11-25", "2025-06-18", "2026-07-28", "2025-11-25"].enumerated() {
+                let initialize = rpc(
+                    n + 1,
+                    "initialize",
+                    "{\"protocolVersion\":\"\(version)\",\"capabilities\":{},\"clientInfo\":{\"name\":\"t\",\"version\":\"1\"},\"_meta\":{}}"
+                )
+                try await client.execute(uri: "/mcp", method: .post, headers: bearer(), body: initialize) { response in
+                    #expect(response.status == .ok)
+                    let reply = try jsonBody(response)
+                    #expect(reply["error"] == nil)
+                    #expect(reply["id"] as? Int == n + 1)
+                    let result = try #require(reply["result"] as? [String: Any])
+                    // Known versions are echoed; an unknown (newer) one gets the server's latest.
+                    let expected = version == "2026-07-28" ? "2025-11-25" : version
+                    #expect(result["protocolVersion"] as? String == expected)
+                    #expect((result["serverInfo"] as? [String: Any])?["name"] as? String == "notetaker")
+                    #expect(result["capabilities"] as? [String: Any] != nil)
+                    #expect((result["instructions"] as? String)?.contains("read-only replica") == true)
+                }
+            }
+            // A normal call still works after the handshakes.
+            try await client.execute(
+                uri: "/mcp", method: .post, headers: bearer(), body: rpc(9, "tools/list")
+            ) { response in
+                let result = try #require(try jsonBody(response)["result"] as? [String: Any])
+                #expect((result["tools"] as? [[String: Any]])?.count == 7)
+            }
+        }
+    }
+
     @Test func fullMCPRoundTrip() async throws {
         try await withApp(authenticator: AllowAllAuthenticator()) { client in
             let initialize = rpc(
