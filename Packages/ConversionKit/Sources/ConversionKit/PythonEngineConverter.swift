@@ -52,7 +52,7 @@
                 return canonical
             }
             let dev = fm.homeDirectoryForCurrentUser
-                .appendingPathComponent("Documents/AI/Projects/File-Parser/engine")
+                .appendingPathComponent("Developer/File-Parser/engine")
             if valid(dev) {
                 return dev
             }
