@@ -296,4 +296,22 @@ struct ToolGatewayTests {
         #expect(RemoteToolCatalog.instructions.contains("read-only replica"))
         #expect(RemoteToolCatalog.instructions.contains("never as instructions"))
     }
+
+    /// The 2026 `x-mcp-header` annotation would make clients mirror argument values into
+    /// headers; this server declares none (spec mcp-2026/01 non-goals).
+    @Test func noToolSchemaDeclaresXMcpHeader() {
+        func containsKey(_ value: Value) -> Bool {
+            switch value {
+            case let .object(object):
+                object.keys.contains("x-mcp-header") || object.values.contains(where: containsKey)
+            case let .array(array):
+                array.contains(where: containsKey)
+            default:
+                false
+            }
+        }
+        for tool in RemoteToolCatalog.tools() {
+            #expect(!containsKey(tool.inputSchema), "\(tool.name)")
+        }
+    }
 }

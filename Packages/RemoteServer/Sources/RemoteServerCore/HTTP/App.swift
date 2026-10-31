@@ -216,7 +216,7 @@ struct MCPEndpoint: Sendable {
         }
 
         let body = await (try? request.body.collect(upTo: RemoteApp.maxBodyBytes)).map { Data($0.readableBytesView) }
-        let response = await mcp.handle(MCP.HTTPRequest(method: "POST", headers: headers, body: body, path: "/mcp"))
+        let response = await mcp.respond(MCP.HTTPRequest(method: "POST", headers: headers, body: body, path: "/mcp"))
         return Self.map(response)
     }
 
@@ -246,6 +246,18 @@ struct MCPEndpoint: Sendable {
         headers[.retryAfter] = String(retryAfter)
         headers[.cacheControl] = "no-store"
         return Response(status: .tooManyRequests, headers: headers)
+    }
+
+    static func map(_ reply: ModernReply) -> Response {
+        var headers = HTTPFields()
+        for (name, value) in reply.headers {
+            if let field = HTTPField.Name(name) {
+                headers[field] = value
+            }
+        }
+        let status = HTTPResponse.Status(code: reply.status)
+        guard let data = reply.body else { return Response(status: status, headers: headers) }
+        return Response(status: status, headers: headers, body: ResponseBody(byteBuffer: ByteBuffer(bytes: data)))
     }
 
     static func map(_ response: HTTPMessageResponse) -> Response {

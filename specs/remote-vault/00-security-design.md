@@ -79,7 +79,7 @@ Proxmox hildanet│ 192.168.5.100          LXC "ct-vault" (unprivileged, Ubuntu 
 - **Semantic search is keyword-only remotely.** `AppleEmbeddingProvider` is `NLContextualEmbedding` (Apple-only) **[verified: AIKit/EmbeddingProvider.swift]**; the query cannot be embedded on Linux. `search` reports `semantic:false` with a note, as it already does when assets are missing.
 
 ### 4.2 Read-only (D2)
-Same seven tools as `notetaker-mcp`, all `readOnlyHint:true`, no new tool takes a URL or writes. `VaultService` is "read-only by construction" **[verified]**; the HTTP layer exposes only `POST /mcp` (stateless transport: GET/DELETE → 405).
+Same seven tools as `notetaker-mcp`, all `readOnlyHint:true`, no new tool takes a URL or writes. `VaultService` is "read-only by construction" **[verified]**; the HTTP layer exposes only `POST /mcp` (stateless transport: GET/DELETE → 405). Since 2026-10-31 the same endpoint also serves the MCP 2026-07-28 request shape; see §10.
 
 ### 4.3 Data scope (D3) — see §1, §5 (exclusion mechanism), §6 (residual).
 Calendar: new `CalendarSnapshot` schemaVersion 2 (`CalendarKit`) adding `notes`, `url`, `organizerEmail`, `attendees[{name,email,status}]`; written to the export staging dir, never to `Index/calendar-snapshot.json` (the local, opt-in, filtered snapshot stays as is). Settings › Calendar exclusions still apply (decision needed, §8.3).
@@ -187,3 +187,10 @@ Final critique (fable) on T2 and T7; `notetaker-swift-reviewer` on T3/T5 before 
 - Registration: **pre-registered client** (fixed client ID pasted into the connector dialog); NO dynamic client registration endpoint.
 - Defaults accepted unless overridden: Anthropic-egress IP allowlist OFF initially (client-IP passthrough via Funnel unverified); build in-container; push on change + 5-minute timer; Tailscale node name chosen at rollout (it becomes the public hostname - pick a non-guessable, non-descriptive name).
 - Earlier decisions stand: Linux CT one-way replica, read-only, widest note scope (all but locked), Google login allowlisting rchaight@gmail.com only, Swift on Linux, app-driven filtered rsync export, Tailscale Funnel, rate limits + token expiry + audit log + kill switch + disk encryption.
+
+## 10. Note recorded 2026-10-31: MCP 2026-07-28 served natively on `/mcp`
+
+- `/mcp` is a dual-era endpoint: requests carrying 2026 per-request `_meta` (or a 2026 `MCP-Protocol-Version`, or `server/discover`/`subscriptions/listen`) are answered by `RemoteServerCore/MCP/ModernPath.swift`; `initialize` and legacy requests still go to swift-sdk 0.12.1. Spec: `specs/mcp-2026/01-modern-path.md`; research: `specs/mcp-2026/00-research.md`.
+- Nothing in §4.2, §4.4, §4.7 or §4.8 changes: same seven read-only tools (`RemoteToolCatalog`), same `ToolGateway` clamps/caps/framing/audit line, same seven public prefixes, no `/register`, no CIMD, no DCR, no new outbound connection, same body/Host/auth/rate-limit order. `stage1-check.sh` now also proves the unauthenticated surface is era-independent.
+- Modern-only behaviour: `server/discover` and `tools/list` answer while the replica is DISABLED (they carry no vault data; `tools/call` returns `available:false` as before); `-32022` lists only `2026-07-28`; `subscriptions/listen` and `ping` are `404 -32601` (no `listChanged`, nothing to stream).
+- Recognised 2026 errors (`-32020`, `-32022`, `-32602` on `_meta`, `404 -32601`) are the router's own non-200 bodies, together with `400 -32600` (malformed `id`), `400 -32602` for bad `name`/`arguments`/`cursor`, and `500 -32603` (encode failure); the SDK's `406`/`415` bodies pass through unchanged. None carries a token, a note body or a client-supplied tool name.

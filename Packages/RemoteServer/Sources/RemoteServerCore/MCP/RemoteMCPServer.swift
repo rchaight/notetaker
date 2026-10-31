@@ -21,6 +21,7 @@ enum InternalHeaders {
 public actor RemoteMCPServer {
     private let transport: StatelessHTTPServerTransport
     private let server: Server
+    private let modern: ModernPath
     private var nextRequestNumber = 0
 
     public init(gateway: ToolGateway) async throws {
@@ -55,6 +56,7 @@ public actor RemoteMCPServer {
         try await server.start(transport: transport)
         self.server = server
         self.transport = transport
+        modern = ModernPath(gateway: gateway)
     }
 
     public func stop() async {
@@ -82,6 +84,23 @@ public actor RemoteMCPServer {
             return .error(statusCode: 500, .internalError("initialize reply could not be encoded"))
         }
         return .data(data, headers: ["Content-Type": "application/json"])
+    }
+
+    /// The entry point `MCPEndpoint` uses. `/mcp` is a dual-era endpoint: `initialize` is
+    /// always legacy, and a request carrying 2026 per-request `_meta` (or a 2026
+    /// `MCP-Protocol-Version`, or a 2026-only method) is answered by `ModernPath`, whose
+    /// errors need real status codes and so come back as a `ModernReply`. Everything else
+    /// takes `handle`, unchanged. Spec: specs/mcp-2026/01-modern-path.md.
+    func respond(_ request: HTTPRequest) async -> ModernReply {
+        if request.method == "POST",
+           let body = request.body,
+           let message = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any],
+           let method = message["method"] as? String,
+           method != "initialize",
+           ModernPath.isModern(method: method, message: message, request: request) {
+            return await modern.handle(request, message: message)
+        }
+        return await ModernReply(handle(request))
     }
 
     /// The stateless transport correlates responses by JSON-RPC id alone, so two

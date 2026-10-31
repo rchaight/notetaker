@@ -203,8 +203,25 @@ else
   fail "401 has no WWW-Authenticate resource_metadata= (got '$(printable "$challenge")') - design 4.4: claude.ai discovers the authorization server from it"
 fi
 
+# MCP 2026-07-28 request shape (specs/mcp-2026/01 section 7.4): the era of the request
+# never changes the unauthenticated surface.
+http POST "$BASE/mcp" -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+  -H 'MCP-Protocol-Version: 2026-07-28' -H 'Mcp-Method: server/discover' \
+  --data-binary '{"jsonrpc":"2.0","id":"discover-1","method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"ExampleClient","version":"1.0.0"},"io.modelcontextprotocol/clientCapabilities":{}}}}'
+challenge="$(hdr www-authenticate)"
+if [[ "$STATUS" == "401" ]]; then
+  pass "POST /mcp server/discover (MCP 2026-07-28) without a token -> 401"
+else
+  fail "POST /mcp server/discover (MCP 2026-07-28) without a token answered $STATUS - design 10: the era of the request never changes the unauthenticated surface"
+fi
+if [[ "$challenge" == *"resource_metadata=\"$EXPECT/.well-known/oauth-protected-resource/mcp\""* ]]; then
+  pass "the 2026-07-28 401 carries the same resource_metadata= challenge"
+else
+  fail "the 2026-07-28 401 has no matching WWW-Authenticate resource_metadata= (got '$(printable "$challenge")') - design 10: the era of the request never changes the unauthenticated surface"
+fi
+
 for method in GET DELETE; do
-  http "$method" "$BASE/mcp"
+  http "$method" "$BASE/mcp" -H 'MCP-Protocol-Version: 2026-07-28' -H 'Mcp-Method: server/discover'
   if [[ "$STATUS" == "405" ]]; then
     pass "$method /mcp -> 405"
   else

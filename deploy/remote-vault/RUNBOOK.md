@@ -437,3 +437,10 @@ Settings > Remote > toggle off. Expect: the inbox ends with `DISABLED` plus `man
 
 ### 3.6 OPTIONAL: host reboot test (maintenance window only)
 Do this only when every guest on hildanet can be down for several minutes (it reboots the whole host; skip it if any guest cannot). Before: `notetaker-replica-unlock status`, `systemctl is-enabled notetaker-replica-unlock`, `pct config <CTID> | grep onboot`. Then `reboot`. Expect: the unlock unit runs (90 s timeout, so a hang cannot hold up the other guests), the volume mounts at `/mnt/notetaker-replica`, `pve-guests.service` starts all onboot guests as usual, and `<CTID>` starts only after the unlock; `pct exec <CTID> -- systemctl is-active notetaker-remote tailscaled` -> active, `nr-serve-routes status` unchanged, `nft list tables` in the CT shows both `inet notetaker` and tailscaled's ts-* tables. If the unlock failed, the other guests still start and the CT stays down (fail-closed); fix per 3.3. This is the real-life test of the open->close->open path from 0.3. Skip it and rely on the 3.3 drill if you cannot reboot.
+
+### 3.7 MCP 2026-07-28 client drill (after any binary that touches ModernPath)
+
+Header-only capture on the CT, never bodies, never Authorization (spec mcp-2026/01 §11.4 has the exact command). Connect Duet, then claude.ai, then ask each for `vault_overview`.
+Expect per client: `POST /mcp` + `MCP-Protocol-Version: 2026-07-28` + `"method":"server/discover"` -> `200`; then `tools/list` -> `200` (or an inline `tools/list` first); `tools/call` with `Mcp-Name: vault_overview` -> `200`; **no** `"method":"initialize"` from that client. A `404` is expected only for `subscriptions/listen` or `ping`, and the client must continue afterwards.
+Audit: `grep -c '"event":"tool.call"' /var/log/notetaker-remote/audit.jsonl` grows by at least two, with `client_id`/`token_family` set.
+Rollback (any client fails to connect that connected before): `cp -p /usr/local/bin/notetaker-remote.prev /usr/local/bin/notetaker-remote && systemctl restart notetaker-remote` (deploy.sh keeps `.prev`), re-run the capture, record both in PROGRESS.

@@ -7,48 +7,28 @@ import MCP
 import Testing
 
 struct HTTPTests {
-    static let metadataURL = "https://nr-test.ts.net/.well-known/oauth-protected-resource/mcp"
-    static let json: HTTPFields = [.contentType: "application/json", .accept: "application/json"]
+    static let metadataURL = HTTPHarness.metadataURL
+    static let json = HTTPHarness.json
 
-    /// Builds the app over a ready fixture replica. `authenticator` defaults to the
-    /// shipped deny-all; tests that need a session pass `AllowAllAuthenticator`.
     private func withApp(
         authenticator: any BearerAuthenticator = DenyAllAuthenticator(),
         extra: [String: String] = [:],
         now: @escaping @Sendable () -> Date = { Date() },
         _ body: @Sendable (any TestClientProtocol) async throws -> Void
     ) async throws {
-        let fixture = try ReplicaFixture()
-        defer { fixture.cleanUp() }
-        try fixture.push()
-        let config = try fixture.config(extra: extra)
-        let audit = AuditLog(url: fixture.auditURL)
-        let watcher = ReplicaWatcher(config: config, audit: audit)
-        await watcher.tick()
-        let mcp = try await RemoteMCPServer(gateway: ToolGateway(replica: watcher, audit: audit))
-        let app = RemoteApp.build(
-            config: config,
-            authenticator: authenticator,
-            mcp: mcp,
-            limiter: RateLimiter(now: now),
-            audit: audit
-        )
-        try await app.test(.router, body)
-        await mcp.stop()
+        try await HTTPHarness.withApp(authenticator: authenticator, extra: extra, now: now, body)
     }
 
     private func rpc(_ id: Int, _ method: String, _ params: String = "{}") -> ByteBuffer {
-        ByteBuffer(string: "{\"jsonrpc\":\"2.0\",\"id\":\(id),\"method\":\"\(method)\",\"params\":\(params)}")
+        HTTPHarness.rpc(id, method, params)
     }
 
     private func bearer(_ token: String = "t") -> HTTPFields {
-        var headers = Self.json
-        headers[.authorization] = "Bearer \(token)"
-        return headers
+        HTTPHarness.bearer(token)
     }
 
     private func jsonBody(_ response: TestResponse) throws -> [String: Any] {
-        try #require(try JSONSerialization.jsonObject(with: Data(buffer: response.body)) as? [String: Any])
+        try HTTPHarness.jsonBody(response)
     }
 
     // MARK: 401 behaviour (default authenticator denies all)
@@ -218,6 +198,24 @@ struct HTTPTests {
                     #expect((result["instructions"] as? String)?.contains("read-only replica") == true)
                 }
             }
+            // A fifth `initialize` carrying the full 2026 per-request shape is still legacy:
+            // `initialize` is always answered by `initializeReply`, in the legacy shape.
+            var modernHeaders = HTTPHarness.modernHeaders(method: "initialize")
+            modernHeaders[.accept] = "application/json"
+            let modernInitialize = HTTPHarness.modern(
+                5, "initialize",
+                params: "{\"protocolVersion\":\"2026-07-28\",\"capabilities\":{},\"clientInfo\":{\"name\":\"t\",\"version\":\"1\"}}"
+            )
+            try await client
+                .execute(uri: "/mcp", method: .post, headers: modernHeaders, body: modernInitialize) { response in
+                    #expect(response.status == .ok)
+                    let reply = try jsonBody(response)
+                    #expect(reply["error"] == nil)
+                    let result = try #require(reply["result"] as? [String: Any])
+                    #expect(result["protocolVersion"] as? String == "2025-11-25")
+                    #expect(result["resultType"] == nil)
+                    #expect((result["serverInfo"] as? [String: Any])?["name"] as? String == "notetaker")
+                }
             // A normal call still works after the handshakes.
             try await client.execute(
                 uri: "/mcp", method: .post, headers: bearer(), body: rpc(9, "tools/list")

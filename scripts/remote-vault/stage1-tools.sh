@@ -91,6 +91,29 @@ mcp() {
   # The sentinel search echoes its own query back; keep that one out of the transcript scan.
   if [[ -z "${NOLOG:-}" ]]; then cat "$WORK/mcp.json" >> "$WORK/all-responses"; fi
 }
+# mcp_modern <method> <name-or-""> <json-body>  -> STATUS and $WORK/mcp.json (MCP 2026-07-28 headers)
+mcp_modern() {
+  local method="$1" name="$2" extra=()
+  [[ -z "$name" ]] || extra=(-H "Mcp-Name: $name")
+  # MV overrides the header version; NO_MCP_METHOD=1 omits the Mcp-Method header.
+  [[ -n "${NO_MCP_METHOD:-}" ]] || extra+=(-H "Mcp-Method: $method")
+  printf 'Authorization: Bearer %s\n' "$(cat "$WORK/access")" > "$WORK/auth-header"
+  STATUS="$(curl -sS --max-time 40 -o "$WORK/mcp.raw" -w '%{http_code}' -X POST "$BASE/mcp" \
+    -H @"$WORK/auth-header" -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+    -H "MCP-Protocol-Version: ${MV:-2026-07-28}" ${extra[@]+"${extra[@]}"} \
+    --data-binary "$3" 2> "$WORK/curl.err")" || STATUS=000
+  if jq -e . "$WORK/mcp.raw" > /dev/null 2>&1; then
+    cp "$WORK/mcp.raw" "$WORK/mcp.json"
+  else
+    sed -n 's/^data: //p' "$WORK/mcp.raw" | head -1 > "$WORK/mcp.json"
+  fi
+  if [[ -z "${NOLOG:-}" ]]; then cat "$WORK/mcp.json" >> "$WORK/all-responses"; fi
+}
+# modern_body <id-json> <method> <params-json> [version]  -> body with the standard _meta
+modern_body() {
+  jq -nc --argjson id "$1" --arg m "$2" --argjson p "$3" --arg v "${4:-2026-07-28}" \
+    '{jsonrpc:"2.0",id:$id,method:$m,params:($p + {_meta:{"io.modelcontextprotocol/protocolVersion":$v,"io.modelcontextprotocol/clientInfo":{name:"stage1-tools",version:"1"},"io.modelcontextprotocol/clientCapabilities":{}}})}'
+}
 # tool <name> <arguments-json>  -> STATUS and $WORK/mcp.json
 tool() {
   CALL_ID=$((CALL_ID + 1))
@@ -203,6 +226,7 @@ if [[ "$STATUS" != "200" ]]; then
 fi
 mcp '{"jsonrpc":"2.0","method":"notifications/initialized"}'
 mcp '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
+jq -c '.result.tools' "$WORK/mcp.json" > "$WORK/tools.legacy.json" 2> /dev/null || : > "$WORK/tools.legacy.json"
 WANT='["calendar_agenda","calendar_list","list_folder","read_note","search","tasks","vault_overview"]'
 if rb ".result.tools | map(.name) | sort == $WANT"; then
   pass "tools/list has exactly the 7 tools: $(r '.result.tools | map(.name) | sort | join(" ")')"
@@ -218,6 +242,78 @@ if rb '(.result.tools[] | select(.name == "search") | .inputSchema.properties | 
   pass "search schema has no mode property (keyword-only server)"
 else
   fail "search schema still advertises mode - design 9: keyword-only search, no embeddings on the container"
+fi
+
+# --- MCP 2026-07-28 modern path ----------------------------------------------
+section "MCP 2026-07-28 modern path (spec mcp-2026/01)"
+mcp_modern server/discover "" "$(modern_body '"d1"' server/discover '{}')"
+if [[ "$STATUS" == "200" ]] && rb '.result.resultType == "complete"
+  and .result.supportedVersions == ["2026-07-28"]
+  and .result.capabilities.tools.listChanged == false
+  and (.result.ttlMs | type == "number")
+  and (.result.cacheScope | IN("public","private"))
+  and .result._meta["io.modelcontextprotocol/serverInfo"].name == "notetaker"'; then
+  pass "server/discover: 200, complete, supportedVersions == [2026-07-28], ttlMs/cacheScope, serverInfo"
+else
+  fail "server/discover answered HTTP $STATUS or the result shape is wrong - spec mcp-2026/01 section 5.1"
+fi
+
+mcp_modern tools/list "" "$(modern_body 2 tools/list '{}')"
+if [[ "$STATUS" == "200" ]] && rb ".result.tools | map(.name) | sort == $WANT" \
+  && rb '.result.tools | all(.annotations.readOnlyHint == true)' \
+  && rb '(.result.tools[] | select(.name == "search") | .inputSchema.properties | has("mode")) | not' \
+  && rb '(.result.ttlMs | type == "number") and (.result.cacheScope | type == "string")'; then
+  pass "modern tools/list: exactly the 7 read-only tools, no search mode, ttlMs/cacheScope present"
+else
+  fail "modern tools/list (HTTP $STATUS) is not the 7 read-only tools with cache hints - spec mcp-2026/01 section 5.2"
+fi
+if [[ -s "$WORK/tools.legacy.json" ]] && jq -e --slurpfile legacy "$WORK/tools.legacy.json" '.result.tools == $legacy[0]' "$WORK/mcp.json" > /dev/null 2>&1; then
+  pass "modern tools/list equals the legacy tools/list as JSON values"
+else
+  fail "modern tools/list differs from the legacy tools/list - spec mcp-2026/01 section 5.2: the catalog is identical in both eras"
+fi
+
+mcp_modern tools/call vault_overview "$(modern_body 3 tools/call '{"name":"vault_overview","arguments":{}}')"
+if [[ "$STATUS" == "200" ]] && rb '.result.resultType == "complete"' && rb "$SC.replica_generated_at | type == \"string\""; then
+  pass "modern tools/call vault_overview: 200, complete, replica_generated_at present"
+  check_framing "modern vault_overview"
+else
+  fail "modern tools/call vault_overview answered HTTP $STATUS without a complete result carrying replica_generated_at - spec mcp-2026/01 section 5.3"
+fi
+
+mcp_modern tools/call list_folder "$(modern_body 4 tools/call '{"name":"vault_overview","arguments":{}}')"
+if [[ "$STATUS" == "400" ]] && rb '.error.code == -32020'; then
+  pass "Mcp-Name that does not match params.name -> 400 -32020"
+else
+  fail "Mcp-Name mismatch answered HTTP $STATUS (code $(printable "$(r '.error.code')")), expected 400 -32020 - spec mcp-2026/01 section 4 step 9"
+fi
+
+NO_MCP_METHOD=1 mcp_modern tools/list "" "$(modern_body 5 tools/list '{}')"
+if [[ "$STATUS" == "400" ]] && rb '.error.code == -32020'; then
+  pass "tools/list without Mcp-Method -> 400 -32020"
+else
+  fail "tools/list without Mcp-Method answered HTTP $STATUS, expected 400 -32020 - spec mcp-2026/01 section 4 step 6"
+fi
+
+MV=2026-12-01 mcp_modern server/discover "" "$(modern_body 6 server/discover '{}' 2026-12-01)"
+if [[ "$STATUS" == "400" ]] && rb '.error.code == -32022 and .error.data.supported == ["2026-07-28"] and .error.data.requested == "2026-12-01"'; then
+  pass "unsupported version 2026-12-01 -> 400 -32022 with supported [2026-07-28]"
+else
+  fail "version 2026-12-01 answered HTTP $STATUS (code $(printable "$(r '.error.code')")), expected 400 -32022 - spec mcp-2026/01 section 4 step 5"
+fi
+
+mcp_modern ping "" "$(modern_body 7 ping '{}')"
+if [[ "$STATUS" == "404" ]] && rb '.error.code == -32601'; then
+  pass "modern ping -> 404 -32601"
+else
+  fail "modern ping answered HTTP $STATUS, expected 404 -32601 - spec mcp-2026/01 section 6.1"
+fi
+
+mcp '{"jsonrpc":"2.0","id":8,"method":"tools/list","params":{}}'
+if [[ "$STATUS" == "200" ]] && rb ".result.tools | map(.name) | sort == $WANT"; then
+  pass "legacy tools/list (no Mcp-Method, no 2026 header) still answers 200 with the 7 tools"
+else
+  fail "legacy tools/list after the modern requests answered HTTP $STATUS - spec mcp-2026/01: the legacy path must be untouched"
 fi
 
 # --- vault_overview ------------------------------------------------------------
