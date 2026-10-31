@@ -78,6 +78,7 @@ Two hard environment rules:
 - `Notetaker.xcodeproj` is GENERATED — edit `project.yml`, then `xcodegen generate`. Never hand-edit the pbxproj.
 - Build: `DEVELOPER_DIR=/Applications/Xcode.app xcodebuild -project Notetaker.xcodeproj -scheme Notetaker -destination 'platform=macOS' -derivedDataPath ~/.cache/notetaker-build/DerivedData build`
 - iOS: same with `-destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO` (iOS 27.0 simulator runtime is installed)
+- **iPhone install:** `scripts/install-ios.sh` (prints the plan; `--yes` builds for the device, installs over the existing app so data and the iCloud vault stay, launches it, and checks the build number). The build number is the git commit count, passed as `CURRENT_PROJECT_VERSION`; `Info.plist` reads `$(MARKETING_VERSION)` / `$(CURRENT_PROJECT_VERSION)` (set in `project.yml`, never hardcoded). The phone must be unlocked.
 - Package tests: `cd Packages/<Kit> && DEVELOPER_DIR=/Applications/Xcode.app swift test --scratch-path ~/.cache/notetaker-build/<Kit>`
 - Formatting: `swiftformat --lint .`
 - **Linux:** no Docker on the dev Mac, so Linux is verified by the GitHub Actions `linux-packages` job (TaskEngine, MarkdownKit, CalendarKit, ProjectKit, IndexKit, AIKit, MCPKit, RemoteServer on `swift:6.4-noble`); check it when a change touches those packages' portability.

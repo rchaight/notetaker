@@ -10,7 +10,7 @@ settings:
     SWIFT_VERSION: "6.0"
     DEVELOPMENT_TEAM: 6A2NHN89Q8
     CODE_SIGN_STYLE: Automatic
-    MARKETING_VERSION: "0.1.0"
+    MARKETING_VERSION: "1.0"
     CURRENT_PROJECT_VERSION: "1"
 packages:
   VaultKit: { path: Packages/VaultKit }
@@ -54,6 +54,8 @@ targets:
       path: Widgets/Info.plist
       properties:
         CFBundleDisplayName: Notetaker Widgets
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
@@ -103,6 +105,8 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: Notetaker
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSApplicationCategoryType: public.app-category.productivity
         UILaunchScreen: {}
         NSLocalNetworkUsageDescription: Notetaker connects to your own homelab servers (Ollama, docling-serve) for AI and document conversion.
