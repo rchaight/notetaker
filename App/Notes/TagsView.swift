@@ -37,6 +37,7 @@ struct TagsView: View {
             sidebar
                 .navigationSplitViewColumnWidth(min: 220, ideal: 280, max: 400)
                 .navigationTitle("Tags")
+                .settingsButton()
                 .toolbar {
                     ToolbarItemGroup(placement: .primaryAction) {
                         Button {

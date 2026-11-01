@@ -83,42 +83,88 @@ struct SettingsView: View {
         @State private var mcpCopyFeedback: String?
     #endif
 
+    #if os(iOS)
+        @Environment(\.dismiss) private var dismiss
+        private static let systemSettingsName = "Settings"
+        private static let accountsPath = "Calendar › Accounts"
+    #else
+        private static let systemSettingsName = "System Settings"
+        private static let accountsPath = "Internet Accounts"
+    #endif
+
     var body: some View {
-        TabView {
-            Tab("General", systemImage: "gearshape") {
-                generalPane
-            }
-            Tab("Editor", systemImage: "square.and.pencil") {
-                editorPane
-            }
-            Tab("To-Do", systemImage: "checklist") {
-                todoPane
-            }
-            Tab("Security", systemImage: "lock") {
-                securityPane
-            }
-            Tab("Vault", systemImage: "externaldrive") {
-                vaultPane
-            }
-            Tab("Calendar", systemImage: "calendar") {
-                calendarPane
-            }
-            #if os(macOS)
+        #if os(macOS)
+            TabView {
+                Tab("General", systemImage: "gearshape") {
+                    generalPane
+                }
+                Tab("Editor", systemImage: "square.and.pencil") {
+                    editorPane
+                }
+                Tab("To-Do", systemImage: "checklist") {
+                    todoPane
+                }
+                Tab("Security", systemImage: "lock") {
+                    securityPane
+                }
+                Tab("Vault", systemImage: "externaldrive") {
+                    vaultPane
+                }
+                Tab("Calendar", systemImage: "calendar") {
+                    calendarPane
+                }
                 Tab("Remote", systemImage: "antenna.radiowaves.left.and.right") {
                     RemoteSettingsPane()
                 }
-            #endif
-            Tab("AI & Import", systemImage: "sparkles") {
-                aiPane
-            }
-            #if DEBUG
-                Tab("Debug", systemImage: "wrench.and.screwdriver") {
-                    VaultDebugView()
+                Tab("AI & Import", systemImage: "sparkles") {
+                    aiPane
                 }
-            #endif
-        }
-        .frame(minWidth: 560, minHeight: 440)
+                #if DEBUG
+                    Tab("Debug", systemImage: "wrench.and.screwdriver") {
+                        VaultDebugView()
+                    }
+                #endif
+            }
+            .frame(minWidth: 560, minHeight: 440)
+        #else
+            // iPhone: seven tabs don't fit a bottom bar, so the panes become a list.
+            NavigationStack {
+                List {
+                    paneLink("General", "gearshape") { generalPane }
+                    paneLink("Editor", "square.and.pencil") { editorPane }
+                    paneLink("To-Do", "checklist") { todoPane }
+                    paneLink("Security", "lock") { securityPane }
+                    paneLink("Vault", "externaldrive") { vaultPane }
+                    paneLink("Calendar", "calendar") { calendarPane }
+                    paneLink("AI & Import", "sparkles") { aiPane }
+                    #if DEBUG
+                        paneLink("Debug", "wrench.and.screwdriver") { VaultDebugView() }
+                    #endif
+                }
+                .navigationTitle("Settings")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { dismiss() }
+                    }
+                }
+            }
+        #endif
     }
+
+    #if os(iOS)
+        private func paneLink(
+            _ title: String, _ icon: String, @ViewBuilder pane: () -> some View
+        ) -> some View {
+            NavigationLink {
+                pane()
+                    .navigationTitle(title)
+                    .navigationBarTitleDisplayMode(.inline)
+            } label: {
+                Label(title, systemImage: icon)
+            }
+        }
+    #endif
 
     // MARK: - Panes
 
@@ -135,7 +181,7 @@ struct SettingsView: View {
                 case .denied:
                     Label("Access denied", systemImage: "xmark.circle")
                         .foregroundStyle(.red)
-                    Text("Enable in System Settings › Privacy & Security › Calendars.")
+                    Text("Enable in \(Self.systemSettingsName) › Privacy & Security › Calendars.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 case .notRequested:
@@ -148,7 +194,7 @@ struct SettingsView: View {
                     }
                 }
                 Text(
-                    "Works with Apple, Google, and Outlook calendars — any account added to the system Calendar app (System Settings › Internet Accounts). Events are read on-device only."
+                    "Works with Apple, Google, and Outlook calendars — any account added to the system Calendar app (\(Self.systemSettingsName) › \(Self.accountsPath)). Events are read on-device only."
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -264,26 +310,30 @@ struct SettingsView: View {
                     Text("Recently modified").tag("modified")
                 }
             }
-            Section("Shortcuts") {
-                shortcutRow("⌘K", "Command palette")
-                shortcutRow("⌘N", "New note")
-                shortcutRow("⇧⌘N", "Quick Add task")
-                shortcutRow("⇧⌘D", "Today's daily note")
-                shortcutRow("⌘F", "Find in note")
-                shortcutRow("⌘/", "Toggle markdown source")
-                shortcutRow("⌃⌥⌘N", "Quick capture from anywhere")
-            }
+            #if os(macOS)
+                Section("Shortcuts") {
+                    shortcutRow("⌘K", "Command palette")
+                    shortcutRow("⌘N", "New note")
+                    shortcutRow("⇧⌘N", "Quick Add task")
+                    shortcutRow("⇧⌘D", "Today's daily note")
+                    shortcutRow("⌘F", "Find in note")
+                    shortcutRow("⌘/", "Toggle markdown source")
+                    shortcutRow("⌃⌥⌘N", "Quick capture from anywhere")
+                }
+            #endif
         }
         .formStyle(.grouped)
     }
 
-    private func shortcutRow(_ keys: String, _ what: String) -> some View {
-        LabeledContent(what) {
-            Text(keys)
-                .font(.callout.monospaced())
-                .foregroundStyle(.secondary)
+    #if os(macOS)
+        private func shortcutRow(_ keys: String, _ what: String) -> some View {
+            LabeledContent(what) {
+                Text(keys)
+                    .font(.callout.monospaced())
+                    .foregroundStyle(.secondary)
+            }
         }
-    }
+    #endif
 
     private var editorPane: some View {
         Form {
@@ -444,62 +494,83 @@ struct SettingsView: View {
         .formStyle(.grouped)
     }
 
-    private var vaultPane: some View {
-        Form {
-            Section("Vault location") {
-                LabeledContent(
-                    "Active vault",
-                    value: VaultRegistry.activeCustomRoot()?.path
-                        ?? "iCloud Drive › Notetaker"
-                )
-                HStack {
-                    Button("Use iCloud Vault") {
-                        activeVault = VaultRegistry.iCloudId
-                    }
-                    .disabled(activeVault == VaultRegistry.iCloudId)
-                    Button("Choose Folder…") {
-                        showingVaultChooser = true
-                    }
-                    .fileImporter(
-                        isPresented: $showingVaultChooser,
-                        allowedContentTypes: [.folder]
-                    ) { outcome in
-                        guard case let .success(url) = outcome,
-                              let entry = VaultRegistry.add(url: url) else { return }
-                        activeVault = entry.id
-                    }
-                }
-                Text("Switching vaults reloads the app shell. Folder vaults don't sync via iCloud.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Section("Registered folder vaults") {
-                if VaultRegistry.entries.isEmpty {
-                    Text("None — Choose Folder… above to add one (an Obsidian vault works).")
+    #if os(iOS)
+        /// iOS stays on the iCloud vault (VaultRegistry's folder vaults are macOS-only UI).
+        private var vaultPane: some View {
+            Form {
+                Section("Vault location") {
+                    LabeledContent("Active vault", value: "iCloud Drive › Notetaker")
+                    Text("Folder vaults are chosen on the Mac. This device always uses the iCloud vault.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                } else {
-                    ForEach(VaultRegistry.entries) { entry in
-                        HStack {
-                            Text(entry.name)
-                            Spacer()
-                            if activeVault == entry.id {
-                                Text("active").font(.caption).foregroundStyle(.secondary)
-                            }
-                            Button("Remove", role: .destructive) {
-                                VaultRegistry.remove(id: entry.id)
+                }
+            }
+            .formStyle(.grouped)
+        }
+    #else
+        private var vaultPane: some View {
+            macVaultPane
+        }
+    #endif
+
+    #if os(macOS)
+        private var macVaultPane: some View {
+            Form {
+                Section("Vault location") {
+                    LabeledContent(
+                        "Active vault",
+                        value: VaultRegistry.activeCustomRoot()?.path
+                            ?? "iCloud Drive › Notetaker"
+                    )
+                    HStack {
+                        Button("Use iCloud Vault") {
+                            activeVault = VaultRegistry.iCloudId
+                        }
+                        .disabled(activeVault == VaultRegistry.iCloudId)
+                        Button("Choose Folder…") {
+                            showingVaultChooser = true
+                        }
+                        .fileImporter(
+                            isPresented: $showingVaultChooser,
+                            allowedContentTypes: [.folder]
+                        ) { outcome in
+                            guard case let .success(url) = outcome,
+                                  let entry = VaultRegistry.add(url: url) else { return }
+                            activeVault = entry.id
+                        }
+                    }
+                    Text("Switching vaults reloads the app shell. Folder vaults don't sync via iCloud.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Section("Registered folder vaults") {
+                    if VaultRegistry.entries.isEmpty {
+                        Text("None — Choose Folder… above to add one (an Obsidian vault works).")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(VaultRegistry.entries) { entry in
+                            HStack {
+                                Text(entry.name)
+                                Spacer()
                                 if activeVault == entry.id {
-                                    activeVault = VaultRegistry.iCloudId
+                                    Text("active").font(.caption).foregroundStyle(.secondary)
                                 }
+                                Button("Remove", role: .destructive) {
+                                    VaultRegistry.remove(id: entry.id)
+                                    if activeVault == entry.id {
+                                        activeVault = VaultRegistry.iCloudId
+                                    }
+                                }
+                                .controlSize(.small)
                             }
-                            .controlSize(.small)
                         }
                     }
                 }
             }
+            .formStyle(.grouped)
         }
-        .formStyle(.grouped)
-    }
+    #endif
 
     /// Why a Test Connection failed, in words the user can act on. A flat
     /// "not reachable" hid an App Transport Security block behind what

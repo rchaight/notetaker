@@ -94,6 +94,7 @@ struct MeetingsView: View {
             }
             .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 340)
             .navigationTitle("Meetings")
+            .settingsButton()
             .overlay {
                 if people.isEmpty {
                     ContentUnavailableView(

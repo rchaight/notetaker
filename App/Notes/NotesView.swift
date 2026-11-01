@@ -129,6 +129,7 @@ struct NotesView: View {
             sidebar
                 .navigationSplitViewColumnWidth(min: 200, ideal: 260, max: 420)
                 .navigationTitle("Notes")
+                .settingsButton()
                 .fileImporter(
                     isPresented: $showingImporter,
                     allowedContentTypes: [

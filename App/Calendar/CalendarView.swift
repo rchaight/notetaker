@@ -31,7 +31,7 @@ struct CalendarView: View {
     var body: some View {
         #if os(iOS)
             NavigationStack {
-                inner.navigationTitle("Calendar")
+                inner.navigationTitle("Calendar").settingsButton()
             }
         #else
             inner

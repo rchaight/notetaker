@@ -22,6 +22,7 @@ struct ProjectsView: View {
                     .tag(project.id)
             }
             .navigationTitle("Projects")
+            .settingsButton()
             .navigationSplitViewColumnWidth(min: 220, ideal: 300, max: 420)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {

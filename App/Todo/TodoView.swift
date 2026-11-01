@@ -98,6 +98,7 @@ struct TodoView: View {
             sidebar
                 .navigationSplitViewColumnWidth(min: 170, ideal: 210, max: 300)
                 .navigationTitle("To-Do")
+                .settingsButton()
         } detail: {
             currentView
                 .navigationTitle("To-Do")
