@@ -194,12 +194,6 @@ public struct VaultConflictCenter: Sendable {
         return ConflictOutcome(preserved: preserved, resolved: versions.count)
     }
 
-    /// Keep-both resolution for the debug harness: forwards to `resolve(.keepBoth)`. Returns
-    /// the URLs of the preserved copies.
-    public func resolveKeepingBoth(at url: URL, store: VaultFileStore) async throws -> [URL] {
-        try await resolve(.keepBoth, at: url, store: store).preserved
-    }
-
     /// Oldest first (undated last), then device name (unnamed last), then path.
     private static func isOrderedBefore(_ lhs: ConflictVersion, _ rhs: ConflictVersion) -> Bool {
         if lhs.modificationDate != rhs.modificationDate {

@@ -7,12 +7,15 @@ public enum VaultTrashError: Error, Equatable, LocalizedError {
     case alreadyInTrash(String)
     /// Folders are not trashed (only notes).
     case notAFile(String)
+    /// The note is an undownloaded iCloud placeholder that did not arrive in time to restore.
+    case notDownloaded(String)
 
     public var errorDescription: String? {
         switch self {
         case let .invalidPath(path): "“\(path)” is not a valid vault path."
         case let .alreadyInTrash(path): "“\(path)” is already in the Trash."
         case let .notAFile(path): "“\(path)” is a folder; only notes can be moved to the Trash."
+        case let .notDownloaded(path): "“\(path)” is still downloading from iCloud. Try again in a moment."
         }
     }
 }
@@ -101,12 +104,19 @@ public enum VaultTrash {
 
     /// Coordinated move back to `entry.originalPath` (uniquified when that name is taken
     /// again). Removes the empty `.trash` subfolders it leaves behind. Returns the restored
-    /// relative path.
-    public static func restore(_ entry: Entry, in root: URL, store: VaultFileStore) async throws -> String {
+    /// relative path. An entry that is only an iCloud placeholder is downloaded first (up to
+    /// `downloadTimeout`), else `notDownloaded` is thrown and nothing is touched.
+    public static func restore(
+        _ entry: Entry,
+        in root: URL,
+        store: VaultFileStore,
+        downloadTimeout: Duration = .seconds(10)
+    ) async throws -> String {
         let trashed = try trashedComponents(of: entry)
         guard let original = plainComponents(of: entry.originalPath) else {
             throw VaultTrashError.invalidPath(entry.originalPath)
         }
+        try await ensureDownloaded(entry, in: root, timeout: downloadTimeout)
         let folders = Array(original.dropLast())
         let destinationFolder = folderURL(root: root, components: folders)
         let name = uniqueName(for: original[original.count - 1], in: destinationFolder)
@@ -118,10 +128,15 @@ public enum VaultTrash {
         return (folders + [name]).joined(separator: "/")
     }
 
-    /// Permanent delete of that one entry (and any empty subfolders it leaves).
+    /// Permanent delete of that one entry (and any empty subfolders it leaves). An undownloaded
+    /// iCloud placeholder is deleted as it stands — there is nothing to download to throw away.
     public static func purge(_ entry: Entry, in root: URL, store: VaultFileStore) async throws {
         let trashed = try trashedComponents(of: entry)
-        try await store.delete(at: root.appendingPathComponent(entry.trashedPath))
+        let url = root.appendingPathComponent(entry.trashedPath)
+        let target = !FileManager.default.fileExists(atPath: url.path) && placeholderExists(for: url)
+            ? placeholderURL(for: url)
+            : url
+        try await store.delete(at: target)
         await pruneEmptyFolders(of: trashed, in: root, store: store)
     }
 
@@ -189,6 +204,42 @@ public enum VaultTrash {
                 modificationDate: modified
             ))
         }
+    }
+
+    /// `root/.trash/…/.Note.md.icloud` for `root/.trash/…/Note.md`.
+    private static func placeholderURL(for url: URL) -> URL {
+        url.deletingLastPathComponent().appendingPathComponent(".\(url.lastPathComponent).icloud")
+    }
+
+    private static func placeholderExists(for url: URL) -> Bool {
+        FileManager.default.fileExists(atPath: placeholderURL(for: url).path)
+    }
+
+    /// Returns once the entry's real file is on disk. Real file present → immediate. Only a
+    /// placeholder → ask iCloud for it and poll (the same approach as MCPKit's read path).
+    /// Neither → return and let the move report the missing file.
+    private static func ensureDownloaded(_ entry: Entry, in root: URL, timeout: Duration) async throws {
+        let url = root.appendingPathComponent(entry.trashedPath)
+        if isMaterialized(url) || !placeholderExists(for: url) {
+            return
+        }
+        try? FileManager.default.startDownloadingUbiquitousItem(at: url)
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        while ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(200))
+            if isMaterialized(url) {
+                return
+            }
+        }
+        throw VaultTrashError.notDownloaded(entry.originalPath)
+    }
+
+    private static func isMaterialized(_ url: URL) -> Bool {
+        guard FileManager.default.fileExists(atPath: url.path) else { return false }
+        let status = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
+            .ubiquitousItemDownloadingStatus
+        // Non-ubiquitous files report no status at all, which is fine.
+        return status == nil || status == .current
     }
 
     /// ".Note.md.icloud" → "Note.md"; nil for any other name.

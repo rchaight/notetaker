@@ -286,4 +286,51 @@ struct VaultTrashTests {
         #expect(try await store.readString(at: root.appendingPathComponent("Note.md")) == "precious")
         #expect(exists(root, ".trash/Inside.md"))
     }
+
+    // MARK: - Undownloaded iCloud placeholders
+
+    /// A Trash entry that exists only as `.Name.md.icloud` is listed under its real name, so
+    /// Restore / Delete Permanently must act on what is really on disk.
+    private func putPlaceholder(_ root: URL, _ realPath: String) throws -> VaultTrash.Entry {
+        let real = root.appendingPathComponent(realPath)
+        let placeholder = real.deletingLastPathComponent().appendingPathComponent(".\(real.lastPathComponent).icloud")
+        try FileManager.default.createDirectory(
+            at: placeholder.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("stub".utf8).write(to: placeholder)
+        let listed = VaultTrash.list(in: root).first { $0.trashedPath == realPath }
+        return try #require(listed)
+    }
+
+    @Test func purgeDeletesAPlaceholderEntry() async throws {
+        let root = try makeTempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = VaultFileStore()
+        let entry = try putPlaceholder(root, ".trash/Work/Pending.md")
+        let sibling = try putPlaceholder(root, ".trash/Work/Other.md")
+
+        try await VaultTrash.purge(entry, in: root, store: store)
+
+        #expect(!exists(root, ".trash/Work/.Pending.md.icloud"))
+        // Only that entry goes.
+        #expect(exists(root, ".trash/Work/.Other.md.icloud"))
+        #expect(VaultTrash.list(in: root).map(\.trashedPath) == [sibling.trashedPath])
+    }
+
+    @Test func restoreOfAnUndownloadedEntryFailsCleanlyAndTouchesNothing() async throws {
+        let root = try makeTempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = VaultFileStore()
+        let entry = try putPlaceholder(root, ".trash/Work/Pending.md")
+
+        await #expect(throws: VaultTrashError.notDownloaded("Work/Pending.md")) {
+            _ = try await VaultTrash.restore(entry, in: root, store: store, downloadTimeout: .milliseconds(300))
+        }
+
+        // The placeholder is still in the Trash, and nothing was created at the destination.
+        #expect(exists(root, ".trash/Work/.Pending.md.icloud"))
+        #expect(!exists(root, "Work/Pending.md"))
+        #expect(!exists(root, "Work/.Pending.md.icloud"))
+    }
 }

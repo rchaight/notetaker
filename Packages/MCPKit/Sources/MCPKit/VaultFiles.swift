@@ -84,6 +84,12 @@ enum VaultFiles {
         guard url.path == rootPath || url.path.hasPrefix(rootPath + "/") else {
             throw VaultReadError.outsideVault(path)
         }
+        // Hidden folders (the app's `.trash/`, `.obsidian/`, …) are never listed by the scan, so
+        // a hand-typed path must not reach them either. Components are judged after `..` and `.`
+        // are resolved, relative to the vault root only.
+        if relativePath(of: url, in: root).split(separator: "/").contains(where: { $0.hasPrefix(".") }) {
+            throw VaultReadError.notFound(path)
+        }
         return url
     }
 

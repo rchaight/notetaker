@@ -25,18 +25,4 @@ struct TaskCheckboxTests {
         #expect(found.count == 1)
         #expect((text as NSString).substring(with: found[0].range) == "[ ]")
     }
-
-    @Test func togglesBothDirections() {
-        let text = "- [ ] call\n"
-        let range = TaskCheckboxes.tokens(in: text, styled: MarkdownStyler.styleRanges(in: text))[0].range
-        let checked = TaskCheckboxes.toggled(text, tokenAt: range)
-        #expect(checked == "- [x] call\n")
-        let unchecked = checked.flatMap { TaskCheckboxes.toggled($0, tokenAt: range) }
-        #expect(unchecked == text)
-    }
-
-    @Test func toggleRefusesDriftedRange() {
-        #expect(TaskCheckboxes.toggled("- [ ] ok\n", tokenAt: NSRange(location: 0, length: 3)) == nil)
-        #expect(TaskCheckboxes.toggled("hi", tokenAt: NSRange(location: 0, length: 3)) == nil)
-    }
 }

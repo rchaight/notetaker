@@ -51,7 +51,7 @@ One pass = one commit containing the code **and** one new row appended to the `|
 - [ ] Right-click a note › Move to Trash › confirm: note leaves the list, search, To-Do, Tags; Finder shows it under `.trash/` (⌘⇧.); Undo in the toast brings it back selected.
 - [ ] Trash sheet: Restore puts a note back in its folder; Delete Permanently and Empty Trash ask first.
 - [ ] Trash a note with unsaved typing: the trashed file contains the last keystrokes.
-- [ ] Tags: Remove Tag Everywhere and Delete All ask first; Cancel changes nothing.
+- [ ] Tags: Remove Tag Everywhere and Delete All ask first; Cancel changes nothing. Rename… (context menu) still opens its text-field alert next to the new confirmation dialog.
 - [ ] Click a checkbox in the editor; the file line reads `[x] … ✅today`; Logbook lists it; uncheck in Logbook removes the ✅ from the file. Same from Reading mode and the To-Do list. A `&every` task advances its date and stays `[ ]`.
 - [ ] Quick Add (⇧⌘N) "call Amber @Amber ?waiting ~2026-12-01 ^amber-call": `Inbox.md` line carries every token; the same via the menu-bar capture and Shortcuts "Add Task".
 - [ ] Orange conflict badge: click opens the sheet; Keep mine / Keep other / Keep both each converge (make a real conflict with the phone in Airplane Mode).
@@ -59,10 +59,12 @@ One pass = one commit containing the code **and** one new row appended to the `|
 - [ ] Select a Today task and a Someday task → Complete: both done. Meetings › a person with an `@person ?someday` task shows "Later".
 - [ ] `- [ ] x !med` › set priority P1 in Task Detail → one `!p1` token, no `!med` left.
 - [ ] Search "zzzz" → "No Results"; empty vault → "Press ⌘N" hint.
+- [ ] Debug build (`scripts/install-ios.sh --debug --yes`, or a Mac Debug run): the Vault tab is back, and its Keep Both button still resolves a conflict (it now runs through `VaultConflictCenter.resolve(.keepBoth)`).
 
 **iPhone (Release build via `install-ios.sh --yes`)**
 - [ ] Six tabs; Settings has no Debug entry.
 - [ ] To-Do: tap Today → task list opens; Back; tap Upcoming → opens again; saved filter rows work.
+- [ ] To-Do: tap a saved filter (list is filtered), Back, tap a view such as Upcoming → no filter is left applied. A filter you typed yourself survives Back.
 - [ ] Tags: tap a tag → detail opens; long-press › Rename works.
 - [ ] Notes: long-press › Move to Trash asks; Undo works; trashed note is absent from the list after sync; Trash sheet restores.
 - [ ] Tap a checkbox in the editor → `✅today` in the file (check on the Mac); Reading mode same.

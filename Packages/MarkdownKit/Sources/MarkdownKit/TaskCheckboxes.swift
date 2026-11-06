@@ -11,9 +11,10 @@ public struct TaskCheckboxToken: Equatable, Sendable {
     }
 }
 
-/// Locating and flipping checkbox tokens — the editor renders these as
-/// interactive checkboxes; the master To-Do list (M3) reuses the exact same
-/// toggle so every surface edits the same source line.
+/// Locating checkbox tokens — the editor renders these as interactive checkboxes.
+/// There is deliberately no bare "flip the bracket" helper here: a check-off must also stamp
+/// or strip the completed day (and roll recurrences), so every surface goes through
+/// `RecurrenceEngine.completeTaskLine` / `TaskLineToggler`.
 public enum TaskCheckboxes {
     private static let tokenRegex = try? NSRegularExpression(pattern: #"\[( |x|X)\]"#)
 
@@ -33,20 +34,5 @@ public enum TaskCheckboxes {
             tokens.append(TaskCheckboxToken(range: match.range, checked: checked))
         }
         return tokens
-    }
-
-    /// Flips the token at `range`; nil when the text there isn't a checkbox
-    /// (source drifted since the ranges were computed).
-    public static func toggled(_ text: String, tokenAt range: NSRange) -> String? {
-        let ns = text as NSString
-        guard range.length == 3, NSMaxRange(range) <= ns.length else { return nil }
-        switch ns.substring(with: range) {
-        case "[ ]":
-            return ns.replacingCharacters(in: range, with: "[x]")
-        case "[x]", "[X]":
-            return ns.replacingCharacters(in: range, with: "[ ]")
-        default:
-            return nil
-        }
     }
 }

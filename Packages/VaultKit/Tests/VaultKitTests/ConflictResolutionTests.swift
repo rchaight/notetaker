@@ -219,14 +219,14 @@ struct ConflictResolutionTests {
         #expect(source.markResolvedIds.count == 2)
     }
 
-    @Test func resolveKeepingBothForwardsToKeepBoth() async throws {
+    @Test func keepBothNamesTheSingleConflictCopyAfterItsDevice() async throws {
         let fixture = try await makeFixture()
         defer { try? FileManager.default.removeItem(at: fixture.root) }
         let a = try makeVersion(fixture, name: "a", contents: "A", device: "iPhone", date: nil)
         let source = FakeVersionSource(versions: [a])
 
         let preserved = try await VaultConflictCenter(source: source)
-            .resolveKeepingBoth(at: fixture.note, store: fixture.store)
+            .resolve(.keepBoth, at: fixture.note, store: fixture.store).preserved
 
         #expect(preserved.map(\.lastPathComponent) == ["Note (conflict from iPhone).md"])
         #expect(source.markResolvedIds == [a.id])

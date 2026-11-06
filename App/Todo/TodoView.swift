@@ -293,8 +293,9 @@ struct TodoView: View {
         /// iPhone/iPad: rows are selectable so a compact split view pushes the detail column.
         /// Popping back clears the selection, which is why a second tap on the same row works.
         /// A saved filter always applies here (it does not toggle off as on the Mac): tapping
-        /// it navigates to the list, so landing on an unfiltered list would read as a bug —
-        /// the filter menu's Clear Filter removes it.
+        /// it navigates to the list, so landing on an unfiltered list would read as a bug.
+        /// It is dropped again when the selection leaves it (back to the sidebar, or another
+        /// row); the filter menu's Clear Filter removes it sooner.
         private var sidebarLists: some View {
             List(selection: $sidebarSelection) {
                 Section("Views") {
@@ -312,7 +313,13 @@ struct TodoView: View {
                     }
                 }
             }
-            .onChange(of: sidebarSelection) { _, item in
+            .onChange(of: sidebarSelection) { old, item in
+                // Leaving a saved filter (popping back, or picking a view on iPad) must not leave
+                // it applied invisibly — nothing in the sidebar would show why the list is
+                // filtered. A filter the user typed or edited since is theirs and stays.
+                if case let .filter(previous) = old, filterText == previous {
+                    filterText = ""
+                }
                 switch item {
                 case let .mode(mode): viewModeRaw = mode.rawValue
                 case let .filter(saved): filterText = saved

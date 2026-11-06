@@ -71,7 +71,7 @@ struct VaultCopyTests {
 
         let center = VaultConflictCenter()
         #expect(center.unresolvedVersions(for: note).isEmpty)
-        let preserved = try await center.resolveKeepingBoth(at: note, store: store)
+        let preserved = try await center.resolve(.keepBoth, at: note, store: store).preserved
         #expect(preserved.isEmpty)
     }
 }

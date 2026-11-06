@@ -105,6 +105,32 @@ struct VaultServiceTests {
         }
     }
 
+    @Test func hiddenFoldersAreUnreachableByPath() async throws {
+        let fixture = try VaultFixture()
+        defer { fixture.cleanUp() }
+        // A trashed note exists on disk, as the app leaves it after "Move to Trash".
+        let trashed = fixture.root.appendingPathComponent(".trash/Work/Old.md")
+        try FileManager.default.createDirectory(
+            at: trashed.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try "# Old\n\nthrown away".write(to: trashed, atomically: true, encoding: .utf8)
+        let service = fixture.service(withIndex: false)
+
+        for path in [".trash/Work/Old.md", "/.trash/Work/Old.md", "Work/../.trash/Work/Old.md", ".trash"] {
+            await #expect(throws: VaultReadError.self) {
+                _ = try await service.readNote(path: path)
+            }
+        }
+        #expect(throws: VaultReadError.self) {
+            _ = try service.listFolder(path: ".trash")
+        }
+        // The scan never listed it, and ordinary notes still read.
+        #expect(VaultFiles.markdownFiles(in: fixture.root).allSatisfy { !$0.relativePath.hasPrefix(".trash") })
+        let ordinary = try await service.readNote(path: "Work/Curriculum.md")
+        #expect(ordinary["title"]?.stringValue == "Curriculum")
+    }
+
     // MARK: - read_note
 
     @Test func readNoteReturnsFrontmatterAndBody() async throws {
