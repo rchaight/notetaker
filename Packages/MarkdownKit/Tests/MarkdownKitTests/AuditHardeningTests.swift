@@ -39,28 +39,14 @@ struct AuditHardeningTests {
         let tasks = NoteScanner.tasks(in: contents)
         #expect(tasks.count == 1)
         let task = try #require(tasks.first)
-        let toggled = TaskLineToggler.toggle(
+        let line = TaskLineToggler.locate(
             contents: contents, anchorLine: task.line, expectedRawLine: task.rawLine
         )
-        #expect(toggled != nil, "scanner line anchors must be toggleable on CRLF files")
-        #expect(toggled?.contents.contains("[x]") == true)
-    }
-
-    @Test func onlyFirstCheckboxOnALineToggles() {
-        let line = "- [ ] first [ ] second"
-        let result = TaskLineToggler.toggle(contents: line, anchorLine: 0, expectedRawLine: line)
-        #expect(result?.contents == "- [x] first [ ] second")
-    }
-
-    @Test func toggleImplementationsAgree() throws {
-        for line in ["- [ ] open", "- [x] done", "- [X] shouty"] {
-            let viaToggler = TaskLineToggler.toggle(contents: line, anchorLine: 0, expectedRawLine: line)?.contents
-            let text = line
-            let styled = MarkdownStyler.styleRanges(in: text)
-            let token = try #require(TaskCheckboxes.tokens(in: text, styled: styled).first)
-            let viaCheckboxes = TaskCheckboxes.toggled(text, tokenAt: token.range)
-            #expect(viaToggler == viaCheckboxes, "the two toggle paths must be identical for: \(line)")
-        }
+        #expect(line == task.line, "scanner line anchors must be locatable on CRLF files")
+        // Replacing the located line leaves its neighbours' CRLFs untouched.
+        let located = try #require(line)
+        let replaced = TaskLineToggler.replacingLine(contents, at: located, with: "- [x] crlf task\r")
+        #expect(replaced == "# H\r\n- [x] crlf task\r\nplain\r\n")
     }
 
     @Test func malformedWikilinksDoNotCrashOrEmit() {

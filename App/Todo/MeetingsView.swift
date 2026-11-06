@@ -17,6 +17,7 @@ struct MeetingsView: View {
     @State private var runningOneOnOne = false
     @State private var detailTaskId: String?
     @State private var historyExpanded = false
+    @State private var laterExpanded = false
     @State private var newDiscussText = ""
     @Environment(\.openWindow) private var openWindow
 
@@ -114,7 +115,7 @@ struct MeetingsView: View {
                     "Select a Meeting",
                     systemImage: "person.3",
                     description: Text(
-                        "Each person, committee, or workgroup gets a page: To Discuss, Delegated, and Waiting."
+                        "Each person, committee, or workgroup gets a page: To Discuss, Delegated, Waiting, Follow-ups, and Later."
                     )
                 )
             }
@@ -152,6 +153,11 @@ struct MeetingsView: View {
         let delegated = tasks(for: person, kind: nil)
         let waiting = tasks(for: person, kind: "waiting")
         let followups = tasks(for: person, kind: "followup")
+        // `?next` / `?someday` tasks addressed to the person are in `people`'s count, so they
+        // need a home on the page (collapsed: they are not what a meeting is about).
+        let later = tasks.filter {
+            ($0.assignee ?? Self.unassigned) == person && ($0.kind == "next" || $0.kind == "someday")
+        }
         let discussed = discussedHistory(for: person)
         return VStack(spacing: 0) {
             HStack {
@@ -171,7 +177,7 @@ struct MeetingsView: View {
             Divider()
             personList(
                 person: person, discuss: discuss, delegated: delegated,
-                waiting: waiting, followups: followups, discussed: discussed
+                waiting: waiting, followups: followups, later: later, discussed: discussed
             )
         }
         // The in-content header cures the translucent strip. Do NOT hide the
@@ -186,6 +192,7 @@ struct MeetingsView: View {
         delegated: [TaskRecord],
         waiting: [TaskRecord],
         followups: [TaskRecord],
+        later: [TaskRecord],
         discussed: [(day: String, items: [TaskRecord])]
     ) -> some View {
         List {
@@ -244,6 +251,19 @@ struct MeetingsView: View {
                     Label("Follow-ups (\(followups.count))", systemImage: "arrow.uturn.left.circle")
                 }
             }
+            if !later.isEmpty {
+                Section {
+                    DisclosureGroup(isExpanded: $laterExpanded) {
+                        ForEach(later) { task in
+                            taskRow(task, accent: .secondary)
+                        }
+                    } label: {
+                        Label("Later (\(later.count))", systemImage: "tray")
+                            .foregroundStyle(.secondary)
+                            .selectionDisabled(true)
+                    }
+                }
+            }
             if !discussed.isEmpty {
                 Section {
                     DisclosureGroup(isExpanded: $historyExpanded) {
@@ -297,7 +317,7 @@ struct MeetingsView: View {
         }
 
         .overlay {
-            if discuss.isEmpty, delegated.isEmpty, waiting.isEmpty, followups.isEmpty {
+            if discuss.isEmpty, delegated.isEmpty, waiting.isEmpty, followups.isEmpty, later.isEmpty {
                 ContentUnavailableView(
                     "All Clear",
                     systemImage: "checkmark.circle",
@@ -435,7 +455,7 @@ struct MeetingRunView: View {
             }
         }
         .padding(20)
-        .frame(minWidth: 460, minHeight: 420)
+        .sheetFrame(minWidth: 460, minHeight: 420)
     }
 }
 

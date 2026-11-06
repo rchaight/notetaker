@@ -92,8 +92,15 @@ struct RecurrenceTests {
         #expect(completed == "- [ ] stretch &after 1 day >2026-07-12")
     }
 
-    @Test func nonRecurringLineJustFlips() {
-        #expect(RecurrenceEngine.completeTaskLine("- [ ] once", today: today, calendar: calendar) == "- [x] once")
+    @Test func nonRecurringLineFlipsAndStamps() {
+        #expect(
+            RecurrenceEngine.completeTaskLine("- [ ] once", today: today, calendar: calendar)
+                == "- [x] once ✅2026-07-11"
+        )
+        #expect(
+            RecurrenceEngine.completeTaskLine("- [x] once ✅2026-07-11", today: today, calendar: calendar)
+                == "- [ ] once"
+        )
         #expect(RecurrenceEngine.completeTaskLine("- [x] once", today: today, calendar: calendar) == "- [ ] once")
     }
 
@@ -103,5 +110,16 @@ struct RecurrenceTests {
         let tokenRange = ns.range(of: "[ ]") // first checkbox
         let updated = RecurrenceEngine.completeTask(in: text, tokenRange: tokenRange, today: today, calendar: calendar)
         #expect(updated == "# Chores\n\n- [ ] water plants >2026-07-13 &every 3 days\n- [ ] once\n")
+    }
+
+    @Test func completeTaskStampsSecondLineInDocument() {
+        let text = "# Chores\n\n- [ ] water plants >2026-07-10 &every 3 days\n- [ ] once\n- [ ] later\n"
+        let ns = text as NSString
+        let tokenRange = NSRange(location: ns.range(of: "- [ ] once").location + 2, length: 3)
+        let updated = RecurrenceEngine.completeTask(in: text, tokenRange: tokenRange, today: today, calendar: calendar)
+        #expect(
+            updated == "# Chores\n\n- [ ] water plants >2026-07-10 &every 3 days\n- [x] once ✅2026-07-11\n"
+                + "- [ ] later\n"
+        )
     }
 }

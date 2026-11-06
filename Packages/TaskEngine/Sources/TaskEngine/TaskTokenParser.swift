@@ -54,6 +54,48 @@ public struct ParsedTaskMetadata: Equatable, Sendable {
     }
 }
 
+public extension ParsedTaskMetadata {
+    /// The canonical serialisation of every token this metadata carries, in
+    /// ONE fixed order: `>due ~start !pN &rec ^id blockedby:^x… @person ?kind
+    /// ✅day`. Shared by `TaskLineRewriter.replacingText` (Task Detail edits)
+    /// and `QuickAddParser` (capture), so a line written by either parses and
+    /// re-serialises to itself — no surface reorders or drops a token.
+    ///
+    /// `#labels` are not here: they stay in `cleanText` (they read as
+    /// content). `depends:^x` is written as `blockedby:^x` — the parser
+    /// treats the two as synonyms and this is the one spelling that is
+    /// emitted. Recurrence is the token as typed (`recurrence.rawToken`).
+    var tokenSuffix: [String] {
+        var tokens: [String] = []
+        if let dueDate {
+            tokens.append(">" + dueDate)
+        }
+        if let startDate {
+            tokens.append("~" + startDate)
+        }
+        if let priority {
+            tokens.append("!p\(priority)")
+        }
+        if let recurrence {
+            tokens.append(recurrence.rawToken)
+        }
+        if let blockId {
+            tokens.append("^" + blockId)
+        }
+        tokens += dependsOn.map { "blockedby:^" + $0 }
+        if let assignee {
+            tokens.append("@" + assignee)
+        }
+        if let kind {
+            tokens.append("?" + kind)
+        }
+        if let completedDay {
+            tokens.append("✅" + completedDay)
+        }
+        return tokens
+    }
+}
+
 /// The ONE parser for inline task tokens — every surface (editor, quick
 /// add, master list) must use this so `- [ ] text >friday !p1 #tag` means
 /// the same thing everywhere.
@@ -130,9 +172,14 @@ public enum TaskTokenParser {
     private static let startTokenRegex = dateRegex(prefix: "~")
 
     /// `?discuss` / `?waiting` at a word boundary — a closed set, so a
-    /// question mark in prose never matches.
-    private static let kindRegex = try? NSRegularExpression(
-        pattern: "(?<=^|\\s)\\?(discuss|waiting|next|someday|followup)\\b",
+    /// question mark in prose never matches. The pattern string is the ONE
+    /// copy of the TaskEngine vocabulary: `TaskLineRewriter.settingKind`
+    /// builds its regex from it (case-insensitive, like `kindRegex`), so the
+    /// parser and the rewriter can never disagree about what a `?kind` is.
+    public static let kindTokenPattern = "(?<=^|\\s)\\?(discuss|waiting|next|someday|followup)\\b"
+
+    static let kindRegex = try? NSRegularExpression(
+        pattern: kindTokenPattern,
         options: [.caseInsensitive]
     )
 
@@ -269,8 +316,14 @@ public enum TaskTokenParser {
 
     // MARK: - Priority
 
-    private static let priorityRegex = try? NSRegularExpression(
-        pattern: #"(?<=^|\s)!(p[1-4]|high|medium|med|low)\b"#,
+    /// `!p1`…`!p4` / `!high` / `!medium` / `!med` / `!low`. Like
+    /// `kindTokenPattern`, the one copy: `TaskLineRewriter.settingPriority`
+    /// builds its regex from this string, so every alias the parser accepts
+    /// (`!med` included) is an alias the rewriter replaces or removes.
+    public static let priorityTokenPattern = #"(?<=^|\s)!(p[1-4]|high|medium|med|low)\b"#
+
+    static let priorityRegex = try? NSRegularExpression(
+        pattern: priorityTokenPattern,
         options: [.caseInsensitive]
     )
 

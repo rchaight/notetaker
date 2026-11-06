@@ -59,6 +59,24 @@ public extension VaultItem.DownloadState {
 }
 
 public enum VaultPath {
+    /// True when any folder component of `relativePath` — every component EXCEPT the last —
+    /// starts with ".", e.g. `.trash/Note.md` or `Work/.obsidian/x.md`. The last component is
+    /// left alone on purpose, so iCloud placeholder names (`.Note.md.icloud`) are unaffected.
+    public static func isInsideHiddenFolder(_ relativePath: String) -> Bool {
+        relativePath.split(separator: "/").dropLast().contains { $0.hasPrefix(".") }
+    }
+
+    /// True for entries the vault listing must never surface: anything under a hidden folder,
+    /// and a hidden folder itself (`.trash`, `.obsidian`). `VaultEnumerator` gets the same
+    /// answer from `.skipsHiddenFiles`; `MetadataQueryObserver` has no such option, so it asks
+    /// here.
+    public static func isHiddenTreeEntry(_ relativePath: String, isDirectory: Bool) -> Bool {
+        if isInsideHiddenFolder(relativePath) {
+            return true
+        }
+        return isDirectory && (relativePath.split(separator: "/").last?.hasPrefix(".") ?? false)
+    }
+
     /// Path of `url` relative to `root`, "" when url IS the root.
     public static func relativePath(of url: URL, in root: URL) -> String {
         relativePath(of: url, inRootComponents: components(of: root))

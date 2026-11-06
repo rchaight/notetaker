@@ -101,6 +101,12 @@ struct NotesView: View {
     @State private var linkPopoverText = ""
     @State private var linkPopoverURL = ""
     @State private var showingGraph = false
+    /// Delete flow (spec ux-phase1/01): the note awaiting the Move to Trash confirmation, and
+    /// the Trash sheet. One confirmationDialog drives the former; it is not an `.alert`.
+    @State private var trashCandidate: VaultItem?
+    @State private var showingTrash = false
+    /// The note whose sync conflict the sheet is resolving (spec ux-phase1/05).
+    @State private var conflictNote: VaultItem?
     @State private var showingLockSheet = false
     @State private var showingUnlockSheet = false
     @State private var lockPassphrase = ""
@@ -220,6 +226,36 @@ struct NotesView: View {
         .onDisappear { Task { await model.flushSave() } }
         .sheet(isPresented: $showingLockSheet) { lockSheet }
         .sheet(isPresented: $showingProofread) { proofreadSheet }
+        .sheet(isPresented: $showingTrash) {
+            TrashSheet(model: model, indexService: indexService)
+        }
+        .sheet(item: $conflictNote) { note in
+            ConflictSheet(note: note, model: model) {
+                await indexService.rescan()
+            }
+        }
+        .confirmationDialog(
+            trashCandidate.map { "Move “\(noteTitle($0))” to Trash?" } ?? "Move to Trash?",
+            isPresented: Binding(
+                get: { trashCandidate != nil },
+                set: {
+                    if !$0 {
+                        trashCandidate = nil
+                    }
+                }
+            ),
+            titleVisibility: .visible,
+            presenting: trashCandidate
+        ) { note in
+            Button("Move to Trash", role: .destructive) {
+                Task {
+                    await model.moveToTrash(note)
+                    await indexService.rescan()
+                }
+            }
+        } message: { _ in
+            Text("You can undo this right away, or restore it later from the Trash.")
+        }
         .sheet(isPresented: $showingGraph) {
             GraphView(
                 notes: model.notes.map { ($0.id, noteTitle($0)) },
@@ -311,6 +347,9 @@ struct NotesView: View {
             .help("Sort order")
             actionIcon("rectangle.compress.vertical", "Collapse all folders") {
                 expandedFolders.removeAll()
+            }
+            actionIcon("trash", "Trash — restore or permanently delete notes") {
+                showingTrash = true
             }
         }
         .padding(.horizontal, 10)
@@ -618,15 +657,12 @@ struct NotesView: View {
         }
         .overlay {
             if visibleNotes.isEmpty {
-                ContentUnavailableView(
-                    "No Notes Yet",
-                    systemImage: "note.text",
-                    description: Text("Press ⌘N or tap New Note to create your first markdown note.")
-                )
+                emptyListState
             }
         }
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 2) {
+                trashNotice
                 EmptyView()
                     .fileImporter(
                         isPresented: $showingVaultImporter,
@@ -657,6 +693,83 @@ struct NotesView: View {
                         .padding(.bottom, 4)
                 }
             }
+            // The Undo toast (and any trash failure) clears itself after 6 s. Keyed on the
+            // receipt, so a newer toast restarts the timer and Undo (receipt -> nil) cancels it.
+            .task(id: model.lastTrashed) {
+                guard model.lastTrashed != nil else { return }
+                try? await Task.sleep(for: .seconds(6))
+                guard !Task.isCancelled else { return }
+                model.dismissTrashNotice()
+            }
+            .task(id: model.trashFailure) {
+                guard model.trashFailure != nil else { return }
+                try? await Task.sleep(for: .seconds(6))
+                guard !Task.isCancelled else { return }
+                model.dismissTrashNotice()
+            }
+        }
+    }
+
+    /// Search with no hits is "No Results", a tag with no notes says so, and only a vault with
+    /// no notes at all gets the onboarding hint (spec ux-phase1/06f).
+    @ViewBuilder private var emptyListState: some View {
+        if searching {
+            ContentUnavailableView.search(text: searchText)
+        } else if let selectedTag {
+            ContentUnavailableView(
+                "No Notes",
+                systemImage: "number",
+                description: Text("No notes tagged #\(selectedTag)")
+            )
+        } else if model.notes.isEmpty {
+            ContentUnavailableView(
+                "No Notes Yet",
+                systemImage: "note.text",
+                description: Text(newNoteHint)
+            )
+        }
+    }
+
+    private var newNoteHint: String {
+        #if os(macOS)
+            "Press ⌘N or choose New Note to create your first markdown note."
+        #else
+            "Tap New Note to create your first markdown note."
+        #endif
+    }
+
+    /// "Moved “Plan” to Trash — Undo", or why a trash action failed. Opaque background: a
+    /// translucent material over the list misrenders on the macOS beta.
+    @ViewBuilder private var trashNotice: some View {
+        if let receipt = model.lastTrashed {
+            HStack(spacing: 8) {
+                Image(systemName: "trash")
+                    .foregroundStyle(.secondary)
+                Text("Moved “\(NotesModel.noteTitle(ofPath: receipt.originalPath))” to Trash")
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 4)
+                Button("Undo") {
+                    Task {
+                        await model.undoLastTrash()
+                        await indexService.rescan()
+                    }
+                }
+                .buttonStyle(.borderless)
+                .fontWeight(.semibold)
+            }
+            .font(.callout)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.headerBackground, in: RoundedRectangle(cornerRadius: 8))
+            .padding(.horizontal, 8)
+            .padding(.bottom, 4)
+        } else if let failure = model.trashFailure {
+            Text(failure)
+                .font(.caption)
+                .foregroundStyle(.red)
+                .padding(.horizontal, 10)
+                .padding(.bottom, 4)
         }
     }
 
@@ -1669,7 +1782,7 @@ struct NotesView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: 460, height: 480)
+        .sheetFrame(width: 460, height: 480)
     }
 
     private var proofreadResultsList: some View {
@@ -2077,8 +2190,13 @@ struct NotesView: View {
                     Button(folder) { model.move(note, toFolder: folder) }
                 }
             }
-            Button("Delete", systemImage: "trash", role: .destructive) {
-                model.delete(note)
+            if note.hasUnresolvedConflicts {
+                Button("Resolve Conflict…", systemImage: "exclamationmark.icloud") {
+                    conflictNote = note
+                }
+            }
+            Button("Move to Trash", systemImage: "trash", role: .destructive) {
+                trashCandidate = note
             }
         }
         .modifier(SelectableTag(id: selectable ? note.id : nil) { _ in
@@ -2171,7 +2289,7 @@ struct NotesView: View {
         }
         .textFieldStyle(.roundedBorder)
         .padding(20)
-        .frame(width: 420)
+        .sheetFrame(width: 420)
     }
 
     private var unlockSheet: some View {
@@ -2192,7 +2310,7 @@ struct NotesView: View {
         }
         .textFieldStyle(.roundedBorder)
         .padding(20)
-        .frame(width: 380)
+        .sheetFrame(width: 380)
     }
 
     private func attemptUnlock() {
@@ -2226,9 +2344,16 @@ struct NotesView: View {
     /// never as "broken". No badge = fully synced.
     @ViewBuilder private func syncBadge(_ note: VaultItem) -> some View {
         if note.hasUnresolvedConflicts {
-            Image(systemName: "exclamationmark.icloud")
-                .foregroundStyle(.orange)
-                .help("Sync conflict — resolve in the Vault tab")
+            Button {
+                conflictNote = note
+            } label: {
+                Image(systemName: "exclamationmark.icloud")
+                    .foregroundStyle(.orange)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Sync conflict — click to resolve")
+            .accessibilityLabel("Resolve sync conflict")
         } else if note.isUploading {
             Image(systemName: "icloud.and.arrow.up")
                 .foregroundStyle(.secondary)

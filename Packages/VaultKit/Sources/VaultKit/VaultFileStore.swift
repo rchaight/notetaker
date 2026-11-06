@@ -46,14 +46,34 @@ public struct VaultFileStore: Sendable {
         }
     }
 
+    /// Coordinated move. BOTH URLs are coordinated (source `.forMoving`, destination
+    /// `.forReplacing`), so the iCloud daemon and other presenters see the new location being
+    /// written, not only the old one vanishing. Creates the destination folder first. An
+    /// existing destination is never overwritten — `moveItem` throws and both files are left
+    /// as they were; callers that want a fresh name pick one with `VaultNaming` first.
     public func move(from source: URL, to destination: URL) async throws {
-        try await coordinatedWrite(at: source, options: .forMoving) { actualSource in
-            try FileManager.default.createDirectory(
-                at: destination.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
-            try FileManager.default.moveItem(at: actualSource, to: destination)
-        }
+        try await Task.detached(priority: .userInitiated) {
+            let coordinator = NSFileCoordinator(filePresenter: nil)
+            var coordinationError: NSError?
+            var result: Result<Void, Error> = .success(())
+            coordinator.coordinate(
+                writingItemAt: source, options: .forMoving,
+                writingItemAt: destination, options: .forReplacing,
+                error: &coordinationError
+            ) { actualSource, actualDestination in
+                result = Result {
+                    try FileManager.default.createDirectory(
+                        at: actualDestination.deletingLastPathComponent(),
+                        withIntermediateDirectories: true
+                    )
+                    try FileManager.default.moveItem(at: actualSource, to: actualDestination)
+                }
+            }
+            if let coordinationError {
+                throw coordinationError
+            }
+            return try result.get()
+        }.value
     }
 
     public func copy(from source: URL, to destination: URL) async throws {

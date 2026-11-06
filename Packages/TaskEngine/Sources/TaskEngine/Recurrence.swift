@@ -137,8 +137,16 @@ public enum RecurrenceEngine {
         }
     }
 
-    /// Completes one task line. Recurring: rewrite the `>date` to the next
-    /// occurrence and keep the box `[ ]`. Non-recurring: flip the checkbox.
+    /// Completes one task line — the ONE line-level primitive behind every
+    /// check-off surface (editor, Reading mode, master list, Logbook).
+    ///
+    /// - Recurring: rewrite the `>date` to the next occurrence and keep the
+    ///   box `[ ]`; a stale `✅day` stamp (contradictory on an open box) is
+    ///   stripped.
+    /// - Non-recurring, `[ ]` → `[x]`: append ` ✅<today>` (after any other
+    ///   token, before trailing spaces/`\r`), replacing a stale stamp.
+    /// - Non-recurring, `[x]`/`[X]` → `[ ]`: remove the `✅day` stamp.
+    ///
     /// Returns nil when the line has no checkbox.
     public static func completeTaskLine(
         _ line: String,
@@ -147,7 +155,11 @@ public enum RecurrenceEngine {
     ) -> String? {
         var probe = line
         guard let recurrence = RecurrenceParser.extract(from: &probe) else {
-            return flipCheckbox(in: line)?.0
+            guard let (flipped, nowChecked) = flipCheckbox(in: line) else { return nil }
+            let unstamped = strippingCompletionStamp(flipped)
+            return nowChecked
+                ? appendingCompletionStamp(isoDay(today, calendar: calendar), to: unstamped)
+                : unstamped
         }
 
         // Current >due on the line, if any.
@@ -168,7 +180,14 @@ public enum RecurrenceEngine {
         if let (unchecked, nowChecked) = flipCheckbox(in: working), nowChecked == false {
             working = unchecked
         }
-        return working
+        return strippingCompletionStamp(working)
+    }
+
+    /// `yyyy-MM-dd` for `date` in `calendar`'s time zone — the one day
+    /// formatter behind due-date advancement and the `✅` completion stamp,
+    /// so callers never format dates themselves in the completion path.
+    public static func isoDay(_ date: Date, calendar: Calendar = .current) -> String {
+        isoFormatter(calendar).string(from: date)
     }
 
     /// Editor-surface helper: completes the task line containing
@@ -182,11 +201,16 @@ public enum RecurrenceEngine {
         let ns = text as NSString
         guard NSMaxRange(tokenRange) <= ns.length else { return nil }
         let lineRange = ns.paragraphRange(for: tokenRange)
-        var line = ns.substring(with: lineRange)
-        let trailingNewline = line.hasSuffix("\n")
-        if trailingNewline {
-            line.removeLast()
-        }
+        // Strip exactly one UTF-16 "\n". `String.hasSuffix`/`removeLast` work
+        // on Characters, where "\r\n" is ONE grapheme: a CRLF line would keep
+        // its "\r\n" glued to the text and the ✅ stamp would land after the
+        // newline. The line primitive owns a trailing "\r".
+        let trailingNewline = lineRange.length > 0
+            && ns.character(at: NSMaxRange(lineRange) - 1) == 0x0A
+        let body = trailingNewline
+            ? NSRange(location: lineRange.location, length: lineRange.length - 1)
+            : lineRange
+        let line = ns.substring(with: body)
         guard let completed = completeTaskLine(line, today: today, calendar: calendar) else { return nil }
         return ns.replacingCharacters(
             in: lineRange,
@@ -222,6 +246,26 @@ public enum RecurrenceEngine {
             return (ns.replacingCharacters(in: checked, with: "[ ]"), false)
         }
         return nil
+    }
+
+    /// ` ✅yyyy-MM-dd` with one adjacent leading space (the Logbook token).
+    private static let completionStampRegex = try? NSRegularExpression(
+        pattern: " ?✅[0-9]{4}-[0-9]{2}-[0-9]{2}"
+    )
+
+    /// The line with every `✅day` stamp (and one adjacent space) removed.
+    private static func strippingCompletionStamp(_ line: String) -> String {
+        guard let regex = completionStampRegex else { return line }
+        return regex.stringByReplacingMatches(
+            in: line, range: NSRange(location: 0, length: (line as NSString).length),
+            withTemplate: ""
+        )
+    }
+
+    /// Appends ` ✅day`, keeping trailing spaces / `\r` byte-exact after it.
+    private static func appendingCompletionStamp(_ day: String, to line: String) -> String {
+        let trailing = String(line.reversed().prefix { $0 == " " || $0 == "\r" }.reversed())
+        return String(line.dropLast(trailing.count)) + " ✅" + day + trailing
     }
 
     private static func isoFormatter(_ calendar: Calendar) -> DateFormatter {

@@ -26,6 +26,18 @@ struct TagsView: View {
         selectedTags.count == 1 ? selectedTags.first : nil
     }
 
+    /// A tag action waiting on the user's confirmation (nothing is rewritten before they agree).
+    private struct PendingTagAction: Identifiable {
+        enum Kind { case removeEverywhere, deleteAll }
+        let id = UUID()
+        let kind: Kind
+        let tags: [String]
+        /// Distinct notes whose text the action rewrites.
+        let noteCount: Int
+    }
+
+    @State private var pendingTagAction: PendingTagAction?
+
     @State private var renameTarget: String?
     @State private var renameText = ""
     @State private var mergeSuggestions: [TagMerge] = []
@@ -92,6 +104,57 @@ struct TagsView: View {
         } message: {
             Text("Rewrites #\(renameTarget ?? "") in every note that carries it.")
         }
+        .confirmationDialog(
+            pendingTagAction.map(confirmationTitle) ?? "",
+            isPresented: Binding(
+                get: { pendingTagAction != nil },
+                set: {
+                    if !$0 {
+                        pendingTagAction = nil
+                    }
+                }
+            ),
+            titleVisibility: .visible,
+            presenting: pendingTagAction
+        ) { action in
+            Button(action.kind == .removeEverywhere ? "Remove Tag Everywhere" : "Delete All", role: .destructive) {
+                perform(action)
+            }
+            Button("Cancel", role: .cancel) { pendingTagAction = nil }
+        } message: { _ in
+            Text("This edits the note text and cannot be undone.")
+        }
+    }
+
+    private func confirmationTitle(_ action: PendingTagAction) -> String {
+        switch action.kind {
+        case .removeEverywhere:
+            let notes = action.noteCount == 1 ? "1 note" : "\(action.noteCount) notes"
+            return "Remove #\(action.tags.first ?? "") from \(notes)?"
+        case .deleteAll:
+            let tags = action.tags.count == 1 ? "1 tag" : "\(action.tags.count) tags"
+            return "Delete \(tags) from their notes?"
+        }
+    }
+
+    /// Counts the notes first so the dialog can say how much text changes.
+    private func requestRemoval(_ kind: PendingTagAction.Kind, tags: [String]) {
+        let noteIds = Set(tags.flatMap { service.notesTouchingTag($0) })
+        pendingTagAction = PendingTagAction(kind: kind, tags: tags, noteCount: noteIds.count)
+    }
+
+    private func perform(_ action: PendingTagAction) {
+        pendingTagAction = nil
+        if action.kind == .deleteAll {
+            selectedTags = []
+        }
+        Task {
+            for tag in action.tags {
+                await service.deleteTag(tag)
+                selectedTags.remove(tag)
+            }
+            allTags = service.allTagCounts()
+        }
     }
 
     private var filteredTags: [(tag: String, count: Int)] {
@@ -156,55 +219,72 @@ struct TagsView: View {
                 bulkBar
                 Divider()
             }
-            List(selection: $selectedTags) {
-                ForEach(filteredTags, id: \.tag) { entry in
-                    HStack {
-                        Label(entry.tag, systemImage: "number")
-                        Spacer()
-                        Text("\(entry.count)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+            tagList
+                .listStyle(.sidebar)
+                .overlay {
+                    if allTags.isEmpty {
+                        ContentUnavailableView(
+                            "No Tags Yet",
+                            systemImage: "number",
+                            description: Text("Write #topic in any note's text and it appears here.")
+                        )
                     }
-                    .tag(entry.tag)
-                    .contextMenu {
-                        Button("Rename…", systemImage: "pencil") {
-                            renameText = entry.tag
-                            renameTarget = entry.tag
-                        }
-                        Menu("Merge Into") {
-                            ForEach(
-                                allTags.filter { $0.tag != entry.tag }.map(\.tag).sorted(),
-                                id: \.self
-                            ) { other in
-                                Button("#" + other) {
-                                    Task {
-                                        await service.renameTag(from: entry.tag, to: other)
-                                        await tagStore.move(from: entry.tag, to: other)
-                                        allTags = service.allTagCounts()
-                                    }
-                                }
-                            }
-                        }
-                        Button(
-                            "Remove Tag Everywhere", systemImage: "trash", role: .destructive
-                        ) {
+                }
+        }
+    }
+
+    /// macOS keeps the Set selection (multi-select + bulk bar). iOS binds a single optional
+    /// selection to the List: a compact NavigationSplitView pushes its detail only when the
+    /// List's own selection becomes non-nil, and a Set binding never does that (PROGRESS 228).
+    /// The binding derives from `selectedTags`, so everything downstream still reads it.
+    @ViewBuilder private var tagList: some View {
+        #if os(iOS)
+            List(selection: Binding(
+                get: { selectedTag },
+                set: { selectedTags = $0.map { [$0] } ?? [] }
+            )) {
+                tagRows
+            }
+        #else
+            List(selection: $selectedTags) {
+                tagRows
+            }
+        #endif
+    }
+
+    private var tagRows: some View {
+        ForEach(filteredTags, id: \.tag) { entry in
+            HStack {
+                Label(entry.tag, systemImage: "number")
+                Spacer()
+                Text("\(entry.count)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .tag(entry.tag)
+            .contextMenu {
+                Button("Rename…", systemImage: "pencil") {
+                    renameText = entry.tag
+                    renameTarget = entry.tag
+                }
+                Menu("Merge Into") {
+                    ForEach(
+                        allTags.filter { $0.tag != entry.tag }.map(\.tag).sorted(),
+                        id: \.self
+                    ) { other in
+                        Button("#" + other) {
                             Task {
-                                await service.deleteTag(entry.tag)
+                                await service.renameTag(from: entry.tag, to: other)
+                                await tagStore.move(from: entry.tag, to: other)
                                 allTags = service.allTagCounts()
-                                selectedTags.remove(entry.tag)
                             }
                         }
                     }
                 }
-            }
-            .listStyle(.sidebar)
-            .overlay {
-                if allTags.isEmpty {
-                    ContentUnavailableView(
-                        "No Tags Yet",
-                        systemImage: "number",
-                        description: Text("Write #topic in any note's text and it appears here.")
-                    )
+                Button(
+                    "Remove Tag Everywhere", systemImage: "trash", role: .destructive
+                ) {
+                    requestRemoval(.removeEverywhere, tags: [entry.tag])
                 }
             }
         }
@@ -232,14 +312,7 @@ struct TagsView: View {
             }
             .fixedSize()
             Button("Delete All", role: .destructive) {
-                let doomed = selectedTags
-                selectedTags = []
-                Task {
-                    for tag in doomed {
-                        await service.deleteTag(tag)
-                    }
-                    allTags = service.allTagCounts()
-                }
+                requestRemoval(.deleteAll, tags: selectedTags.sorted())
             }
             Spacer()
         }

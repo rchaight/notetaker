@@ -2,50 +2,50 @@ import Foundation
 @testable import MarkdownKit
 import Testing
 
+/// `TaskLineToggler` only ADDRESSES lines (locate / replace / remove); what a
+/// completed line says is `RecurrenceEngine.completeTaskLine`'s job and is
+/// tested in TaskEngine (`TaskCompletionTests`).
 struct TaskLineTogglerTests {
     let contents = "# Plan\n\n- [ ] email dean\n- [x] book room\n"
 
-    @Test func togglesAtAnchor() {
-        let result = TaskLineToggler.toggle(
+    @Test func locatesAtAnchor() {
+        #expect(TaskLineToggler.locate(
             contents: contents, anchorLine: 2, expectedRawLine: "- [ ] email dean"
-        )
-        #expect(result?.contents == "# Plan\n\n- [x] email dean\n- [x] book room\n")
-        #expect(result?.line == 2)
-        #expect(result?.nowChecked == true)
-    }
-
-    @Test func unchecksCheckedTask() {
-        let result = TaskLineToggler.toggle(
+        ) == 2)
+        #expect(TaskLineToggler.locate(
             contents: contents, anchorLine: 3, expectedRawLine: "- [x] book room"
-        )
-        #expect(result?.contents == "# Plan\n\n- [ ] email dean\n- [ ] book room\n")
-        #expect(result?.nowChecked == false)
+        ) == 3)
     }
 
     @Test func relocatesMovedLine() {
         // Two lines were inserted above since indexing.
         let drifted = "new intro\nanother line\n" + contents
-        let result = TaskLineToggler.toggle(
+        #expect(TaskLineToggler.locate(
             contents: drifted, anchorLine: 2, expectedRawLine: "- [ ] email dean"
-        )
-        #expect(result?.line == 4)
-        #expect(result?.contents.contains("- [x] email dean") == true)
+        ) == 4)
     }
 
     @Test func refusesWhenLineContentChanged() {
         // The task text was edited since indexing — refuse, don't guess.
-        let result = TaskLineToggler.toggle(
+        #expect(TaskLineToggler.locate(
             contents: contents, anchorLine: 2, expectedRawLine: "- [ ] email the provost"
-        )
-        #expect(result == nil)
+        ) == nil)
     }
 
-    @Test func preservesEverythingElseByteForByte() {
+    @Test func replacingLinePreservesEverythingElseByteForByte() {
         let tricky = "---\ntitle: x\n---\n\n- [ ] task **bold** #tag >2026-07-15\n\ttabbed line\n"
-        let result = TaskLineToggler.toggle(
-            contents: tricky, anchorLine: 4,
-            expectedRawLine: "- [ ] task **bold** #tag >2026-07-15"
+        let line = TaskLineToggler.locate(
+            contents: tricky, anchorLine: 4, expectedRawLine: "- [ ] task **bold** #tag >2026-07-15"
         )
-        #expect(result?.contents == "---\ntitle: x\n---\n\n- [x] task **bold** #tag >2026-07-15\n\ttabbed line\n")
+        #expect(line == 4)
+        let result = TaskLineToggler.replacingLine(
+            tricky, at: 4, with: "- [x] task **bold** #tag >2026-07-15 ✅2026-07-14"
+        )
+        #expect(result == "---\ntitle: x\n---\n\n- [x] task **bold** #tag >2026-07-15 ✅2026-07-14\n\ttabbed line\n")
+    }
+
+    @Test func replacingLineOutOfRangeIsANoOp() {
+        #expect(TaskLineToggler.replacingLine(contents, at: 99, with: "x") == contents)
+        #expect(TaskLineToggler.replacingLine(contents, at: -1, with: "x") == contents)
     }
 }

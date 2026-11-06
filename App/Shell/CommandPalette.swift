@@ -79,7 +79,7 @@ struct CommandPalette: View {
             .listStyle(.plain)
             .frame(minHeight: 240, maxHeight: 320)
         }
-        .frame(width: 560)
+        .sheetFrame(width: 560)
         .onAppear { focused = true }
     }
 

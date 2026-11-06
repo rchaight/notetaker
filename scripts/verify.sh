@@ -2,7 +2,8 @@
 # Full verification gate — run before every commit.
 #   scripts/verify.sh [rounds] [--install]
 # Runs every package's tests <rounds> times (default 3, catches flakiness),
-# builds both platforms, and with --install refreshes /Applications and
+# builds macOS, the iOS Simulator (Debug) and the iOS Simulator (Release, what the
+# phone installs), and with --install refreshes /Applications and
 # process-checks the launch (crash windows are shorter than a glance).
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -55,6 +56,17 @@ if ! xcodebuild -project Notetaker.xcodeproj -scheme Notetaker -destination 'gen
   exit 1
 fi
 echo "  iOS: BUILD SUCCEEDED"
+# Release has its own compile surface (#if DEBUG code is gone, -O/whole-module): the phone
+# installs Release (scripts/install-ios.sh), so prove it compiles here, without a device.
+if ! xcodebuild -project Notetaker.xcodeproj -scheme Notetaker -configuration Release \
+  -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO \
+  -derivedDataPath "$HOME/.cache/notetaker-build/DerivedData-ios-release" build \
+  > "$BUILD_LOG" 2>&1; then
+  echo "  iOS Release: BUILD FAILED"
+  grep -E 'error:' "$BUILD_LOG" | head -5
+  exit 1
+fi
+echo "  iOS Release: BUILD SUCCEEDED"
 rm -f "$BUILD_LOG"
 
 if [[ "${2:-}" == "--install" ]]; then

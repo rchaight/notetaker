@@ -94,7 +94,7 @@ struct GraphView: View {
                 }
             }
         }
-        .frame(minWidth: 600, minHeight: 460)
+        .sheetFrame(minWidth: 600, minHeight: 460)
         .overlay(alignment: .topTrailing) {
             Button("Done") { dismiss() }
                 .padding(10)

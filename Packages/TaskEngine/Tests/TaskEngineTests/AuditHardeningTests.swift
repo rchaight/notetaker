@@ -17,6 +17,20 @@ struct EngineAuditHardeningTests {
         return calendar
     }
 
+    /// Pins `replacingText`'s token order so extracting the serializer
+    /// (`ParsedTaskMetadata.tokenSuffix`, shared with Quick Add) can never
+    /// reorder a line on edit: due, start, priority, recurrence, ^id,
+    /// blockedby:, @person, ?kind, ✅day.
+    @Test func replacingTextOrderUnchangedAfterExtraction() {
+        let scrambled = "  - [x] old title ✅2026-07-01 ?waiting @amber blockedby:^a,^b ^id "
+            + "&every 2 weeks !p2 ~2026-07-05 >2026-07-10\r"
+        #expect(
+            TaskLineRewriter.replacingText(scrambled, with: "new title")
+                == "  - [x] new title >2026-07-10 ~2026-07-05 !p2 &every 2 weeks ^id "
+                + "blockedby:^a blockedby:^b @amber ?waiting ✅2026-07-01\r"
+        )
+    }
+
     @Test func zeroAndNegativeIntervalsNeverParse() {
         var zero = "x &every 0 days"
         #expect(RecurrenceParser.extract(from: &zero) == nil)

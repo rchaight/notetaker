@@ -136,6 +136,11 @@ private final class Worker: @unchecked Sendable {
             if !isDirectory, VaultFileStore.isIndexFile(relativePath) {
                 continue
             }
+            // Hidden folders (`.trash`, `.obsidian`) are never vault content. The enumerator
+            // gets this from `.skipsHiddenFiles`; the metadata query would report them.
+            if VaultPath.isHiddenTreeEntry(relativePath, isDirectory: isDirectory) {
+                continue
+            }
 
             items.append(VaultItem(
                 url: url,

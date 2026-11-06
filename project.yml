@@ -110,6 +110,7 @@ targets:
         LSApplicationCategoryType: public.app-category.productivity
         UILaunchScreen: {}
         NSLocalNetworkUsageDescription: Notetaker connects to your own homelab servers (Ollama, docling-serve) for AI and document conversion.
+        NSFaceIDUsageDescription: Notetaker uses Face ID to unlock the app and your locked notes.
         NSCalendarsFullAccessUsageDescription: Notetaker reads your calendars to show them in the Calendar tab and list the day's meetings in daily notes. Nothing leaves the device unless you turn on sharing with the MCP server in Settings.
         # The homelab servers the user configures (Ollama, LanguageTool,
         # docling-serve) speak plain HTTP. ATS blocks cleartext to any

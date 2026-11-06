@@ -29,6 +29,11 @@ public enum VaultEnumerator {
             if !isDirectory, VaultFileStore.isIndexFile(relativePath) {
                 continue
             }
+            // Belt and braces with `.skipsHiddenFiles`: nothing under a hidden folder (the
+            // Trash is `.trash`) is vault content, whatever the enumerator options say.
+            if VaultPath.isInsideHiddenFolder(relativePath) {
+                continue
+            }
             items.append(VaultItem(
                 url: url,
                 relativePath: relativePath,

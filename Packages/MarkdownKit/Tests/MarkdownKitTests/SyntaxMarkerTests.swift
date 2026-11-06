@@ -249,23 +249,6 @@ struct LineRemovalTests {
     }
 }
 
-struct CompletionTokenToggleTests {
-    @Test func checkingWritesTokenUncheckingRemoves() throws {
-        let text = "- [ ] task one\n"
-        let checked = try #require(TaskLineToggler.toggle(
-            contents: text, anchorLine: 0, expectedRawLine: "- [ ] task one",
-            completionDay: "2026-07-14"
-        ))
-        #expect(checked.contents == "- [x] task one ✅2026-07-14\n")
-        let unchecked = try #require(TaskLineToggler.toggle(
-            contents: checked.contents, anchorLine: 0,
-            expectedRawLine: "- [x] task one ✅2026-07-14",
-            completionDay: "2026-07-15"
-        ))
-        #expect(unchecked.contents == "- [ ] task one\n")
-    }
-}
-
 struct NoteTagScopeTests {
     @Test func taskLabelsAreNotNoteTags() {
         let text = """

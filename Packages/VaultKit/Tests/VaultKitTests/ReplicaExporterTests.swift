@@ -757,6 +757,23 @@ struct ReplicaExporterTests {
         #expect(fx.files(under: fx.stagedVault).isEmpty)
     }
 
+    /// Spec ux-phase1/01 acceptance 3: the Trash (`.trash/`) is a hidden folder, so trashed
+    /// notes — locked ones included — are never staged, whatever they contain.
+    @Test func trashedNotesNeverReachTheReplica() async throws {
+        let fx = try Fixture()
+        try fx.put("Keep.md", "# Keep\nkept\n")
+        try fx.put("Work/Plan.md", "# Plan\nTRASHED-PLAN-BODY\n")
+        try fx.putLocked("Secret.md")
+        let store = VaultFileStore()
+        _ = try await VaultTrash.trash(relativePath: "Work/Plan.md", in: fx.root, store: store)
+        _ = try await VaultTrash.trash(relativePath: "Secret.md", in: fx.root, store: store)
+        #expect(fx.files(under: fx.root).contains(".trash/Work/Plan.md"))
+
+        _ = try await fx.exporter().export(calendarSnapshot: nil)
+
+        #expect(fx.files(under: fx.stagedVault) == ["Keep.md"])
+    }
+
     // MARK: Review round 2
 
     @Test func overlapRefusalCreatesNothingInsideTheVault() async throws {

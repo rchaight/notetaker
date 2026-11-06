@@ -1,6 +1,7 @@
 import Foundation
 import MarkdownKit
 @testable import ReadingKit
+import TaskEngine
 import Testing
 
 // MARK: - Helpers
@@ -339,27 +340,33 @@ struct ReadingTaskTests {
 
     /// Criterion 4, as far as a package test can reach: `sourceLine` +
     /// the raw line it points at are exactly the two arguments
-    /// `VaultIndexService.toggle` hands `TaskLineToggler`, so a Reading-mode
-    /// tap flips the right source line and leaves its neighbour byte-exact.
+    /// `VaultIndexService.toggle` hands `TaskLineToggler.locate`, and the
+    /// new line is `RecurrenceEngine.completeTaskLine` — the same primitive
+    /// the editor calls — so a Reading-mode tap flips the right source line,
+    /// stamps ✅, and leaves its neighbour byte-exact.
     /// The GRDB/app half (finding the TaskRecord) has no test target here.
-    @Test func toggleThroughTheSourceLineFlipsThatLineOnly() {
+    @Test func toggleThroughTheSourceLineFlipsThatLineOnly() throws {
         let source = "---\ntitle: T\n---\n# Heading\n\n- [ ] alpha\n- [ ] beta\n"
         let items = ReadingDocument.taskItems(in: blocks(source))
         #expect(items.map(\.sourceLine) == [5, 6])
 
         let beta = items[1]
         let raw = splitLines(source)[beta.sourceLine]
-        let result = TaskLineToggler.toggle(
-            contents: source, anchorLine: beta.sourceLine,
-            expectedRawLine: raw, completionDay: "2026-09-15"
-        )
-        #expect(result?.nowChecked == true)
-        #expect(result?.line == 6)
+        let line = try #require(TaskLineToggler.locate(
+            contents: source, anchorLine: beta.sourceLine, expectedRawLine: raw
+        ))
+        #expect(line == 6)
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = try #require(TimeZone(identifier: "UTC"))
+        let sept15 = try #require(utc.date(from: DateComponents(year: 2026, month: 9, day: 15, hour: 12)))
+        let completed = try #require(RecurrenceEngine.completeTaskLine(raw, today: sept15, calendar: utc))
+        let result = TaskLineToggler.replacingLine(source, at: line, with: completed)
 
-        let after = ReadingDocument.taskItems(in: blocks(result?.contents ?? ""))
+        let after = ReadingDocument.taskItems(in: blocks(result))
         #expect(after.map(\.checked) == [false, true])
         #expect(after[1].task?.completedDay == "2026-09-15")
-        #expect(splitLines(result?.contents ?? "")[5] == "- [ ] alpha", "neighbour untouched")
+        #expect(splitLines(result)[5] == "- [ ] alpha", "neighbour untouched")
+        #expect(splitLines(result)[6] == "- [x] beta ✅2026-09-15")
     }
 
     @Test func plainBulletIsNotATask() {

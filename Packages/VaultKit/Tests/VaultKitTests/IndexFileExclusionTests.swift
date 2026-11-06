@@ -43,4 +43,48 @@ struct IndexFileExclusionTests {
         // The folder itself is still enumerated — only the file is dropped.
         #expect(paths.contains("Meetings"))
     }
+
+    // MARK: - Hidden folders (the Trash is `.trash`)
+
+    @Test func enumeratorSnapshotSkipsTrashFolder() async throws {
+        let root = try makeTempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = VaultFileStore()
+
+        try await store.writeString("kept", to: root.appendingPathComponent("Work/Plan.md"))
+        _ = try await VaultTrash.trash(relativePath: "Work/Plan.md", in: root, store: store)
+        try await store.writeString("trashed", to: root.appendingPathComponent(".trash/Loose.md"))
+        try await store.writeString("hidden", to: root.appendingPathComponent(".obsidian/notes/x.md"))
+        try await store.writeString("live", to: root.appendingPathComponent("Work/Live.md"))
+
+        let paths = Set(VaultEnumerator.snapshot(of: root).map(\.relativePath))
+        #expect(paths == ["Work", "Work/Live.md"])
+        // The trashed note is on disk, so the exclusion is the enumerator's, not absence.
+        #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent(".trash/Work/Plan.md").path))
+    }
+
+    @Test func isInsideHiddenFolderIgnoresPlaceholderFileNames() {
+        // iCloud placeholders are hidden FILES in a visible folder: still vault content.
+        #expect(!VaultPath.isInsideHiddenFolder(".Note.md.icloud"))
+        #expect(!VaultPath.isInsideHiddenFolder("Work/.Note.md.icloud"))
+        #expect(!VaultPath.isInsideHiddenFolder("Note.md"))
+        #expect(!VaultPath.isInsideHiddenFolder("Work/Deep/Note.md"))
+        #expect(!VaultPath.isInsideHiddenFolder(""))
+        #expect(VaultPath.isInsideHiddenFolder(".trash/Note.md"))
+        #expect(VaultPath.isInsideHiddenFolder(".trash/Work/Note.md"))
+        #expect(VaultPath.isInsideHiddenFolder("Work/.obsidian/x.md"))
+        #expect(VaultPath.isInsideHiddenFolder(".trash/.Note.md.icloud"))
+    }
+
+    @Test func hiddenTreeEntryAlsoCoversTheHiddenFolderItself() {
+        // What MetadataQueryObserver asks: `.trash` the directory must not become a sidebar folder.
+        #expect(VaultPath.isHiddenTreeEntry(".trash", isDirectory: true))
+        #expect(VaultPath.isHiddenTreeEntry("Work/.obsidian", isDirectory: true))
+        #expect(VaultPath.isHiddenTreeEntry(".trash/Work", isDirectory: true))
+        #expect(VaultPath.isHiddenTreeEntry(".trash/Note.md", isDirectory: false))
+        // A hidden FILE at a visible level (placeholder) is not a hidden tree entry.
+        #expect(!VaultPath.isHiddenTreeEntry("Work/.Note.md.icloud", isDirectory: false))
+        #expect(!VaultPath.isHiddenTreeEntry("Work", isDirectory: true))
+        #expect(!VaultPath.isHiddenTreeEntry("Work/Note.md", isDirectory: false))
+    }
 }

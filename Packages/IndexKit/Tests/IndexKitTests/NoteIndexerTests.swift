@@ -21,6 +21,29 @@ struct NoteIndexerTests {
     - [x] book room
     """
 
+    /// The Meetings person page renders `?next` / `?someday` tasks addressed to a person in its
+    /// collapsed "Later" section; that only works while the people query keeps returning them.
+    @Test func peopleTasksIncludesNextAndSomedayAddressedToAPerson() throws {
+        let (db, indexer) = try make()
+        let contents = """
+        # People
+
+        - [ ] plan offsite @Amber ?someday
+        - [ ] book venue @Amber ?next
+        - [ ] send agenda @Amber ?discuss
+        - [ ] unrelated errand ?someday
+        """
+        try indexer.index(noteId: "People.md", contents: contents, modifiedAt: nil)
+
+        let people = try db.peopleTasks()
+        let amber = people.filter { $0.assignee == "Amber" }
+        #expect(Set(amber.compactMap(\.kind)) == ["someday", "next", "discuss"])
+        #expect(
+            !people.contains { $0.text == "unrelated errand" },
+            "no assignee and not a meeting kind: not a people task"
+        )
+    }
+
     @Test func indexesTasksLinksAndMetadata() throws {
         let (db, indexer) = try make()
         let changed = try indexer.index(noteId: "Work/plan.md", contents: sample, modifiedAt: nil)

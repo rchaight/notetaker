@@ -178,11 +178,8 @@ struct AppShell: View {
                 Tab("Tags", systemImage: "number", value: "tags") {
                     tagsTab
                 }
-                #if DEBUG
-                    Tab("Vault", systemImage: "icloud", value: "vault") {
-                        vaultTab
-                    }
-                #endif
+                // No Vault tab on iOS: it is a Debug-only container browser (still on the
+                // Mac). The phone gets six tabs in every configuration.
             }
             .tabViewStyle(.sidebarAdaptable)
         #endif

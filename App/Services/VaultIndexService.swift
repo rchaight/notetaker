@@ -529,12 +529,12 @@ final class VaultIndexService {
     /// Natural-language parse for Quick Add: on-device Apple Intelligence
     /// first (guided generation understands "report every monday 10am"),
     /// falling back to the deterministic token parser. Inputs that already
-    /// carry explicit grammar tokens skip the model — the token parser is
-    /// exact and free.
+    /// carry ANY grammar token (`> ~ ! & ^ blockedby: @ ? ✅`) skip the model —
+    /// the token parser is exact, free, and keeps every token; the model's
+    /// output can only express text/due/priority/labels, so it only ever sees
+    /// token-free input and cannot drop anything.
     static func quickAddLine(for input: String) async -> String? {
-        let hasExplicitTokens = input.contains(">") || input.contains("!p")
-            || input.contains("&every") || input.contains("&after")
-        if !hasExplicitTokens {
+        if !QuickAddParser.hasExplicitTokens(input) {
             var providers: [any AIProvider] = []
             #if canImport(FoundationModels)
                 providers.append(FoundationModelsProvider())
@@ -1250,20 +1250,15 @@ final class VaultIndexService {
         let url = root.appendingPathComponent(task.noteId)
         guard let contents = try? await store.readString(at: url) else { return }
 
-        let updated: String? = if task.recurrence != nil {
-            // Recurring: completing = advancing the date, box stays open.
-            if let line = TaskLineToggler.locate(
-                contents: contents, anchorLine: task.line, expectedRawLine: task.rawLine
-            ), let completedLine = RecurrenceEngine.completeTaskLine(task.rawLine) {
-                TaskLineToggler.replacingLine(contents, at: line, with: completedLine)
-            } else {
-                nil
-            }
+        // One completion primitive for every surface (the editor calls the
+        // same one): non-recurring stamps/strips ✅, recurring advances the
+        // date and stays open. Locate refuses a drifted line.
+        let updated: String? = if let line = TaskLineToggler.locate(
+            contents: contents, anchorLine: task.line, expectedRawLine: task.rawLine
+        ), let completedLine = RecurrenceEngine.completeTaskLine(task.rawLine) {
+            TaskLineToggler.replacingLine(contents, at: line, with: completedLine)
         } else {
-            TaskLineToggler.toggle(
-                contents: contents, anchorLine: task.line, expectedRawLine: task.rawLine,
-                completionDay: TodoView.todayISO()
-            )?.contents
+            nil
         }
 
         if let updated {

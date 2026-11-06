@@ -478,6 +478,19 @@ struct ExportPolicyTests {
         #expect(!ExportPolicy.looksLocked("plain\u{0}text"))
     }
 
+    @Test func trashFolderIsHiddenPath() {
+        // The Trash is `<vault>/.trash/` (spec ux-phase1/01): a trashed note must never be exported,
+        // whether or not its contents would pass, and nested trash paths are no different.
+        #expect(policy.decide(relativePath: ".trash/x.md") == .excluded(.hiddenPath))
+        #expect(policy.decide(relativePath: ".trash/Work/Plan.md") == .excluded(.hiddenPath))
+        #expect(policy.decide(relativePath: ".trash/Work/Plan 2.md", contents: plainBody) == .excluded(.hiddenPath))
+        #expect(policy.decide(relativePath: ".trash/.Plan.md.icloud") == .excluded(.hiddenPath))
+        #expect(policy.decide(relativePath: ".TRASH/x.md") == .excluded(.hiddenPath))
+        // …even when the vault excludes no folders and the note itself is perfectly exportable.
+        #expect(ExportPolicy(excludedFolders: []).decide(relativePath: ".trash/x.md", contents: plainBody)
+            == .excluded(.hiddenPath))
+    }
+
     @Test func indexBackupIsNotIndexFileButStaysHome() {
         // Spec row intent: `_index.md.bak` is not the index file…
         #expect(policy.decide(relativePath: "_index.md.bak") != .excluded(.indexFile))

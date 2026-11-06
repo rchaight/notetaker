@@ -63,6 +63,12 @@ struct TodoView: View {
     }
 
     @State private var filterText = ""
+    #if os(iOS)
+        /// The sidebar List's OWN selection. A compact NavigationSplitView pushes its detail
+        /// column only when the sidebar List's selection becomes non-nil (PROGRESS 228), so
+        /// row taps must set it instead of running onTapGesture handlers.
+        @State private var sidebarSelection: SidebarItem?
+    #endif
     @AppStorage("todoViewMode") private var viewModeRaw = ViewMode.list.rawValue
     private var viewMode: ViewMode {
         ViewMode(rawValue: viewModeRaw) ?? .list
@@ -74,6 +80,12 @@ struct TodoView: View {
         case agenda = "Agenda"
         case matrix = "Matrix"
         case log = "Log"
+    }
+
+    /// One selectable sidebar row (iOS selection tag).
+    private enum SidebarItem: Hashable {
+        case mode(ViewMode)
+        case filter(String)
     }
 
     @AppStorage("savedTaskFilters") private var savedFiltersJSON = "[]"
@@ -200,6 +212,12 @@ struct TodoView: View {
         grouped.values.flatMap(\.self)
     }
 
+    /// Every row the list lets you select: the bucketed tasks plus the Next and Someday
+    /// sections. Batch actions and Select All use this; Agenda/Matrix keep `allFilteredTasks`.
+    private var batchableTasks: [TaskRecord] {
+        allFilteredTasks + nextTasks + somedayTasks
+    }
+
     /// Mirrors the Notes sidebar: filter field on top, compact icon strip
     /// (positions match Notes — new to-do where new note sits), then lists.
     private var sidebar: some View {
@@ -271,34 +289,67 @@ struct TodoView: View {
         .help(help)
     }
 
-    private var sidebarLists: some View {
-        List {
-            Section("Views") {
-                ForEach(ViewMode.allCases, id: \.self) { mode in
-                    Label(mode.rawValue, systemImage: Self.modeIcon(mode))
-                        .contentShape(Rectangle())
-                        .listRowBackground(
-                            viewMode == mode ? Color.accentColor.opacity(0.18) : Color.clear
-                        )
-                        .onTapGesture { viewModeRaw = mode.rawValue }
+    #if os(iOS)
+        /// iPhone/iPad: rows are selectable so a compact split view pushes the detail column.
+        /// Popping back clears the selection, which is why a second tap on the same row works.
+        /// A saved filter always applies here (it does not toggle off as on the Mac): tapping
+        /// it navigates to the list, so landing on an unfiltered list would read as a bug —
+        /// the filter menu's Clear Filter removes it.
+        private var sidebarLists: some View {
+            List(selection: $sidebarSelection) {
+                Section("Views") {
+                    ForEach(ViewMode.allCases, id: \.self) { mode in
+                        Label(mode.rawValue, systemImage: Self.modeIcon(mode))
+                            .tag(SidebarItem.mode(mode))
+                    }
+                }
+                if !savedFilters.isEmpty {
+                    Section("Saved Filters") {
+                        ForEach(savedFilters, id: \.self) { saved in
+                            Label(saved, systemImage: "line.3.horizontal.decrease")
+                                .tag(SidebarItem.filter(saved))
+                        }
+                    }
                 }
             }
-            if !savedFilters.isEmpty {
-                Section("Saved Filters") {
-                    ForEach(savedFilters, id: \.self) { saved in
-                        Label(saved, systemImage: "line.3.horizontal.decrease")
+            .onChange(of: sidebarSelection) { _, item in
+                switch item {
+                case let .mode(mode): viewModeRaw = mode.rawValue
+                case let .filter(saved): filterText = saved
+                case nil: break
+                }
+            }
+        }
+    #else
+        private var sidebarLists: some View {
+            List {
+                Section("Views") {
+                    ForEach(ViewMode.allCases, id: \.self) { mode in
+                        Label(mode.rawValue, systemImage: Self.modeIcon(mode))
                             .contentShape(Rectangle())
                             .listRowBackground(
-                                filterText == saved ? Color.accentColor.opacity(0.18) : Color.clear
+                                viewMode == mode ? Color.accentColor.opacity(0.18) : Color.clear
                             )
-                            .onTapGesture {
-                                filterText = filterText == saved ? "" : saved
-                            }
+                            .onTapGesture { viewModeRaw = mode.rawValue }
+                    }
+                }
+                if !savedFilters.isEmpty {
+                    Section("Saved Filters") {
+                        ForEach(savedFilters, id: \.self) { saved in
+                            Label(saved, systemImage: "line.3.horizontal.decrease")
+                                .contentShape(Rectangle())
+                                .listRowBackground(
+                                    filterText == saved ? Color.accentColor.opacity(0.18) : Color.clear
+                                )
+                                .onTapGesture {
+                                    filterText = filterText == saved ? "" : saved
+                                }
+                        }
                     }
                 }
             }
         }
-    }
+    #endif
 
     private static func modeIcon(_ mode: ViewMode) -> String {
         switch mode {
@@ -410,9 +461,9 @@ struct TodoView: View {
             Text("\(selectedTaskIds.count) selected")
                 .font(.callout.weight(.medium))
             Button("Select All") {
-                selectedTaskIds = Set(allFilteredTasks.map(\.id))
+                selectedTaskIds = Set(batchableTasks.map(\.id))
             }
-            .disabled(selectedTaskIds.count == allFilteredTasks.count)
+            .disabled(selectedTaskIds.count == batchableTasks.count)
             Button("Complete", systemImage: "checkmark.circle") {
                 batch { await service.toggle($0) }
             }
@@ -450,7 +501,7 @@ struct TodoView: View {
     }
 
     private func batch(_ operation: @escaping (TaskRecord) async -> Void) {
-        let targets = allFilteredTasks.filter { selectedTaskIds.contains($0.id) }
+        let targets = batchableTasks.filter { selectedTaskIds.contains($0.id) }
         selectedTaskIds = []
         Task {
             for task in targets {
@@ -529,7 +580,7 @@ struct TodoView: View {
             }
         }
         .padding(20)
-        .frame(minWidth: 420)
+        .sheetFrame(minWidth: 420)
         .presentationDetents([.height(200)])
     }
 

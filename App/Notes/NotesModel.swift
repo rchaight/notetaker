@@ -44,6 +44,11 @@ final class NotesModel {
     var noteText = ""
 
     private(set) var root: URL?
+    /// The most recent Move to Trash, for the Undo toast. The view clears it (via
+    /// `dismissTrashNotice`) when the toast times out; Undo clears it itself.
+    private(set) var lastTrashed: VaultTrash.Receipt?
+    /// Why the last trash or undo failed, for a transient message. Nil otherwise.
+    private(set) var trashFailure: String?
     /// Unlocked locked-notes this session: noteId → (key, envelope params).
     /// In memory only; quitting relocks everything.
     private var unlockedKeys: [String: SymmetricKey] = [:]
@@ -855,15 +860,85 @@ final class NotesModel {
         }
     }
 
-    func delete(_ item: VaultItem) {
-        Task {
-            if item.url == loadedURL {
-                await performSelect(nil)
-            }
-            try? await store.delete(at: item.url)
-            if let root {
-                apply(VaultEnumerator.snapshot(of: root))
-            }
+    // MARK: - Trash
+
+    /// Moves a note into the vault's hidden `.trash/` folder (never a permanent delete).
+    /// Opening the note first flushes its pending keystrokes so the trashed file holds the
+    /// latest text. Sets `lastTrashed` for the Undo toast; `trashFailure` when the move fails.
+    func moveToTrash(_ item: VaultItem) async {
+        guard let root else { return }
+        if selectedID == item.id || loadedURL == item.url {
+            // Write the pending text under the CURRENT name: a title-sync rename here would
+            // move the file out from under the trash move below. Then drop the selection
+            // (that also unloads the editor, so nothing can save into the old path later).
+            await flushSave(allowRename: false)
+            await performSelect(nil)
         }
+        // Re-resolve after the flush; if the file was renamed or removed meanwhile, do nothing
+        // rather than guess which note was meant.
+        guard let current = notesById[item.id] else {
+            trashFailure = "Couldn't move “\(Self.noteTitle(ofPath: item.id))” to Trash: it changed while it was being saved."
+            return
+        }
+        do {
+            let receipt = try await VaultTrash.trash(relativePath: current.relativePath, in: root, store: store)
+            // A locked note that was unlocked this session locks again (and stays locked on restore).
+            unlockedKeys[item.id] = nil
+            apply(VaultEnumerator.snapshot(of: root))
+            trashFailure = nil
+            lastTrashed = receipt
+        } catch {
+            trashFailure = "Couldn't move “\(Self.noteTitle(ofPath: item.id))” to Trash: \(error.localizedDescription)"
+        }
+    }
+
+    /// Undo for the toast: moves the most recent trashed note back to where it was and opens it.
+    func undoLastTrash() async {
+        guard let receipt = lastTrashed, let root else { return }
+        lastTrashed = nil
+        do {
+            let restored = try await VaultTrash.restore(receipt.entry, in: root, store: store)
+            apply(VaultEnumerator.snapshot(of: root))
+            await performSelect(restored)
+        } catch {
+            trashFailure = "Couldn't restore “\(Self.noteTitle(ofPath: receipt.originalPath))”: \(error.localizedDescription)"
+        }
+    }
+
+    /// The toast timed out (or was replaced): the note stays in the Trash, restorable from the sheet.
+    func dismissTrashNotice() {
+        lastTrashed = nil
+        trashFailure = nil
+    }
+
+    /// "Folder/Plan.md" → "Plan", for messages.
+    nonisolated static func noteTitle(ofPath path: String) -> String {
+        URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
+    }
+
+    /// Live listing of `.trash/`, newest first. Read off the main actor: it walks the folder.
+    func trashEntries() async -> [VaultTrash.Entry] {
+        guard let root else { return [] }
+        return await Task.detached(priority: .userInitiated) { VaultTrash.list(in: root) }.value
+    }
+
+    /// Moves a trashed note back (uniquified if its name is taken). Returns the restored path.
+    @discardableResult
+    func restore(_ entry: VaultTrash.Entry) async throws -> String {
+        guard let root else { throw CocoaError(.fileNoSuchFile) }
+        defer { apply(VaultEnumerator.snapshot(of: root)) }
+        return try await VaultTrash.restore(entry, in: root, store: store)
+    }
+
+    /// Permanently deletes one trashed note.
+    func purge(_ entry: VaultTrash.Entry) async throws {
+        guard let root else { throw CocoaError(.fileNoSuchFile) }
+        try await VaultTrash.purge(entry, in: root, store: store)
+    }
+
+    /// Permanently deletes everything in the Trash.
+    func emptyTrash() async throws {
+        guard let root else { throw CocoaError(.fileNoSuchFile) }
+        try await VaultTrash.empty(in: root, store: store)
     }
 }

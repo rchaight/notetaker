@@ -81,8 +81,8 @@ final class VaultDebugModel {
     func resolveConflicts(for item: VaultItem) {
         Task {
             do {
-                let preserved = try await VaultConflictCenter().resolveKeepingBoth(at: item.url, store: store)
-                lastAction = "kept both: \(preserved.count) version(s) preserved"
+                let outcome = try await VaultConflictCenter().resolve(.keepBoth, at: item.url, store: store)
+                lastAction = "kept both: \(outcome.preserved.count) version(s) preserved"
             } catch {
                 lastAction = "resolve failed: \(error.localizedDescription)"
             }

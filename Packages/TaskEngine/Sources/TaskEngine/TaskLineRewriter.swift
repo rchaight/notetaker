@@ -63,43 +63,26 @@ public enum TaskLineRewriter {
         let body = ns.substring(from: match.range.length)
         let parsed = TaskTokenParser.parse(body)
 
-        var tokens: [String] = []
-        if let due = parsed.dueDate {
-            tokens.append(">" + due)
-        }
-        if let start = parsed.startDate {
-            tokens.append("~" + start)
-        }
-        if let priority = parsed.priority {
-            tokens.append("!p\(priority)")
-        }
-        if let recurrence = parsed.recurrence {
-            tokens.append(recurrence.rawToken)
-        }
-        if let blockId = parsed.blockId {
-            tokens.append("^" + blockId)
-        }
-        tokens += parsed.dependsOn.map { "blockedby:^" + $0 }
-        if let assignee = parsed.assignee {
-            tokens.append("@" + assignee)
-        }
-        if let kind = parsed.kind {
-            tokens.append("?" + kind)
-        }
-        if let completed = parsed.completedDay {
-            tokens.append("✅" + completed)
-        }
+        let tokens = parsed.tokenSuffix
 
         let cleanTitle = newText.trimmingCharacters(in: .whitespaces)
         let suffix = tokens.isEmpty ? "" : " " + tokens.joined(separator: " ")
         return prefix + cleanTitle + suffix + trailing
     }
 
+    /// Compiled from the parser's own vocabulary strings — see
+    /// `TaskTokenParser.priorityTokenPattern` / `kindTokenPattern`. Not
+    /// private so `TaskLineRewriterParityTests` can assert string equality.
+    static let priorityRegex = try? NSRegularExpression(
+        pattern: TaskTokenParser.priorityTokenPattern, options: [.caseInsensitive]
+    )
+    static let kindRegex = try? NSRegularExpression(
+        pattern: TaskTokenParser.kindTokenPattern, options: [.caseInsensitive]
+    )
+
     /// The raw line with its `!priority` token replaced/added/removed.
     public static func settingPriority(_ rawLine: String, to priority: Int?) -> String {
-        let pattern = #"(?<=^|\s)!(p[1-4]|high|medium|low)\b"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
-        else { return rawLine }
+        guard let regex = priorityRegex else { return rawLine }
         let ns = rawLine as NSString
         let match = regex.firstMatch(in: rawLine, range: NSRange(location: 0, length: ns.length))
         if let match {
@@ -118,9 +101,7 @@ public enum TaskLineRewriter {
 
     /// The raw line with its `?kind` token replaced/added/removed.
     public static func settingKind(_ rawLine: String, to kind: String?) -> String {
-        let pattern = "(?<=^|\\s)\\?(discuss|waiting|next|someday|followup)\\b"
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
-        else { return rawLine }
+        guard let regex = kindRegex else { return rawLine }
         let ns = rawLine as NSString
         let match = regex.firstMatch(in: rawLine, range: NSRange(location: 0, length: ns.length))
         if let match {

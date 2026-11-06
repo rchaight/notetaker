@@ -52,7 +52,7 @@ struct TaskDetailView: View {
                 )
             }
         }
-        .frame(minWidth: 460, idealWidth: 540, minHeight: 480, idealHeight: 620)
+        .sheetFrame(minWidth: 460, idealWidth: 540, minHeight: 480, idealHeight: 620)
         .task(id: "\(taskId)-\(service.tasksVersion)") { await load() }
     }
 

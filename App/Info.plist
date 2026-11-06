@@ -39,6 +39,8 @@
 	</dict>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Notetaker reads your calendars to show them in the Calendar tab and list the day's meetings in daily notes. Nothing leaves the device unless you turn on sharing with the MCP server in Settings.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Notetaker uses Face ID to unlock the app and your locked notes.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Notetaker connects to your own homelab servers (Ollama, docling-serve) for AI and document conversion.</string>
 	<key>NSUbiquitousContainers</key>

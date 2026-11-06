@@ -14,9 +14,16 @@ public struct QuickAddResult: Equatable, Sendable {
 }
 
 public enum QuickAddParser {
-    /// Explicit tokens (>date !priority #tag &recurrence) always win; when
-    /// absent, natural language fills in: NSDataDetector dates ("tomorrow",
-    /// "next friday", "jul 20") and bare p1–p4 priorities.
+    /// Every grammar token the user typed is kept: `>date ~start !pN &rec
+    /// ^id blockedby:^x @person ?kind ✅day` all survive, serialised in the
+    /// one canonical order (`ParsedTaskMetadata.tokenSuffix`) after the task
+    /// text — which keeps its `#tags` — so the same input in any token order
+    /// yields the same line, and re-parsing that line changes nothing.
+    ///
+    /// Explicit `>date` / `!pN` tokens always win; when absent, natural
+    /// language fills in: NSDataDetector dates ("tomorrow", "next friday",
+    /// "jul 20") and bare p1–p4 priorities. `TaskTokenParser` is the only
+    /// token parser here. `depends:^x` is written as `blockedby:^x`.
     public static func parse(
         _ input: String,
         today: Date = Date(),
@@ -25,7 +32,7 @@ public enum QuickAddParser {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
-        var parsed = TaskTokenParser.parse(trimmed, today: today, calendar: calendar)
+        let parsed = TaskTokenParser.parse(trimmed, today: today, calendar: calendar)
         var text = parsed.cleanText
         var dueDate = parsed.dueDate
         var priority = parsed.priority
@@ -44,22 +51,28 @@ public enum QuickAddParser {
             .trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return nil }
 
-        var line = "- [ ] \(text)"
-        if let dueDate {
-            line += " >\(dueDate)"
-        }
-        if let priority {
-            line += " !p\(priority)"
-        }
-        if let recurrence = parsed.recurrence {
-            line += " \(recurrence.rawToken)"
-        }
-
-        parsed = ParsedTaskMetadata(
-            cleanText: text, dueDate: dueDate, priority: priority,
-            labels: parsed.labels, recurrence: parsed.recurrence
+        let metadata = ParsedTaskMetadata(
+            cleanText: text, dueDate: dueDate, startDate: parsed.startDate,
+            priority: priority, labels: parsed.labels, recurrence: parsed.recurrence,
+            blockId: parsed.blockId, dependsOn: parsed.dependsOn,
+            completedDay: parsed.completedDay, assignee: parsed.assignee, kind: parsed.kind
         )
-        return QuickAddResult(markdownLine: line, metadata: parsed)
+        let tokens = metadata.tokenSuffix
+        let line = "- [ ] " + text + (tokens.isEmpty ? "" : " " + tokens.joined(separator: " "))
+        return QuickAddResult(markdownLine: line, metadata: metadata)
+    }
+
+    /// True when `input` carries any grammar token (due, start, priority,
+    /// recurrence, `^id`, dependency, `@person`, `?kind`, `✅day`) — derived
+    /// from `TaskTokenParser`, never a local pattern. Natural language
+    /// ("tomorrow", bare "p1") and `#tags` do not count. Callers that offer
+    /// a model-assisted parse use this to keep a model away from lines the
+    /// exact parser can already file without dropping anything.
+    public static func hasExplicitTokens(_ input: String) -> Bool {
+        let parsed = TaskTokenParser.parse(input)
+        return parsed.dueDate != nil || parsed.startDate != nil || parsed.priority != nil
+            || parsed.recurrence != nil || parsed.blockId != nil || !parsed.dependsOn.isEmpty
+            || parsed.assignee != nil || parsed.kind != nil || parsed.completedDay != nil
     }
 
     // MARK: - Natural language pieces

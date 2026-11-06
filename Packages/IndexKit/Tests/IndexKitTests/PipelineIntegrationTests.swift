@@ -58,13 +58,19 @@ struct PipelineIntegrationTests {
 
         // Toggle the non-recurring task via the outbound path, reindex, verify.
         let target = matching[0]
-        let toggled = TaskLineToggler.toggle(
+        let toggledLine = try #require(TaskLineToggler.locate(
             contents: note, anchorLine: target.line, expectedRawLine: target.rawLine
-        )
-        #expect(toggled?.nowChecked == true)
-        try indexer.index(noteId: "plan.md", contents: #require(toggled?.contents), modifiedAt: nil, today: today)
+        ))
+        let toggledLineText = try #require(RecurrenceEngine.completeTaskLine(
+            target.rawLine, today: today, calendar: calendar
+        ))
+        #expect(toggledLineText.contains("- [x]"))
+        #expect(toggledLineText.hasSuffix(" ✅2026-07-12"), "completion stamps the Logbook day")
+        let toggled = TaskLineToggler.replacingLine(note, at: toggledLine, with: toggledLineText)
+        try indexer.index(noteId: "plan.md", contents: toggled, modifiedAt: nil, today: today)
         open = try db.openTasks()
         #expect(!open.contains { $0.id == target.id }, "completed task leaves the open list")
+        #expect(try db.completedTasks().contains { $0.id == target.id && $0.completedDay == "2026-07-12" })
 
         // Complete the recurring task: date advances, stays open, still indexed open.
         let recurring = try #require(open.first { $0.recurrence != nil })
@@ -73,9 +79,7 @@ struct PipelineIntegrationTests {
         ))
         #expect(completedLine.contains("- [ ]"), "recurring completion keeps the box open")
         #expect(completedLine.contains(">2026-07-13"), "overdue series catches up past today")
-        let rewritten = try TaskLineToggler.replacingLine(
-            #require(toggled?.contents), at: recurring.line, with: completedLine
-        )
+        let rewritten = TaskLineToggler.replacingLine(toggled, at: recurring.line, with: completedLine)
         try indexer.index(noteId: "plan.md", contents: rewritten, modifiedAt: nil, today: today)
         let after = try db.openTasks().first { $0.recurrence != nil }
         #expect(after?.dueDate == "2026-07-13")
@@ -98,6 +102,52 @@ struct PipelineIntegrationTests {
             "- [ ] water plants >2026-07-10 &every 3 days", today: today, calendar: calendar
         ).map { $0 + "\n" }
         #expect(viaEditor == viaList, "every surface must complete tasks identically")
+
+        // Non-recurring: both paths stamp ✅ identically, and unchecking
+        // (either path) strips it again.
+        let once = "- [ ] email dean >2026-07-15 !p1 #admin\n"
+        let onceBox = (once as NSString).range(of: "[ ]")
+        let onceViaEditor = RecurrenceEngine.completeTask(
+            in: once, tokenRange: onceBox, today: today, calendar: calendar
+        )
+        let onceViaList = RecurrenceEngine.completeTaskLine(
+            "- [ ] email dean >2026-07-15 !p1 #admin", today: today, calendar: calendar
+        ).map { $0 + "\n" }
+        #expect(onceViaEditor == onceViaList)
+        #expect(onceViaEditor == "- [x] email dean >2026-07-15 !p1 #admin ✅2026-07-12\n")
+        let reopened = RecurrenceEngine.completeTask(
+            in: onceViaEditor ?? "", tokenRange: onceBox, today: today, calendar: calendar
+        )
+        #expect(reopened == once, "unchecking restores the original bytes")
+    }
+
+    /// The editor edits its buffer, the autosave writes the file, the index
+    /// re-reads it: a check-off must land in the Logbook with today's day,
+    /// and unchecking must take it out again (spec 02).
+    @Test func editorCompletionAppearsInLogbook() throws {
+        let text = "# Inbox\n\n- [ ] ship the thing >2026-07-15\n- [ ] other\n"
+        let (db, _) = try IndexDatabase.open(path: nil)
+        let indexer = NoteIndexer(database: db)
+        try indexer.index(noteId: "Inbox.md", contents: text, modifiedAt: nil, today: today)
+        #expect(try db.completedTasks().isEmpty)
+
+        let firstBox = (text as NSString).range(of: "[ ]")
+        let checked = try #require(RecurrenceEngine.completeTask(
+            in: text, tokenRange: firstBox, today: today, calendar: calendar
+        ))
+        try indexer.index(noteId: "Inbox.md", contents: checked, modifiedAt: nil, today: today)
+        let logbook = try db.completedTasks()
+        #expect(logbook.map(\.text) == ["ship the thing"])
+        #expect(logbook.first?.completedDay == "2026-07-12")
+        #expect(try db.openTasks().map(\.text) == ["other"])
+
+        let unchecked = try #require(RecurrenceEngine.completeTask(
+            in: checked, tokenRange: firstBox, today: today, calendar: calendar
+        ))
+        #expect(unchecked == text, "unchecking removes the stamp from the file")
+        try indexer.index(noteId: "Inbox.md", contents: unchecked, modifiedAt: nil, today: today)
+        #expect(try db.completedTasks().isEmpty)
+        #expect(try db.openTasks().count == 2)
     }
 
     @Test func repeatedIndexingIsIdempotentAndStable() throws {
@@ -128,6 +178,33 @@ struct PipelineIntegrationTests {
         #expect(tasks[0].priority == result.metadata.priority)
         let labels = try db.labelsByTaskId()
         #expect(labels[tasks[0].id] == ["research"], "quick-added labels survive the round trip")
+    }
+
+    /// Spec 03: Quick Add keeps `@person ?kind ~start ^id blockedby:` — every
+    /// field the capture line carries comes back out of the index.
+    @Test func quickAddEveryTokenRoundTripsThroughIndex() throws {
+        let result = try #require(QuickAddParser.parse(
+            "?waiting @Amber depends:^ship-v1 ^amber-call &every 2 weeks !p2 ~2026-07-05 >2026-07-20 call Amber #admin",
+            today: today, calendar: calendar
+        ))
+        #expect(result.markdownLine == "- [ ] call Amber #admin >2026-07-20 ~2026-07-05 !p2 &every 2 weeks "
+            + "^amber-call blockedby:^ship-v1 @Amber ?waiting")
+        let contents = "# Inbox\n\n" + result.markdownLine + "\n"
+        let (db, _) = try IndexDatabase.open(path: nil)
+        let indexer = NoteIndexer(database: db)
+        try indexer.index(noteId: "Inbox.md", contents: contents, modifiedAt: nil, today: today)
+
+        let task = try #require(db.openTasks().first)
+        #expect(task.text == result.metadata.cleanText)
+        #expect(task.dueDate == "2026-07-20")
+        #expect(task.startDate == "2026-07-05")
+        #expect(task.priority == 2)
+        #expect(task.recurrence == "&every 2 weeks")
+        #expect(task.blockId == "amber-call")
+        #expect(task.dependsOn == "ship-v1")
+        #expect(task.assignee == "Amber")
+        #expect(task.kind == "waiting")
+        #expect(try db.labelsByTaskId()[task.id] == ["admin"])
     }
 }
 
