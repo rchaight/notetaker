@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 @testable import SecurityKit
 import Testing
@@ -96,5 +97,54 @@ struct NoteCryptoTests {
         #expect(envelope.salt == salt)
         #expect(envelope.rounds == rounds)
         #expect(try NoteCrypto.decrypt(envelope.ciphertext, key: key) == "body")
+    }
+}
+
+struct UnlockedKeyringTests {
+    private func key() -> SymmetricKey {
+        SymmetricKey(size: .bits256)
+    }
+
+    @Test func rekeyMovesTheKeyToTheNewPath() {
+        var ring = UnlockedKeyring()
+        let original = key()
+        ring["Work/Secret.md"] = original
+
+        ring.rekey(from: "Work/Secret.md", to: "Archive/Secret.md")
+
+        #expect(ring["Work/Secret.md"] == nil)
+        #expect(ring["Archive/Secret.md"] == original)
+        #expect(ring.contains("Archive/Secret.md"))
+        #expect(!ring.contains("Work/Secret.md"))
+    }
+
+    @Test func rekeyOfALockedNoteLeavesNothingBehind() {
+        var ring = UnlockedKeyring()
+        ring["Other.md"] = key()
+
+        ring.rekey(from: "Still locked.md", to: "Moved.md")
+
+        #expect(ring["Moved.md"] == nil)
+        #expect(ring.contains("Other.md"))
+    }
+
+    @Test func rekeyDropsAStaleKeyAtTheDestination() {
+        var ring = UnlockedKeyring()
+        ring["Old note.md"] = key() // an unlocked note that has since been deleted or replaced
+
+        ring.rekey(from: "Plain.md", to: "Old note.md")
+
+        // The plain note now at that path must not be mistaken for an unlocked one.
+        #expect(ring["Old note.md"] == nil)
+    }
+
+    @Test func rekeyToTheSamePathIsANoOp() {
+        var ring = UnlockedKeyring()
+        let original = key()
+        ring["Same.md"] = original
+
+        ring.rekey(from: "Same.md", to: "Same.md")
+
+        #expect(ring["Same.md"] == original)
     }
 }

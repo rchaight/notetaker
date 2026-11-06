@@ -51,7 +51,7 @@ final class NotesModel {
     private(set) var trashFailure: String?
     /// Unlocked locked-notes this session: noteId → (key, envelope params).
     /// In memory only; quitting relocks everything.
-    private var unlockedKeys: [String: SymmetricKey] = [:]
+    private var unlockedKeys = UnlockedKeyring()
     /// The locked note currently displayed as a placeholder (drives UI).
     private(set) var lockedPlaceholder = false
 
@@ -846,12 +846,24 @@ final class NotesModel {
         Task {
             await flushSave()
             do {
-                try await store.move(from: item.url, to: root.appendingPathComponent(newRelative))
+                let destination = root.appendingPathComponent(newRelative)
+                try await store.move(from: item.url, to: destination)
+                // The note's id IS its path, so everything keyed by it follows the move. Missing
+                // the unlock key made the next save of an unlocked locked note write plaintext;
+                // missing `loadedURL` made typing recreate the note at its OLD path.
+                unlockedKeys.rekey(from: item.id, to: newRelative)
+                if loadedURL == item.url {
+                    loadedURL = destination
+                }
                 if let index = openTabs.firstIndex(of: item.id) {
                     openTabs[index] = newRelative
                 }
                 if selectedID == item.id {
                     selectedID = newRelative
+                }
+                if recents.contains(item.id) {
+                    recents = recents.map { $0 == item.id ? newRelative : $0 }
+                    UserDefaults.standard.set(recents, forKey: "recentNotes")
                 }
                 apply(VaultEnumerator.snapshot(of: root))
             } catch {
