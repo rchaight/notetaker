@@ -1,3 +1,4 @@
+import IndexKit
 import SecurityKit
 import SwiftUI
 #if os(macOS)
@@ -13,7 +14,10 @@ struct AppShell: View {
     let indexService: VaultIndexService
     let notesModel: NotesModel
     let extrasStore: TaskExtrasStore
-    @State private var selectedTab = "notes"
+    /// The menu bar's command bus (owned by `NotetakerApp`, so it survives
+    /// the shell being rebuilt on a vault switch).
+    let commands: ShellCommandBus
+    @State private var selectedTab = AppShell.restoredTab()
     @State private var showingPalette = false
     /// Ribbon → tab signals: incrementing pops the matching sheet.
     @State private var quickAddSignal = 0
@@ -40,22 +44,37 @@ struct AppShell: View {
         ("vault", "Vault", "icloud"),
     ]
 
-    private var visibleTabs: [(id: String, title: String, icon: String)] {
+    private static var visibleTabs: [(id: String, title: String, icon: String)] {
         #if DEBUG
-            Self.tabs
+            tabs
         #else
-            Self.tabs.filter { $0.id != "vault" }
+            tabs.filter { $0.id != "vault" }
         #endif
+    }
+
+    private var visibleTabs: [(id: String, title: String, icon: String)] {
+        Self.visibleTabs
+    }
+
+    /// UserDefaults hint for the tab the Mac relaunches on (spec ux-phase2/03).
+    private static let selectedTabKey = "ui.selectedTab"
+
+    /// The tab to open on: the saved one on the Mac if it is still a visible
+    /// tab (a Release build with a saved "vault" falls back), else Notes.
+    /// Read when the state is created rather than in a `.task`, so the shell
+    /// never mounts the Notes tab for a frame on its way to another one.
+    private static func restoredTab() -> String {
+        #if os(macOS)
+            if let saved = UserDefaults.standard.string(forKey: selectedTabKey),
+               visibleTabs.contains(where: { $0.id == saved }) {
+                return saved
+            }
+        #endif
+        return "notes"
     }
 
     var body: some View {
         shellContent
-            .background(
-                // Invisible global hotkey for the palette.
-                Button("") { showingPalette = true }
-                    .keyboardShortcut("k", modifiers: [.command])
-                    .hidden()
-            )
             .overlay {
                 if locked {
                     lockScreen
@@ -81,6 +100,15 @@ struct AppShell: View {
                     break
                 }
             }
+            .onChange(of: commands.requestID) {
+                guard let command = commands.pending, command.scope == .shell else { return }
+                perform(command)
+            }
+            .onChange(of: selectedTab) {
+                #if os(macOS)
+                    UserDefaults.standard.set(selectedTab, forKey: Self.selectedTabKey)
+                #endif
+            }
             .task(id: appLockEnabled) {
                 // Launch lock: enabled + never unlocked this run.
                 if appLockEnabled, lastUnlocked == nil {
@@ -90,21 +118,33 @@ struct AppShell: View {
             .sheet(isPresented: $showingPalette) {
                 CommandPalette(
                     notes: notesModel.notes.map {
-                        ($0.id, URL(fileURLWithPath: $0.relativePath)
-                            .deletingPathExtension().lastPathComponent)
+                        let components = $0.relativePath.split(separator: "/")
+                        return PaletteRanking.Note(
+                            id: $0.id,
+                            title: URL(fileURLWithPath: $0.relativePath)
+                                .deletingPathExtension().lastPathComponent,
+                            folder: components.count > 1 ? components.dropLast().joined(separator: "/") : nil
+                        )
                     },
+                    recents: notesModel.recents,
+                    commands: ShellCommand.allCases
+                        .filter { $0 != .commandPalette && $0.isAvailable(commands) }
+                        .map { ($0, paletteTitle($0)) },
+                    searchBodies: { indexService.searchNoteIds($0) },
                     onOpenNote: { id in
                         notesModel.openNote(id, jumpToLine: nil)
                         selectedTab = "notes"
                     },
-                    onSwitchTab: { selectedTab = $0 },
+                    onCommand: { commands.perform($0) },
                     onQuickAdd: { text in Task { await indexService.quickAdd(text) } },
-                    onDailyNote: {
-                        notesModel.openDailyNote()
-                        selectedTab = "notes"
-                    },
                     isPresented: $showingPalette
                 )
+            }
+            .task {
+                // Not left to the Notes tab: the shell can open on another
+                // tab, and the palette, Tags and To-Do jumps all need the
+                // vault listing. `start()` runs once, whoever calls first.
+                await notesModel.start()
             }
             .task {
                 indexService.onNoteMutated = { [weak notesModel = notesModel] noteId in
@@ -146,6 +186,90 @@ struct AppShell: View {
             }
         #endif
     }
+
+    /// The `.shell`-scope half of the command bus: everything that works
+    /// from any tab (File, Go, the palette). `NotesView` performs the
+    /// Notes-tab scopes off the same requests.
+    private func perform(_ command: ShellCommand) {
+        switch command {
+        case .newNote:
+            notesModel.createNote()
+            selectedTab = "notes"
+        case .newTask:
+            show("todo") { quickAddSignal += 1 }
+        case .newProject:
+            show("projects") { newProjectSignal += 1 }
+        case .dailyNote:
+            notesModel.openDailyNote()
+            selectedTab = "notes"
+        case .refreshVault:
+            Task {
+                await notesModel.refresh()
+                await indexService.rescan()
+            }
+        case .goNotes: selectedTab = "notes"
+        case .goTodo: selectedTab = "todo"
+        case .goProjects: selectedTab = "projects"
+        case .goMeetings: selectedTab = "meetings"
+        case .goCalendar: selectedTab = "calendar"
+        case .goTags: selectedTab = "tags"
+        case .goVault: selectedTab = "vault"
+        case .commandPalette: showingPalette = true
+        case .closeNote:
+            #if os(macOS)
+                closeNote()
+            #endif
+        case .closeWindow:
+            #if os(macOS)
+                if let key = NSApp.keyWindow, !key.isSheet {
+                    key.performClose(nil)
+                }
+            #endif
+        default: break
+        }
+    }
+
+    /// The palette row title for a command. Lock and Project flip with the
+    /// open note's state, exactly as the menu bar's items do.
+    private func paletteTitle(_ command: ShellCommand) -> String {
+        switch command {
+        case .lockNote: commands.selectedIsLockable ? "Remove Lock" : command.title
+        case .toggleProject: commands.selectedIsProject ? "Remove Project Flag" : command.title
+        default: command.title
+        }
+    }
+
+    /// Switches to `tab`, then bumps a ribbon-style signal. A tab's
+    /// `.onChange(of: signal)` ignores the value it is first built with, so
+    /// a signal raised in the same turn as the switch never reaches a tab
+    /// that was not already on screen; wait for the new tab to mount.
+    private func show(_ tab: String, thenSignal signal: @escaping () -> Void) {
+        guard selectedTab != tab else {
+            signal()
+            return
+        }
+        selectedTab = tab
+        Task {
+            try? await Task.sleep(for: .milliseconds(120))
+            signal()
+        }
+    }
+
+    #if os(macOS)
+        /// ⌘W. In the vault window it closes the open note's tab (selecting
+        /// the previous one, or nothing) and never the window; in the Task
+        /// window or Settings it closes that window. Only the vault's
+        /// WindowGroup uses `.hiddenTitleBar`, which is how it is told apart.
+        private func closeNote() {
+            guard let key = NSApp.keyWindow, !key.isSheet else { return }
+            if key.titleVisibility == .hidden {
+                guard selectedTab == "notes", let id = notesModel.selectedID else { return }
+                notesModel.closeTab(id)
+            } else {
+                key.performClose(nil)
+            }
+        }
+    #endif
 
     @ViewBuilder private var shellContent: some View {
         #if os(macOS)
@@ -231,7 +355,7 @@ struct AppShell: View {
     }
 
     private var notesTab: some View {
-        NotesView(indexService: indexService, model: notesModel)
+        NotesView(indexService: indexService, model: notesModel, commands: commands)
     }
 
     private var todoTab: some View {
@@ -393,6 +517,7 @@ extension AppShell {
     AppShell(
         indexService: VaultIndexService(),
         notesModel: NotesModel(),
-        extrasStore: TaskExtrasStore()
+        extrasStore: TaskExtrasStore(),
+        commands: ShellCommandBus()
     )
 }

@@ -124,7 +124,6 @@ struct TodoView: View {
                         Button("New Task", systemImage: "square.and.pencil") {
                             showingQuickAdd = true
                         }
-                        .keyboardShortcut("n", modifiers: [.command, .shift])
                         .help("Quick Add (⇧⌘N) — e.g. \"email dean tomorrow p1 #admin\"")
                         Button("Agenda", systemImage: "calendar") {
                             viewModeRaw = ViewMode.agenda.rawValue

@@ -38,4 +38,14 @@ public enum EditorMode: String, CaseIterable, Sendable {
         case .reading: "Reading"
         }
     }
+
+    /// The label on the editor header's segmented picker, where "Live
+    /// Preview" would crowd the row. `title` keeps the long form for Settings.
+    public var shortTitle: String {
+        switch self {
+        case .source: "Source"
+        case .live: "Live"
+        case .reading: "Reading"
+        }
+    }
 }

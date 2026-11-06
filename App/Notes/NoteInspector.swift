@@ -42,6 +42,9 @@ struct NoteInspector: View {
                 }
             }
             Section("Backlinks") {
+                // Read through `tasksVersion`: a rename's link rewrite changes these rows
+                // without touching this note's text, and only the counter says so.
+                let _ = service.tasksVersion
                 let linked = service.backlinks(toTitle: noteTitle)
                 if linked.isEmpty {
                     Text("No notes link here").foregroundStyle(.tertiary)

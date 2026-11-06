@@ -50,6 +50,12 @@ final class VaultIndexService {
     #endif
     private var observationTasks: [Task<Void, Never>] = []
     private var knownMTimes: [String: Date] = [:]
+    /// Notes whose file is `locked: true`, seen by the last scan that read them. Derived like
+    /// `knownMTimes` (rebuilt by the first scan after launch, which reads every file). Rename's
+    /// preview lists them as "not checked": the index holds no links for a locked note, so
+    /// whether one links to the renamed note can't be known without decrypting it, which the
+    /// rename never does.
+    private var lockedNoteIds: Set<String> = []
     private var started = false
     private let embeddings = AppleEmbeddingProvider()
     private var embeddingTasks: [String: Task<Void, Never>] = [:]
@@ -176,6 +182,11 @@ final class VaultIndexService {
                     continue
                 }
                 guard let contents = try? await store.readString(at: item.url) else { continue }
+                if MarkdownDocument(source: contents).frontmatter?.values["locked"] == "true" {
+                    lockedNoteIds.insert(path)
+                } else {
+                    lockedNoteIds.remove(path)
+                }
                 let didChange = (try? indexer.index(
                     noteId: path, contents: contents, modifiedAt: item.modificationDate
                 )) ?? false
@@ -201,6 +212,7 @@ final class VaultIndexService {
                 changed = true
             }
         }
+        lockedNoteIds.formIntersection(present)
         // Always bump: views key their queries on this counter, and the
         // FIRST scan after launch must refresh them even when no file
         // changed (favorites/pins read the db before it opened otherwise).
@@ -998,6 +1010,111 @@ final class VaultIndexService {
         tasksVersion += 1
     }
 
+    // MARK: - Rename: inbound [[wikilink]] rewrite (spec ux-phase2/05)
+
+    /// Dry run of `rewriteInboundLinks`: reads each candidate, never writes. `renamedId` is the
+    /// note's id BEFORE the rename and `notes` the listing it resolves against (also before), so
+    /// a link to a different note that happens to share the title is not counted.
+    /// Locked notes are listed as skipped whether or not they link here: their links are not
+    /// indexed and their bodies are never decrypted to look.
+    func previewInboundLinks(
+        toTitle old: String, renamedTo new: String, renamedId: String,
+        among notes: [(id: String, title: String)], skipping: Set<String>
+    ) async -> [LinkRewriteRow] {
+        guard let root else { return [] }
+        var rows: [LinkRewriteRow] = []
+        let candidates = inboundCandidates(toTitle: old, skipping: skipping, only: nil)
+        for id in candidates {
+            let url = root.appendingPathComponent(id)
+            guard let contents = try? await store.readString(at: url) else { continue }
+            rows.append(inspectCandidate(
+                id: id, url: url, contents: contents, old: old, new: new, renamedId: renamedId, notes: notes
+            ).row)
+        }
+        let listed = Set(rows.map(\.id))
+        for id in lockedNoteIds.sorted() where !listed.contains(id) && !skipping.contains(id)
+            && !VaultPath.isInsideHiddenFolder(id) {
+            rows.append(LinkRewriteRow(id: id, title: Self.title(ofNoteId: id), count: 0, skipped: .locked))
+        }
+        return rows
+    }
+
+    /// Rewrites `[[old…]]` → `[[new…]]` in every other note that links to the renamed note, one
+    /// coordinated write per note (spec 05). Index-nominated, file-decided: the index only names
+    /// candidates; each file is re-read and rewritten from what it says now. Locked and
+    /// conflicted notes are skipped; a note that fails is listed in `failed` and the pass goes on
+    /// with the next one. `only` restricts the pass to those ids (Try Again).
+    func rewriteInboundLinks(
+        oldTitle old: String, newTitle new: String, renamedId: String,
+        among notes: [(id: String, title: String)], skipping: Set<String>, only: Set<String>? = nil
+    ) async -> LinkRewriteReport {
+        var report = LinkRewriteReport(updated: [], skipped: [], failed: [])
+        // Catch the index up first, so a link saved moments ago is a candidate too.
+        await reindexFromDisk()
+        guard let root, let indexer else { return report }
+        for id in inboundCandidates(toTitle: old, skipping: skipping, only: only) {
+            await beforeNoteMutation?(id)
+            let url = root.appendingPathComponent(id)
+            do {
+                let contents = try await store.readString(at: url)
+                let inspected = inspectCandidate(
+                    id: id, url: url, contents: contents, old: old, new: new, renamedId: renamedId, notes: notes
+                )
+                guard inspected.row.skipped == nil, let updated = inspected.updated else {
+                    report.skipped.append(inspected.row)
+                    continue
+                }
+                try await store.writeString(updated, to: url)
+                try? indexer.index(noteId: id, contents: updated, modifiedAt: nil)
+                knownMTimes[id] = nil
+                onNoteMutated?(id)
+                report.updated.append(inspected.row)
+            } catch {
+                report.failed.append(LinkRewriteFailure(
+                    id: id, title: Self.title(ofNoteId: id), reason: error.localizedDescription
+                ))
+            }
+        }
+        tasksVersion += 1
+        return report
+    }
+
+    /// Index-nominated candidates: notes with an outlink to `old`, never a hidden-folder note
+    /// (`.trash/` is never indexed; the check is belt and braces).
+    private func inboundCandidates(toTitle old: String, skipping: Set<String>, only: Set<String>?) -> [String] {
+        backlinks(toTitle: old)
+            .filter { !skipping.contains($0) && !VaultPath.isInsideHiddenFolder($0) }
+            .filter { only?.contains($0) ?? true }
+            .sorted()
+    }
+
+    /// One candidate's verdict and, when it is to be written, its new text.
+    private func inspectCandidate(
+        id: String, url: URL, contents: String, old: String, new: String, renamedId: String,
+        notes: [(id: String, title: String)]
+    ) -> (row: LinkRewriteRow, updated: String?) {
+        let title = Self.title(ofNoteId: id)
+        // Locked: the body is ciphertext. Never parsed as prose, never written.
+        if MarkdownDocument(source: contents).frontmatter?.values["locked"] == "true" {
+            return (LinkRewriteRow(id: id, title: title, count: 0, skipped: .locked), nil)
+        }
+        if !VaultConflictCenter().unresolvedVersions(for: url).isEmpty {
+            return (LinkRewriteRow(id: id, title: title, count: 0, skipped: .conflicted), nil)
+        }
+        let result = WikilinkRenameRewrite.rewrite(
+            contents, sourceId: id, renamingTitle: old, to: new, renamedId: renamedId, among: notes
+        )
+        guard result.count > 0 else {
+            // A stale index row, or links that already read `new`: nothing to write.
+            return (LinkRewriteRow(id: id, title: title, count: 0, skipped: .noLinksFound), nil)
+        }
+        return (LinkRewriteRow(id: id, title: title, count: result.count, skipped: nil), result.text)
+    }
+
+    nonisolated static func title(ofNoteId id: String) -> String {
+        URL(fileURLWithPath: id).deletingPathExtension().lastPathComponent
+    }
+
     /// Merge suggestions: heuristics always; Ollama's semantic layer when
     /// configured (validated — never trusted to name real tags). Hard
     /// timeouts: a slow homelab must never hang the wand (user-reported
@@ -1271,4 +1388,38 @@ final class VaultIndexService {
         knownMTimes[task.noteId] = nil
         tasksVersion += 1
     }
+}
+
+// MARK: - Rename link rewrite (spec ux-phase2/05)
+
+/// One note in Rename's preview or report.
+struct LinkRewriteRow: Identifiable, Equatable {
+    /// The note id (vault-relative path).
+    let id: String
+    let title: String
+    /// Links that are (or would be) rewritten in this note.
+    let count: Int
+    /// Why the note is left alone; nil when it is (to be) rewritten.
+    let skipped: LinkRewriteSkipReason?
+}
+
+enum LinkRewriteSkipReason: Equatable {
+    /// Locked note: ciphertext, never read as prose, never written.
+    case locked
+    /// Unresolved iCloud conflict: which version would be rewritten is ambiguous.
+    case conflicted
+    /// The index named it, but the file has no link left to change.
+    case noLinksFound
+}
+
+struct LinkRewriteFailure: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let reason: String
+}
+
+struct LinkRewriteReport: Equatable {
+    var updated: [LinkRewriteRow]
+    var skipped: [LinkRewriteRow]
+    var failed: [LinkRewriteFailure]
 }

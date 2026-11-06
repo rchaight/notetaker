@@ -87,7 +87,7 @@ private func tokenNames(_ inlines: [ReadingInline]) -> [String] {
         case let .tag(name): "tag:\(name)"
         case let .mention(name): "mention:\(name)"
         case let .kindToken(kind): "kindToken:\(kind)"
-        case let .wikilink(target): "wikilink:\(target)"
+        case let .wikilink(link): "wikilink:\(link.raw)"
         default: caseName(inline)
         }
     }
@@ -97,7 +97,7 @@ private func tokenNames(_ inlines: [ReadingInline]) -> [String] {
 private func extendedTokens(_ blocks: [ReadingBlock]) -> Set<String> {
     Set(allInlines(blocks).compactMap { inline in
         switch inline {
-        case let .wikilink(target): "wikilink:\(target)"
+        case let .wikilink(link): "wikilink:\(link.raw)"
         case let .tag(name): "tag:\(name)"
         case let .mention(name): "mention:\(name)"
         case let .kindToken(kind): "kind:\(kind)"
@@ -112,7 +112,7 @@ private func stylerTokens(_ body: String) -> Set<String> {
     let ns = body as NSString
     return Set(MarkdownStyler.styleRanges(in: body).compactMap { styled in
         switch styled.kind {
-        case let .wikilink(target): "wikilink:\(target)"
+        case let .wikilink(link): "wikilink:\(link.raw)"
         case let .tag(name): "tag:\(name)"
         case let .mention(name): "mention:\(name)"
         case let .kindToken(kind): "kind:\(kind)"
@@ -433,13 +433,42 @@ struct ReadingExtendedSyntaxTests {
         // merges adjacent runs before looking for tokens.
         let model = blocks("see [[A Note]] then [[B Note]] done\n")
         let targets = allInlines(model).compactMap { inline -> String? in
-            if case let .wikilink(target) = inline {
-                target
+            if case let .wikilink(link) = inline {
+                link.target
             } else {
                 nil
             }
         }
         #expect(targets == ["A Note", "B Note"])
+    }
+
+    @Test func wikilinkAliasRendersLabelAndKeepsTarget() throws {
+        let model = blocks("see [[Plan|the plan]] and [[Plan#Budget]] and [[Projects/Plan]]\n")
+        guard case let .paragraph(inlines) = model[0].kind else {
+            Issue.record("expected a paragraph")
+            return
+        }
+        let links = inlines.compactMap { inline -> Wikilink? in
+            if case let .wikilink(link) = inline {
+                link
+            } else {
+                nil
+            }
+        }
+        try #require(links.count == 3)
+        #expect(links.map(\.target) == ["Plan", "Plan", "Projects/Plan"])
+        #expect(links.map(\.label) == ["the plan", "Plan › Budget", "Plan"])
+        #expect(ReadingInlineText.plainText(inlines) == "see the plan and Plan › Budget and Plan")
+
+        // The rendered run shows the label; its URL carries the raw text so
+        // the tap can re-parse alias/heading/path and resolve the real note.
+        let attributed = ReadingInlineText.attributed(inlines, style: .default)
+        #expect(String(attributed.characters) == "see the plan and Plan › Budget and Plan")
+        let tapped = attributed.runs.compactMap(\.link).compactMap(ReadingInlineText.wikilinkTarget)
+        #expect(tapped == ["Plan|the plan", "Plan#Budget", "Projects/Plan"])
+        let reparsed = tapped.compactMap { WikilinkSyntax.links(in: "[[\($0)]]").first }
+        #expect(reparsed.map(\.target) == ["Plan", "Plan", "Projects/Plan"])
+        #expect(reparsed.map(\.alias) == ["the plan", nil, nil])
     }
 
     @Test func highlightKeepsTokensInsideIt() {
@@ -452,6 +481,8 @@ struct ReadingExtendedSyntaxTests {
     @Test func wikilinkURLRoundTripsThroughTheTapScheme() {
         let url = try? #require(ReadingInlineText.url(forWikilink: "Weekly 1:1 / Robert"))
         #expect(url.flatMap(ReadingInlineText.wikilinkTarget) == "Weekly 1:1 / Robert")
+        let aliased = ReadingInlineText.url(forWikilink: "Plan#Budget|the plan")
+        #expect(aliased.flatMap(ReadingInlineText.wikilinkTarget) == "Plan#Budget|the plan")
         let http = try? #require(URL(string: "https://example.com"))
         #expect(http.flatMap(ReadingInlineText.wikilinkTarget) == nil)
     }

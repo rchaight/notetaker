@@ -54,6 +54,12 @@ struct EditorParseCache {
         /// Fires with an image fragment's raw markdown source when the user
         /// clicks a rendered thumbnail.
         var onOpenAttachment: ((String) -> Void)?
+        /// Fires when the user ⌘-clicks a `[[wikilink]]` (Source and Live
+        /// alike). A plain click still just places the caret.
+        var onOpenWikilink: ((Wikilink) -> Void)?
+        /// Caps the text column at this width, centred in a wider view; nil
+        /// fills the view.
+        var maxTextWidth: CGFloat?
 
         public init(
             text: Binding<String>,
@@ -72,7 +78,9 @@ struct EditorParseCache {
             grammarChecking: Bool = true,
             autocorrect: Bool = false,
             onSelectionContext: ((SelectionContext) -> Void)? = nil,
-            onOpenAttachment: ((String) -> Void)? = nil
+            onOpenAttachment: ((String) -> Void)? = nil,
+            onOpenWikilink: ((Wikilink) -> Void)? = nil,
+            maxTextWidth: CGFloat? = nil
         ) {
             _text = text
             _scrollTarget = scrollTarget
@@ -91,6 +99,8 @@ struct EditorParseCache {
             self.autocorrect = autocorrect
             self.onSelectionContext = onSelectionContext
             self.onOpenAttachment = onOpenAttachment
+            self.onOpenWikilink = onOpenWikilink
+            self.maxTextWidth = maxTextWidth
         }
 
         /// The flags as one value — what the coordinator diffs.
@@ -131,6 +141,7 @@ struct EditorParseCache {
                 context.coordinator.linkCandidates = linkCandidates
                 context.coordinator.mentionCandidates = mentionCandidates
                 textView.importAttachments = importAttachments
+                textView.maxTextWidth = maxTextWidth
                 var textSwapped = false
                 if textView.string != text {
                     textView.string = text
@@ -138,6 +149,8 @@ struct EditorParseCache {
                     textSwapped = true
                 }
                 context.coordinator.applyProofing(proofing, to: textView, recheck: textSwapped)
+                // `dismantleNSView` removed them; a reused view needs its clicks back.
+                context.coordinator.installClickMonitors(for: textView)
                 return cached
             }
             // Construct the subclass on its own fresh TextKit 2 stack. The
@@ -166,6 +179,9 @@ struct EditorParseCache {
             // TextKit 2; .complete allows full inline rewrites.
             textView.writingToolsBehavior = .complete
             textView.textContainerInset = NSSize(width: 16, height: 16)
+            // Past this width the inset grows to centre a fixed-width column
+            // (the fold-margin and image hit tests already subtract it).
+            textView.maxTextWidth = maxTextWidth
             textView.drawsBackground = true
             textView.backgroundColor = theme.editorBackground
             scrollView.drawsBackground = false
@@ -214,9 +230,17 @@ struct EditorParseCache {
             return scrollView
         }
 
+        /// The image and wikilink click monitors are app-wide (`NSEvent` local monitors), so
+        /// they come off when the editor leaves the window. A cached view reinstalls them in
+        /// `makeNSView`.
+        public static func dismantleNSView(_: NSScrollView, coordinator: Coordinator) {
+            coordinator.removeClickMonitors()
+        }
+
         public func updateNSView(_ scrollView: NSScrollView, context: Context) {
             guard let textView = scrollView.documentView as? NSTextView else { return }
             (textView as? MarkdownTextView)?.importAttachments = importAttachments
+            (textView as? MarkdownTextView)?.maxTextWidth = maxTextWidth
             let modeChanged = context.coordinator.livePreview != livePreview
                 || context.coordinator.focusMode != focusMode
                 || context.coordinator.theme.baseFontSize != theme.baseFontSize
@@ -231,6 +255,7 @@ struct EditorParseCache {
             context.coordinator.mentionCandidates = mentionCandidates
             context.coordinator.onSelectionContext = onSelectionContext
             context.coordinator.onOpenAttachment = onOpenAttachment
+            context.coordinator.onOpenWikilink = onOpenWikilink
             var textSwapped = false
             if textView.string != text {
                 textView.string = text
@@ -303,6 +328,7 @@ struct EditorParseCache {
             var lastFindTerm = ""
             var onSelectionContext: ((SelectionContext) -> Void)?
             var onOpenAttachment: ((String) -> Void)?
+            var onOpenWikilink: ((Wikilink) -> Void)?
             /// Style ranges from the last restyle pass — SelectionContext
             /// reuses these on every caret move instead of re-parsing.
             private var currentStyledRanges: [StyledRange] = []
@@ -312,6 +338,7 @@ struct EditorParseCache {
             private var revealScope: RevealScope?
             private var lastPublishedContext: SelectionContext?
             private var imageClickMonitor: Any?
+            private var wikilinkClickMonitor: Any?
             private var lastCursorLine: NSRange?
             private var pendingRestyle: Task<Void, Never>?
             /// What the text view's proofing flags were last set to — the
@@ -333,7 +360,7 @@ struct EditorParseCache {
 
             func restyle(_ textView: NSTextView) {
                 guard let storage = textView.textStorage else { return }
-                installImageClickMonitorIfNeeded(for: textView)
+                installClickMonitors(for: textView)
                 let source = textView.string
                 let cursor = cursorParagraph(textView)
                 lastCursorLine = cursor
@@ -849,6 +876,22 @@ struct EditorParseCache {
                 onSelectionContext(context)
             }
 
+            func installClickMonitors(for textView: NSTextView) {
+                installImageClickMonitorIfNeeded(for: textView)
+                installWikilinkClickMonitorIfNeeded(for: textView)
+            }
+
+            func removeClickMonitors() {
+                if let monitor = imageClickMonitor {
+                    NSEvent.removeMonitor(monitor)
+                    imageClickMonitor = nil
+                }
+                if let monitor = wikilinkClickMonitor {
+                    NSEvent.removeMonitor(monitor)
+                    wikilinkClickMonitor = nil
+                }
+            }
+
             /// Images aren't NSLinks, so clicks on their rendered thumbnail
             /// need their own hit test — mirrors the fold-click monitor's
             /// approach (NSTextView's mouseDown runs a modal tracking loop
@@ -865,6 +908,35 @@ struct EditorParseCache {
                     onOpenAttachment(source)
                     return nil
                 }
+            }
+
+            /// ⌘-click on a `[[wikilink]]` opens it. Same reason as the image
+            /// monitor for not using a gesture recognizer; the monitor also
+            /// swallows the event, so the caret doesn't move and AppKit's
+            /// ⌘-click (discontiguous selection) never starts. Plain clicks,
+            /// drags and shift-clicks fall through untouched.
+            private func installWikilinkClickMonitorIfNeeded(for textView: NSTextView) {
+                guard wikilinkClickMonitor == nil else { return }
+                wikilinkClickMonitor = NSEvent.addLocalMonitorForEvents(
+                    matching: .leftMouseDown
+                ) { [weak self, weak textView] event in
+                    guard let self, let textView, event.window === textView.window,
+                          event.modifierFlags.contains(.command),
+                          let onOpenWikilink,
+                          let link = wikilink(at: event, in: textView)
+                    else { return event }
+                    onOpenWikilink(link)
+                    return nil
+                }
+            }
+
+            private func wikilink(at event: NSEvent, in textView: NSTextView) -> Wikilink? {
+                let point = textView.convert(event.locationInWindow, from: nil)
+                guard textView.bounds.contains(point) else { return nil }
+                // Hidden syntax markers keep their characters, so the index
+                // lands inside the link's range in Source and Live alike.
+                let index = textView.characterIndexForInsertion(at: point)
+                return WikilinkHitTest.link(at: index, in: textView.string)
             }
 
             private func imageSource(at event: NSEvent, in textView: NSTextView) -> String? {
@@ -1138,6 +1210,11 @@ struct EditorParseCache {
         /// Unused on iOS this pass — kept for API parity with macOS so
         /// callers don't need platform-conditional construction.
         var onOpenAttachment: ((String) -> Void)?
+        /// Unused on iOS this pass (tap-to-follow in the editor is Phase 3) —
+        /// kept for API parity with macOS.
+        var onOpenWikilink: ((Wikilink) -> Void)?
+        /// Unused on iOS this pass — kept for API parity with macOS.
+        var maxTextWidth: CGFloat?
 
         public init(
             text: Binding<String>,
@@ -1156,7 +1233,9 @@ struct EditorParseCache {
             grammarChecking: Bool = true,
             autocorrect: Bool = false,
             onSelectionContext: ((SelectionContext) -> Void)? = nil,
-            onOpenAttachment: ((String) -> Void)? = nil
+            onOpenAttachment: ((String) -> Void)? = nil,
+            onOpenWikilink: ((Wikilink) -> Void)? = nil,
+            maxTextWidth: CGFloat? = nil
         ) {
             _text = text
             _scrollTarget = scrollTarget
@@ -1175,6 +1254,8 @@ struct EditorParseCache {
             self.autocorrect = autocorrect
             self.onSelectionContext = onSelectionContext
             self.onOpenAttachment = onOpenAttachment
+            self.onOpenWikilink = onOpenWikilink
+            self.maxTextWidth = maxTextWidth
         }
 
         /// The flags as one value — what the coordinator diffs.

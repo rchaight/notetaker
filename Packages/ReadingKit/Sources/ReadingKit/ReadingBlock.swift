@@ -1,4 +1,5 @@
 import Foundation
+import MarkdownKit
 import TaskEngine
 
 /// A run of inline content in Reading mode. Formatting comes from the
@@ -13,8 +14,10 @@ public enum ReadingInline: Equatable, Sendable {
     case code(String)
     case link(destination: String, children: [ReadingInline])
     case image(source: String, alt: String)
-    /// `[[Note Title]]` — target only; Reading mode routes a tap to the app.
-    case wikilink(target: String)
+    /// `[[Note Title]]`, `[[Note|alias]]`, `[[Note#Heading]]` — the parsed
+    /// link; Reading mode shows `link.label` and routes a tap (carrying
+    /// `link.raw`) to the app.
+    case wikilink(Wikilink)
     case highlight([ReadingInline])
     /// `#tag`, without the '#'.
     case tag(String)

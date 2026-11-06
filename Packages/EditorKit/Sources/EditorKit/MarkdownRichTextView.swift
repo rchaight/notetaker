@@ -18,6 +18,44 @@ import UniformTypeIdentifiers
         /// Set by `MarkdownEditor` from its own `importAttachments` param.
         public var importAttachments: (([AttachmentDrop]) async -> [String])?
 
+        /// Caps the text column: wider than this, the view pads both sides
+        /// with `textContainerInset` so the text stays this wide and centred.
+        /// nil = the stock 16 pt inset (the text fills the view). The gutters
+        /// stay inside the view, so clicks there still focus the editor and
+        /// the fold-margin and image hit tests (which subtract the inset)
+        /// keep working.
+        public var maxTextWidth: CGFloat? {
+            didSet {
+                guard maxTextWidth != oldValue else { return }
+                applyColumnInset()
+            }
+        }
+
+        /// Side inset for a view `viewWidth` wide: 16 pt, or whatever centres
+        /// a `maxTextWidth` column (rounded down so the column is never
+        /// squeezed by a fractional point).
+        static func horizontalInset(viewWidth: CGFloat, maxTextWidth: CGFloat?) -> CGFloat {
+            guard let maxTextWidth else { return 16 }
+            return max(16, ((viewWidth - maxTextWidth) / 2).rounded(.down))
+        }
+
+        override public func setFrameSize(_ newSize: NSSize) {
+            super.setFrameSize(newSize)
+            // With no cap the inset is whatever the owner set (the editor
+            // uses 16); only a capped column recomputes on every resize.
+            if maxTextWidth != nil {
+                applyColumnInset()
+            }
+        }
+
+        private func applyColumnInset() {
+            let width = Self.horizontalInset(viewWidth: frame.width, maxTextWidth: maxTextWidth)
+            // Setting the inset can resize the view, which lands back here:
+            // only a real change may proceed.
+            guard textContainerInset.width != width else { return }
+            textContainerInset = NSSize(width: width, height: textContainerInset.height)
+        }
+
         override public init(frame frameRect: NSRect, textContainer container: NSTextContainer?) {
             super.init(frame: frameRect, textContainer: container)
             // Default NSTextView drag registration already covers plain

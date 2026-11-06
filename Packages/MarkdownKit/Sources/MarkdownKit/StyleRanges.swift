@@ -20,8 +20,9 @@ public enum MarkdownElementKind: Equatable, Sendable {
     case taskCheckbox(checked: Bool)
     case thematicBreak
     case table
-    /// `[[Note Title]]` — not CommonMark; detected by regex after the parse.
-    case wikilink(target: String)
+    /// `[[Note Title]]` — not CommonMark; detected by `WikilinkSyntax` after
+    /// the parse. The payload is the parsed link (target, heading, alias…).
+    case wikilink(Wikilink)
     /// `==marked text==` — not CommonMark; detected by regex after the parse.
     case highlightMark
     /// `![alt](source)` inline image.
@@ -70,9 +71,26 @@ public enum MarkdownStyler {
         }
     }
 
-    private static let wikilinkRegex = try? NSRegularExpression(
-        pattern: #"\[\[([^\[\]\n]+?)\]\]"#
-    )
+    /// Ranges of inline code and code blocks only — "literal text" for every
+    /// wikilink consumer (the index, Rename's link rewrite). The same parse
+    /// as `styleRanges`, but not counted by `parseCount`: that instrument is
+    /// about the editor's per-keystroke restyle, not indexing.
+    public static func codeRanges(in body: String) -> [NSRange] {
+        let document = Document(parsing: body, options: [.parseBlockDirectives])
+        var walker = StyleWalker(converter: SourceConverter(body))
+        walker.visit(document)
+        return codeRanges(of: walker.ranges)
+    }
+
+    private static func codeRanges(of ranges: [StyledRange]) -> [NSRange] {
+        ranges.compactMap { item -> NSRange? in
+            switch item.kind {
+            case .inlineCode, .codeBlock: item.range
+            default: nil
+            }
+        }
+    }
+
     private static let highlightRegex = try? NSRegularExpression(
         pattern: #"==([^=\n]+?)=="#
     )
@@ -93,19 +111,18 @@ public enum MarkdownStyler {
     private static func appendExtendedSyntax(in body: String, to ranges: inout [StyledRange]) {
         let ns = body as NSString
         let full = NSRange(location: 0, length: ns.length)
-        let codeRanges = ranges.compactMap { item -> NSRange? in
-            switch item.kind {
-            case .inlineCode, .codeBlock: item.range
-            default: nil
-            }
-        }
+        let codeRanges = codeRanges(of: ranges)
         func insideCode(_ range: NSRange) -> Bool {
             codeRanges.contains { NSIntersectionRange($0, range).length > 0 }
         }
-        for match in wikilinkRegex?.matches(in: body, range: full) ?? []
-            where !insideCode(match.range) {
-            let target = ns.substring(with: match.range(at: 1))
-            ranges.append(StyledRange(kind: .wikilink(target: target), range: match.range))
+        for link in WikilinkSyntax.links(in: body, excluding: codeRanges) {
+            // The styled span is the `[[…]]` itself: for `![[embed]]` the
+            // leading "!" stays plain text, so the bracket markers still hide.
+            let bang = link.isEmbed ? 1 : 0
+            ranges.append(StyledRange(
+                kind: .wikilink(link),
+                range: NSRange(location: link.range.location + bang, length: link.range.length - bang)
+            ))
         }
         for match in highlightRegex?.matches(in: body, range: full) ?? []
             where !insideCode(match.range) {

@@ -27,9 +27,6 @@ public enum NoteScanner {
     private static let taskRegex = try? NSRegularExpression(
         pattern: #"^\s*(?:[-*+]|[0-9]+[.)])\s+\[( |x|X)\]\s*(.*)$"#
     )
-    private static let wikilinkRegex = try? NSRegularExpression(
-        pattern: #"\[\[([^\[\]\|#]+)(?:#[^\]\|]*)?(?:\|[^\]]*)?\]\]"#
-    )
     private static let tagRegex = try? NSRegularExpression(
         pattern: #"(?<=^|\s)#([\p{L}\p{N}_][\p{L}\p{N}_\-/]*)"#
     )
@@ -67,16 +64,28 @@ public enum NoteScanner {
     }
 
     /// [[Target]], [[Target|alias]], [[Target#heading]] → "Target", deduped
-    /// in order of first appearance.
+    /// in order of first appearance. A path-qualified link
+    /// ([[Projects/Target]]) indexes its last component: backlinks are by
+    /// title. Parsing is `WikilinkSyntax`'s, shared with every other surface.
+    /// Links inside code spans and fenced blocks are literal text, not links
+    /// (the rule the editor, Reading mode and Rename's rewrite all apply), so
+    /// the index never nominates a note whose only "link" is code.
     public static func wikilinkTargets(in text: String) -> [String] {
-        guard let regex = wikilinkRegex else { return [] }
-        let ns = text as NSString
+        var links = WikilinkSyntax.links(in: text)
+        // Only pay for a parse when code could be present (backtick spans and
+        // fences, or ~~~ fences).
+        if !links.isEmpty, text.contains("`") || text.contains("~~~") {
+            let code = MarkdownStyler.codeRanges(in: text)
+            if !code.isEmpty {
+                links = WikilinkSyntax.links(in: text, excluding: code)
+            }
+        }
         var seen = Set<String>()
         var targets: [String] = []
-        for match in regex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
-            let target = ns.substring(with: match.range(at: 1)).trimmingCharacters(in: .whitespaces)
-            if !target.isEmpty, seen.insert(target).inserted {
-                targets.append(target)
+        for link in links {
+            let title = link.title
+            if !title.isEmpty, seen.insert(title).inserted {
+                targets.append(title)
             }
         }
         return targets

@@ -1,4 +1,5 @@
 import Foundation
+import MarkdownKit
 import SwiftUI
 
 /// Renders `[ReadingInline]` as one `AttributedString`, so a paragraph
@@ -11,19 +12,20 @@ public enum ReadingInlineText {
     /// Private scheme for wikilink taps — never leaves the process.
     static let wikilinkScheme = "notetaker-wikilink"
 
-    /// The note title a wikilink URL carries, or nil for any other URL.
+    /// The raw text between the brackets (`Note|alias`, `Note#Heading`…) a
+    /// wikilink URL carries, or nil for any other URL.
     public static func wikilinkTarget(of url: URL) -> String? {
         guard url.scheme == wikilinkScheme else { return nil }
-        // The title is the host+path of an opaque URL; read it back from the
-        // percent-encoded form so spaces and punctuation survive.
+        // The raw link text is the host+path of an opaque URL; read it back
+        // from the percent-encoded form so spaces and punctuation survive.
         let raw = url.absoluteString.dropFirst(wikilinkScheme.count + 3)
         return String(raw).removingPercentEncoding
     }
 
-    static func url(forWikilink target: String) -> URL? {
-        let encoded = target.addingPercentEncoding(
+    static func url(forWikilink raw: String) -> URL? {
+        let encoded = raw.addingPercentEncoding(
             withAllowedCharacters: .alphanumerics
-        ) ?? target
+        ) ?? raw
         return URL(string: "\(wikilinkScheme)://\(encoded)")
     }
 
@@ -89,11 +91,13 @@ public enum ReadingInlineText {
                         style: style, context: inner, into: &result
                     )
                 }
-            case let .wikilink(target):
+            case let .wikilink(link):
+                // Show the alias (or title › heading); the URL carries the
+                // raw inner text so the tap can re-parse and resolve it.
                 var inner = context
                 inner.color = style.accentColor
-                inner.link = url(forWikilink: target)
-                result.append(run(target, style: style, context: inner))
+                inner.link = url(forWikilink: link.raw)
+                result.append(run(link.label, style: style, context: inner))
             case let .image(source, alt):
                 // Inline (mid-sentence) images stay textual; a standalone
                 // image line is its own block and draws for real.
@@ -163,7 +167,7 @@ public enum ReadingInlineText {
             case let .link(destination, children):
                 children.isEmpty ? destination : plainText(children)
             case let .image(source, alt): alt.isEmpty ? source : alt
-            case let .wikilink(target): target
+            case let .wikilink(link): link.label
             case let .tag(name): "#" + name
             case let .mention(name): "@" + name
             case let .kindToken(kind): "?" + kind

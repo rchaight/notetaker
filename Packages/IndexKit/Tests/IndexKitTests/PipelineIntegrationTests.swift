@@ -90,6 +90,55 @@ struct PipelineIntegrationTests {
         #expect(try db.openTasks() == before)
     }
 
+    @Test func renameCandidatesComeFromBacklinksAndRewriteConverges() throws {
+        let (db, _) = try IndexDatabase.open(path: nil)
+        let indexer = NoteIndexer(database: db)
+        let files: [String: String] = [
+            "Plan.md": "# Plan\n\n## Budget\n\nNumbers.\n",
+            "a.md": "---\ntitle: A\n---\nSee [[Plan]] first.\n",
+            "b.md": "Aliased [[Plan|the plan]] and [[Plan#Budget]].\n",
+            "Work/c.md": "Pathed [[Projects/Plan#Budget|numbers]] and ![[Plan]].\n",
+            "d.md": "Unrelated [[Plans]] and `[[Plan]]` in code.\n",
+        ]
+        for (id, contents) in files {
+            try indexer.index(noteId: id, contents: contents, modifiedAt: nil)
+        }
+
+        // The index only nominates candidates...
+        let candidates = try db.backlinks(toTitle: "Plan")
+        #expect(candidates == ["Work/c.md", "a.md", "b.md"])
+
+        // ...the files decide: rewrite each candidate's body, then reindex it.
+        var rewritten = files
+        var changedLinks = 0
+        for id in candidates {
+            let document = try MarkdownDocument(source: #require(files[id]))
+            let result = WikilinkSyntax.rewrite(
+                document.body, renamingTitle: "Plan", to: "Plan 2026",
+                excluding: MarkdownStyler.codeRanges(in: document.body)
+            )
+            #expect(result.count > 0, "\(id) was nominated, so it must contain a real link")
+            changedLinks += result.count
+            let updated = MarkdownDocument(frontmatter: document.frontmatter, body: result.text).render()
+            rewritten[id] = updated
+            try indexer.index(noteId: id, contents: updated, modifiedAt: nil)
+        }
+        #expect(changedLinks == 5)
+        #expect(rewritten["a.md"] == "---\ntitle: A\n---\nSee [[Plan 2026]] first.\n")
+        #expect(rewritten["b.md"] == "Aliased [[Plan 2026|the plan]] and [[Plan 2026#Budget]].\n")
+        #expect(rewritten["Work/c.md"] == "Pathed [[Projects/Plan 2026#Budget|numbers]] and ![[Plan 2026]].\n")
+        #expect(rewritten["d.md"] == files["d.md"], "never nominated, never touched")
+
+        #expect(try db.backlinks(toTitle: "Plan").isEmpty)
+        #expect(try db.backlinks(toTitle: "Plan 2026") == ["Work/c.md", "a.md", "b.md"])
+        #expect(try db.backlinks(toTitle: "Plans") == ["d.md"])
+
+        // A rescan from the rewritten files converges to the same index.
+        try indexer.rescan(notes: rewritten.map { (id: $0.key, contents: $0.value, modifiedAt: nil) })
+        #expect(try db.backlinks(toTitle: "Plan").isEmpty)
+        #expect(try db.backlinks(toTitle: "Plan 2026") == ["Work/c.md", "a.md", "b.md"])
+    }
+
     @Test func editorAndMasterListCompletionAgree() {
         let text = "- [ ] water plants >2026-07-10 &every 3 days\n"
         // Editor path: token-range based.

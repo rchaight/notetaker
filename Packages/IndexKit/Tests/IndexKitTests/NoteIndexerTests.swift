@@ -69,6 +69,30 @@ struct NoteIndexerTests {
         #expect(links == [OutLinkRecord(noteId: "Work/plan.md", targetTitle: "Budget")])
     }
 
+    @Test func backlinksFindAliasHeadingAndPathLinks() throws {
+        let (db, indexer) = try make()
+        try indexer.index(noteId: "Plan.md", contents: "# Plan\n", modifiedAt: nil)
+        try indexer.index(noteId: "plain.md", contents: "See [[Plan]].\n", modifiedAt: nil)
+        try indexer.index(noteId: "alias.md", contents: "See [[Plan|the plan]].\n", modifiedAt: nil)
+        try indexer.index(noteId: "heading.md", contents: "See [[Plan#Budget]].\n", modifiedAt: nil)
+        try indexer.index(noteId: "block.md", contents: "See [[Plan#^abc12|that line]].\n", modifiedAt: nil)
+        try indexer.index(noteId: "path.md", contents: "See [[Projects/Plan]].\n", modifiedAt: nil)
+        try indexer.index(noteId: "embed.md", contents: "![[Plan]]\n", modifiedAt: nil)
+        try indexer.index(noteId: "spaced.md", contents: "See [[ plan ]].\n", modifiedAt: nil)
+        // Not links to Plan: a longer title, a self-heading link, links inside code.
+        try indexer.index(noteId: "plans.md", contents: "See [[Plans]] and [[#Plan]].\n", modifiedAt: nil)
+        try indexer.index(
+            noteId: "code.md",
+            contents: "Type `[[Plan]]` or\n```\n[[Plan]]\n```\n",
+            modifiedAt: nil
+        )
+
+        #expect(try db.backlinks(toTitle: "Plan") == [
+            "alias.md", "block.md", "embed.md", "heading.md", "path.md", "plain.md", "spaced.md",
+        ])
+        #expect(try db.backlinks(toTitle: "Plans") == ["plans.md"])
+    }
+
     @Test func unchangedContentIsSkipped() throws {
         let (_, indexer) = try make()
         try indexer.index(noteId: "a.md", contents: sample, modifiedAt: nil)

@@ -64,6 +64,8 @@ public struct ReadingView: View {
     let imageBase: URL?
     @Binding var scrollToLine: Int?
     let onToggleTask: (Int) -> Void
+    /// A tapped wikilink: the raw text between the brackets (`Note`,
+    /// `Note|alias`, `Note#Heading`) — parse it with `WikilinkSyntax`.
     let onOpenNote: (String) -> Void
     let onTopLineChanged: (Int) -> Void
 
@@ -122,8 +124,8 @@ public struct ReadingView: View {
         // Wikilinks are links with a private scheme — intercept those and
         // let every real URL fall through to the system.
         .environment(\.openURL, OpenURLAction { url in
-            if let target = ReadingInlineText.wikilinkTarget(of: url) {
-                onOpenNote(target)
+            if let raw = ReadingInlineText.wikilinkTarget(of: url) {
+                onOpenNote(raw)
                 return .handled
             }
             return .systemAction

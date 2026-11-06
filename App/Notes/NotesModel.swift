@@ -5,6 +5,20 @@ import Observation
 import SecurityKit
 import VaultKit
 
+/// Sidebar state that must outlive a tab switch (the Notes tab is unmounted while another tab
+/// shows, which used to reset it) but not a relaunch. Lives on `NotesModel`, which `AppShell`
+/// owns, so it survives exactly as long as the selection and open tabs do.
+struct SidebarState: Equatable {
+    var searchText = ""
+    var selectedTag: String?
+    var tagsExpanded = false
+    /// List selection for VAULT rows only; decoupled from `selectedID` so a click in
+    /// Favorites/Recents highlights THAT row instead.
+    var listSelection: String?
+    /// "section|noteId" of the clicked section row, nil when the Vault list owns the highlight.
+    var sectionHighlight: String?
+}
+
 /// Drives the Notes tab: live vault listing, note selection, load, and
 /// debounced coordinated autosave. Files remain the source of truth — this
 /// model never holds state that can't be rebuilt from the vault.
@@ -42,6 +56,7 @@ final class NotesModel {
     var openTabs: [VaultItem.ID] = []
     var selectedID: VaultItem.ID?
     var noteText = ""
+    var sidebar = SidebarState()
 
     private(set) var root: URL?
     /// The most recent Move to Trash, for the Undo toast. The view clears it (via
@@ -74,8 +89,13 @@ final class NotesModel {
     private var dirty = false
 
     private var started = false
+    /// UserDefaults hint for the note to reopen at launch (macOS). Never trusted: it is checked
+    /// against the vault listing on use, so a trashed, moved or other-vault note is not restored.
+    static let lastSelectedNoteKey = "ui.notes.lastSelectedNote"
     #if os(macOS)
         private var watcher: DirectoryWatcher?
+        /// Set once a restore has actually looked at a non-empty vault listing.
+        private var restoreSettled = false
     #endif
 
     func start() async {
@@ -86,7 +106,7 @@ final class NotesModel {
             if let custom = VaultRegistry.activeCustomRoot() {
                 root = custom
                 apply(VaultEnumerator.snapshot(of: custom))
-                state = .ready
+                markReady(.ready)
                 let watcher = DirectoryWatcher(root: custom)
                 self.watcher = watcher
                 observation = Task {
@@ -110,7 +130,7 @@ final class NotesModel {
         if let provisional {
             root = provisional
             apply(VaultEnumerator.snapshot(of: provisional))
-            state = .ready
+            markReady(.ready)
         }
 
         do {
@@ -118,7 +138,7 @@ final class NotesModel {
             root = documents
             UserDefaults.standard.set(documents.path, forKey: "lastVaultRoot")
             apply(VaultEnumerator.snapshot(of: documents))
-            state = .ready
+            markReady(.ready)
 
             let observer = MetadataQueryObserver(root: documents)
             self.observer = observer
@@ -142,11 +162,57 @@ final class NotesModel {
                 try FileManager.default.createDirectory(at: local, withIntermediateDirectories: true)
                 root = local
                 apply(VaultEnumerator.snapshot(of: local))
-                state = .readyLocalFallback
+                markReady(.readyLocalFallback)
             } catch {
                 state = .unavailable("No vault available: \(error.localizedDescription)")
             }
         }
+    }
+
+    /// Every path that makes the vault usable ends here. On the Mac it also reopens the note the
+    /// app was quit on; that runs off to the side so a slow note read never holds up `start()`.
+    private func markReady(_ ready: VaultState) {
+        state = ready
+        #if os(macOS)
+            Task { await restoreLastSelection() }
+        #endif
+    }
+
+    #if os(macOS)
+        /// Reopens the last-selected note at launch (spec ux-phase2/03). The key is only a hint:
+        /// it must name a note that is in the listing now and not under a hidden folder (`.trash/`),
+        /// otherwise nothing is restored and the stale key is dropped. A locked note comes back as
+        /// its placeholder (no key in memory), which is correct. Skipped when the user already
+        /// picked something. An empty listing is not evidence the note is gone (a cold iCloud
+        /// start can list nothing yet), so it neither restores nor discards; the next `markReady`
+        /// tries again.
+        private func restoreLastSelection() async {
+            guard !restoreSettled else { return }
+            guard selectedID == nil else {
+                restoreSettled = true
+                return
+            }
+            guard !notes.isEmpty else { return }
+            restoreSettled = true
+            let defaults = UserDefaults.standard
+            guard let id = defaults.string(forKey: Self.lastSelectedNoteKey) else { return }
+            guard !VaultPath.isInsideHiddenFolder(id), notesById[id] != nil else {
+                defaults.removeObject(forKey: Self.lastSelectedNoteKey)
+                return
+            }
+            await performSelect(id)
+        }
+    #endif
+
+    /// Remembers the open note for the next launch (macOS), or forgets it when nothing is open.
+    private func rememberSelection(_ id: String?) {
+        #if os(macOS)
+            if let id {
+                UserDefaults.standard.set(id, forKey: Self.lastSelectedNoteKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: Self.lastSelectedNoteKey)
+            }
+        #endif
     }
 
     func stop() {
@@ -244,14 +310,30 @@ final class NotesModel {
     /// editor can scroll to it once the text is loaded.
     private(set) var pendingJumpLine: Int?
 
+    /// A wikilink's `#Heading` / `#^block` anchor, resolved to a line by the view once the
+    /// target's text is loaded (spec ux-phase2/06).
+    private(set) var pendingJumpAnchor: (heading: String?, blockId: String?)?
+
     func openNote(_ id: String, jumpToLine line: Int?) {
         pendingJumpLine = line
+        pendingJumpAnchor = nil
+        select(id)
+    }
+
+    func openNote(_ id: String, jumpToAnchor anchor: (heading: String?, blockId: String?)?) {
+        pendingJumpLine = nil
+        pendingJumpAnchor = anchor
         select(id)
     }
 
     func consumeJumpLine() -> Int? {
         defer { pendingJumpLine = nil }
         return pendingJumpLine
+    }
+
+    func consumeJumpAnchor() -> (heading: String?, blockId: String?)? {
+        defer { pendingJumpAnchor = nil }
+        return pendingJumpAnchor
     }
 
     func select(_ id: VaultItem.ID?) {
@@ -300,6 +382,9 @@ final class NotesModel {
         guard let id, let item = notesById[id] else {
             loadedURL = nil
             noteText = ""
+            if id == nil {
+                rememberSelection(nil)
+            }
             return
         }
         do {
@@ -323,6 +408,10 @@ final class NotesModel {
                 lockedPlaceholder = false
             }
             dirty = false
+            // Not if the user already moved on while this note was being read.
+            if selectedID == id {
+                rememberSelection(id)
+            }
         } catch {
             loadedURL = nil
             noteText = ""
@@ -489,6 +578,7 @@ final class NotesModel {
             if selectedID == currentId {
                 loadedURL = destination
                 selectedID = newId
+                rememberSelection(newId)
             }
             openTabs = openTabs.map { $0 == currentId ? newId : $0 }
             recents = recents.map { $0 == currentId ? newId : $0 }
@@ -506,7 +596,11 @@ final class NotesModel {
             let trimmed = strippingCarriageReturn(line).trimmingCharacters(in: .whitespaces)
             guard !trimmed.isEmpty else { continue }
             guard trimmed.hasPrefix("#") else { return nil }
-            let title = trimmed.drop { $0 == "#" }.trimmingCharacters(in: .whitespaces)
+            // ATX: the `#` run needs a space or tab after it, so `#inbox #work` (a tag line) is
+            // not a heading. Keep in step with `replacingFirstHeading`.
+            let rest = trimmed.drop { $0 == "#" }
+            guard rest.first == " " || rest.first == "\t" else { return nil }
+            let title = rest.trimmingCharacters(in: .whitespaces)
             return title.isEmpty ? nil : title
         }
         return nil
@@ -793,7 +887,19 @@ final class NotesModel {
     }
 
     func createNote(in folder: String = "") {
+        createNote(titled: "Untitled", in: folder)
+    }
+
+    /// A new note named after `title` (sanitised, uniquified) with a matching H1, opened. The
+    /// unresolved-wikilink "Create Note" path (spec ux-phase2/06) passes the link's title.
+    func createNote(titled title: String, in folder: String = "") {
         guard let root else { return }
+        let base = Self.sanitizeFileName(title).isEmpty ? "Untitled" : Self.sanitizeFileName(title)
+        // `[[_index]]` must not mint the app-generated folder index; same toast as a rename.
+        guard !Self.isReservedName(base) else {
+            renameFailure = Self.message(for: .invalidName, base: base)
+            return
+        }
         Task {
             let prefix = folder.isEmpty ? "" : folder + "/"
             let reserved = Set(
@@ -802,7 +908,7 @@ final class NotesModel {
                     .map { String($0.dropFirst(prefix.count)) }
             )
             let name = prefix + VaultNaming.uniqueFileName(
-                base: "Untitled", ext: "md",
+                base: base, ext: "md",
                 in: root.appendingPathComponent(folder, isDirectory: true),
                 reserved: reserved
             )
@@ -865,6 +971,7 @@ final class NotesModel {
                 }
                 if selectedID == item.id {
                     selectedID = newRelative
+                    rememberSelection(newRelative)
                 }
                 if recents.contains(item.id) {
                     recents = recents.map { $0 == item.id ? newRelative : $0 }
@@ -875,6 +982,362 @@ final class NotesModel {
                 // Move failed; list refresh will show reality.
             }
         }
+    }
+
+    // MARK: - Rename (spec ux-phase2/05)
+
+    struct RenameReceipt: Equatable {
+        let oldId: String
+        let newId: String
+        let oldTitle: String
+        let newTitle: String
+        /// The first heading's text before the rename (nil when the note had none or its body
+        /// was not readable, i.e. locked). Undo writes it back, so a heading that differed from
+        /// the file name ("Plan: Q3" in "Plan- Q3.md") comes back byte for byte.
+        let oldHeading: String?
+    }
+
+    enum RenameError: Error, Equatable {
+        case invalidName
+        case nameTaken
+        case hasConflicts
+        case saveFailed
+        /// The note was renamed or removed while its pending text was being saved.
+        case noteChanged
+        case moveFailed(String)
+    }
+
+    /// The most recent rename, for the Undo toast (6 s, same pattern as `lastTrashed`).
+    private(set) var lastRenamed: RenameReceipt?
+    /// Why an Undo Rename (or a rename's follow-up) failed, for a transient message.
+    private(set) var renameFailure: String?
+
+    /// File name a requested title is saved under: `sanitizeFileName` plus the characters that
+    /// would make `[[New]]` parse differently from the name (`#` starts a heading, `[` `]`
+    /// end the link) become "-", and line breaks become spaces. Title-sync's own sanitising is
+    /// deliberately left alone, so existing notes are not renamed by this.
+    nonisolated static func renameBaseName(_ requested: String) -> String {
+        let cleaned = String(requested.map { character -> Character in
+            if character.isNewline {
+                return " "
+            }
+            return "#[]".contains(character) ? "-" : character
+        })
+        return sanitizeFileName(cleaned)
+    }
+
+    /// Why `requested` can't be used as `item`'s new name, nil when it can (also nil when it
+    /// is the current name: nothing to do, not an error). Shared by the sheet's live
+    /// validation and `rename` itself.
+    func renameProblem(_ item: VaultItem, to requested: String) -> RenameError? {
+        renameProblem(item, toBase: Self.renameBaseName(requested))
+    }
+
+    /// `_index.md` is app-generated per folder; a note by that name (any case, on a
+    /// case-insensitive volume) would vanish from the list and be overwritten.
+    nonisolated static func isReservedName(_ base: String) -> Bool {
+        base.lowercased() == "_index"
+    }
+
+    /// `renameProblem(_:to:)` for a file base that is already clean (Undo passes the old file
+    /// name as it was, which may hold a `#` that a typed name would lose).
+    private func renameProblem(_ item: VaultItem, toBase newBase: String) -> RenameError? {
+        guard !newBase.isEmpty, !Self.isReservedName(newBase) else { return .invalidName }
+        let oldBase = Self.noteTitle(ofPath: item.id)
+        guard newBase != oldBase else { return nil }
+        let folder = item.url.deletingLastPathComponent()
+        if newBase.lowercased() == oldBase.lowercased() {
+            // Case-only: the volume says the destination exists (it is this very file) when it
+            // is case-insensitive. Only a second, distinct file of exactly that name counts.
+            let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+            return names.contains(newBase + ".md") ? .nameTaken : nil
+        }
+        if VaultNaming.isTaken(folder.appendingPathComponent(newBase + ".md")) {
+            return .nameTaken
+        }
+        // The listing can know a note the disk check misses (case-sensitive volume, links
+        // resolve case-insensitively, so "plan" next to "Plan" would be ambiguous).
+        let prefix = item.id.contains("/") ? (item.id as NSString).deletingLastPathComponent + "/" : ""
+        let wanted = prefix + newBase + ".md"
+        let clash = notes.contains {
+            $0.id != item.id && $0.id.compare(wanted, options: .caseInsensitive) == .orderedSame
+        }
+        return clash ? .nameTaken : nil
+    }
+
+    /// Renames a note (spec 05 §Algorithm). Order matters for crash/failure safety:
+    /// 1 validate → 2 flush the editor → 3 set the heading under the OLD path → 4 coordinated
+    /// move → 5 retarget everything keyed by the id (incl. the unlock key) → 6 rewrite the
+    /// note's own links → 7 relist. Each step's failure stops the sequence and is returned;
+    /// earlier steps are not rolled back (a heading that already says New is completed by the
+    /// note's next save, through title-sync). Inbound links are the caller's step 8
+    /// (`VaultIndexService.rewriteInboundLinks`), then `rescan()`.
+    func rename(_ item: VaultItem, to requestedTitle: String) async -> Result<RenameReceipt, RenameError> {
+        let result = await performRename(item, toBase: Self.renameBaseName(requestedTitle), heading: nil)
+        if case let .success(receipt) = result, receipt.oldId != receipt.newId {
+            lastRenamed = receipt
+        }
+        return result
+    }
+
+    /// Undo for the toast: the reverse rename through the same path (same checks, so it
+    /// refuses if the old name was taken meanwhile). Returns the reverse receipt so the caller
+    /// can run the inbound rewrite New → Old; nil (with `renameFailure` set) when it failed.
+    func undoLastRename() async -> RenameReceipt? {
+        guard let receipt = lastRenamed else { return nil }
+        lastRenamed = nil
+        guard let item = notesById[receipt.newId] else {
+            renameFailure = "Couldn't undo the rename: “\(receipt.newTitle)” is no longer in the vault."
+            return nil
+        }
+        switch await performRename(item, toBase: receipt.oldTitle, heading: receipt.oldHeading) {
+        case let .success(reverse):
+            renameFailure = nil
+            return reverse.oldId == reverse.newId ? nil : reverse
+        case let .failure(error):
+            renameFailure = "Couldn't undo the rename: \(Self.message(for: error, base: receipt.oldTitle))"
+            return nil
+        }
+    }
+
+    /// The toast timed out, Undo ran, or a failure message expired.
+    func dismissRenameNotice() {
+        lastRenamed = nil
+        renameFailure = nil
+    }
+
+    /// `base`: the cleaned file name the rename was asked for.
+    nonisolated static func message(for error: RenameError, base: String) -> String {
+        switch error {
+        case .invalidName: base.isEmpty ? "Name can't be empty." : "“\(base)” is reserved for the app's folder index."
+        case .nameTaken: "“\(base)” already exists in this folder."
+        case .hasConflicts: "This note has an unresolved sync conflict. Resolve it first."
+        case .saveFailed: "Couldn't save the note before renaming it."
+        case .noteChanged: "The note changed while it was being saved. Try again."
+        case let .moveFailed(reason): "Couldn't rename: \(reason)"
+        }
+    }
+
+    /// `heading`: the text to put in the first heading (Undo's original); nil = the new name.
+    private func performRename(
+        _ item: VaultItem, toBase newBase: String, heading: String?
+    ) async -> Result<RenameReceipt, RenameError> {
+        guard let root else { return .failure(.moveFailed("the vault isn't ready")) }
+        // 1. Validate. Nothing has been written yet.
+        if let problem = renameProblem(item, toBase: newBase) {
+            return .failure(problem)
+        }
+        let oldBase = Self.noteTitle(ofPath: item.id)
+        guard newBase != oldBase else {
+            return .success(RenameReceipt(
+                oldId: item.id, newId: item.id, oldTitle: oldBase, newTitle: newBase, oldHeading: nil
+            ))
+        }
+        let caseOnly = newBase.lowercased() == oldBase.lowercased()
+        if item.hasUnresolvedConflicts || !VaultConflictCenter().unresolvedVersions(for: item.url).isEmpty {
+            return .failure(.hasConflicts)
+        }
+        // Resolution pool as it is BEFORE the rename: self links resolve against it.
+        let pool = notes.map { (id: $0.id, title: Self.noteTitle(ofPath: $0.id)) }
+
+        // 2. Flush the editor under the current name. An autosave already past its debounce
+        // finishes first (it may title-sync), then whatever is still pending is written with
+        // title-sync OFF, so nothing moves the file under the steps below.
+        saveTask?.cancel()
+        await saveTask?.value
+        await flushSave(allowRename: false)
+        let isOpen = selectedID == item.id
+        if isOpen, dirty {
+            return .failure(.saveFailed)
+        }
+        // Re-resolve: if the file moved or vanished meanwhile, stop rather than guess.
+        apply(VaultEnumerator.snapshot(of: root))
+        guard let current = notesById[item.id], !isOpen || loadedURL == current.url else {
+            return .failure(.noteChanged)
+        }
+
+        // 3. Heading sync under the OLD path, so a crash or a failed move below leaves a note
+        // whose next save (title-sync) completes the rename instead of reverting it.
+        let headingText = heading ?? newBase
+        var oldHeading: String?
+        if isOpen, !lockedPlaceholder {
+            // The editor's text: plaintext for an unlocked locked note too, and the save below
+            // re-encrypts it (`commit` checks the unlock key first).
+            if let synced = Self.replacingFirstHeading(in: noteText, with: headingText) {
+                oldHeading = synced.previous
+                noteText = synced.text
+                dirty = true
+                await flushSave(allowRename: false)
+                if dirty {
+                    return .failure(.saveFailed)
+                }
+            }
+        } else {
+            do {
+                let contents = try await store.readString(at: current.url)
+                // A locked file's body is ciphertext: no heading to sync, nothing to write.
+                if MarkdownDocument(source: contents).frontmatter?.values["locked"] != "true",
+                   let synced = Self.replacingFirstHeading(in: contents, with: headingText) {
+                    oldHeading = synced.previous
+                    try await store.writeString(synced.text, to: current.url)
+                }
+            } catch {
+                return .failure(.saveFailed)
+            }
+        }
+
+        // 4. Move (coordinated, never overwrites). A case-only rename that the volume refuses
+        // goes through a temporary name in the same folder.
+        let folder = current.url.deletingLastPathComponent()
+        let destination = folder.appendingPathComponent(newBase + ".md")
+        let tabIndex = openTabs.firstIndex(of: item.id)
+        do {
+            do {
+                try await store.move(from: current.url, to: destination)
+            } catch where caseOnly {
+                let temporary = folder.appendingPathComponent("\(oldBase).md.renaming-\(UUID().uuidString)")
+                try await store.move(from: current.url, to: temporary)
+                do {
+                    try await store.move(from: temporary, to: destination)
+                } catch {
+                    try? await store.move(from: temporary, to: current.url)
+                    throw error
+                }
+            }
+        } catch {
+            return .failure(.moveFailed(error.localizedDescription))
+        }
+
+        // 5. Retarget everything keyed by the id (the id IS the path). Same calls as
+        // `move(toFolder:)`: a missed unlock key makes the next save of an unlocked locked note
+        // write PLAINTEXT; a missed `loadedURL` makes typing recreate the old file.
+        let newId = VaultPath.relativePath(of: destination, in: root)
+        let oldId = item.id
+        unlockedKeys.rekey(from: oldId, to: newId)
+        if loadedURL == current.url {
+            loadedURL = destination
+        }
+        if let index = openTabs.firstIndex(of: oldId) {
+            openTabs[index] = newId
+        } else if let tabIndex, !openTabs.contains(newId) {
+            // A listing refresh during the move already dropped the old id.
+            openTabs.insert(newId, at: min(tabIndex, openTabs.count))
+        }
+        if selectedID == oldId {
+            selectedID = newId
+            rememberSelection(newId)
+        }
+        if recents.contains(oldId) {
+            recents = recents.map { $0 == oldId ? newId : $0 }
+            UserDefaults.standard.set(recents, forKey: "recentNotes")
+        }
+        displayedRecents = displayedRecents.map { $0 == oldId ? newId : $0 }
+        if sidebar.listSelection == oldId {
+            sidebar.listSelection = newId
+        }
+        if let highlight = sidebar.sectionHighlight, highlight.hasSuffix("|" + oldId) {
+            sidebar.sectionHighlight = String(highlight.dropLast(oldId.count)) + newId
+        }
+
+        // 6. The note's own links to itself. Failure here does not undo the rename.
+        await rewriteSelfLinks(
+            id: newId, url: destination, sourceId: oldId, old: oldBase, new: newBase, pool: pool
+        )
+
+        // 7. Relist.
+        apply(VaultEnumerator.snapshot(of: root))
+        return .success(RenameReceipt(
+            oldId: oldId, newId: newId, oldTitle: oldBase, newTitle: newBase, oldHeading: oldHeading
+        ))
+    }
+
+    /// Step 6: `[[Old]]` inside the renamed note itself. The open note goes through the
+    /// editor text (re-encrypted on save when it is an unlocked locked note); a closed locked
+    /// note is left alone (ciphertext).
+    private func rewriteSelfLinks(
+        id: String, url: URL, sourceId: String, old: String, new: String,
+        pool: [(id: String, title: String)]
+    ) async {
+        if selectedID == id, loadedURL == url, !lockedPlaceholder {
+            let result = WikilinkRenameRewrite.rewrite(
+                noteText, sourceId: sourceId, renamingTitle: old, to: new, renamedId: sourceId, among: pool
+            )
+            guard result.count > 0 else { return }
+            noteText = result.text
+            dirty = true
+            await flushSave(allowRename: false)
+            if dirty {
+                renameFailure = "Renamed, but couldn't update the links inside “\(new)” itself."
+            }
+            return
+        }
+        guard let contents = try? await store.readString(at: url) else { return }
+        guard MarkdownDocument(source: contents).frontmatter?.values["locked"] != "true" else { return }
+        let result = WikilinkRenameRewrite.rewrite(
+            contents, sourceId: sourceId, renamingTitle: old, to: new, renamedId: sourceId, among: pool
+        )
+        guard result.count > 0 else { return }
+        do {
+            try await store.writeString(result.text, to: url)
+        } catch {
+            renameFailure = "Renamed, but couldn't update the links inside “\(new)” itself."
+        }
+    }
+
+    /// Replaces the TEXT of the first heading (the line `headingTitle(of:)` reads) with
+    /// `title`, keeping its `#` run, the spacing around the text and a trailing `\r`. Nil when
+    /// the first non-empty body line is not a heading. `previous` is the text it replaced.
+    nonisolated static func replacingFirstHeading(
+        in text: String, with title: String
+    ) -> (text: String, previous: String)? {
+        let document = MarkdownDocument(source: text)
+        let ns = text as NSString
+        var lineStart = document.bodyUTF16Offset
+        let newline = unichar(0x0A)
+        while lineStart <= ns.length {
+            var lineEnd = lineStart
+            while lineEnd < ns.length, ns.character(at: lineEnd) != newline {
+                lineEnd += 1
+            }
+            let line = ns.substring(with: NSRange(location: lineStart, length: lineEnd - lineStart))
+            let content = strippingCarriageReturn(line)
+            let trimmed = content.trimmingCharacters(in: .whitespaces)
+            if !trimmed.isEmpty {
+                guard trimmed.hasPrefix("#") else { return nil }
+                // Locate the title inside the line: after leading spaces, the # run and the
+                // spaces that follow it; before trailing spaces.
+                let chars = content as NSString
+                var start = 0
+                while start < chars.length, isSpace(chars.character(at: start)) {
+                    start += 1
+                }
+                while start < chars.length, chars.character(at: start) == 0x23 {
+                    start += 1
+                }
+                // Same rule as `headingTitle(of:)`: no space after the `#` run, no heading.
+                guard start < chars.length, isSpace(chars.character(at: start)) else { return nil }
+                while start < chars.length, isSpace(chars.character(at: start)) {
+                    start += 1
+                }
+                var end = chars.length
+                while end > start, isSpace(chars.character(at: end - 1)) {
+                    end -= 1
+                }
+                guard end > start else { return nil }
+                let range = NSRange(location: start, length: end - start)
+                let previous = chars.substring(with: range)
+                let replaced = ns.replacingCharacters(
+                    in: NSRange(location: lineStart + start, length: range.length), with: title
+                )
+                return (replaced, previous)
+            }
+            lineStart = lineEnd + 1
+        }
+        return nil
+    }
+
+    private nonisolated static func isSpace(_ unit: unichar) -> Bool {
+        unit == 0x20 || unit == 0x09
     }
 
     // MARK: - Trash

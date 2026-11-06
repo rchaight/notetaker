@@ -8,6 +8,9 @@ struct NotetakerApp: App {
     @State private var indexService = VaultIndexService()
     @State private var notesModel = NotesModel()
     @State private var extrasStore = TaskExtrasStore()
+    /// Menu-bar commands (macOS) and the views that perform them. Owned here
+    /// because the shell is rebuilt on a vault switch and the menu must not be.
+    @State private var commands = ShellCommandBus()
 
     init() {
         // Dev builds change toolbars between installs; restoring a stale
@@ -51,13 +54,15 @@ struct NotetakerApp: App {
             AppShell(
                 indexService: indexService,
                 notesModel: notesModel,
-                extrasStore: extrasStore
+                extrasStore: extrasStore,
+                commands: commands
             )
             .id(activeVault)
         }
         .defaultSize(width: 1150, height: 720)
         #if os(macOS)
             .windowStyle(.hiddenTitleBar)
+            .commands { NotetakerCommands(bus: commands) }
         #endif
 
         WindowGroup("Task", id: "task-detail", for: String.self) { $taskId in

@@ -83,8 +83,46 @@ struct ExtendedSyntaxTests {
                 false
             }
         }
-        #expect(link?.kind == .wikilink(target: "Project Plan"))
+        guard case let .wikilink(parsed) = link?.kind else {
+            Issue.record("expected a wikilink")
+            return
+        }
+        #expect(parsed.target == "Project Plan")
+        #expect(parsed.range == NSRange(location: 4, length: 16))
         #expect(link?.range == NSRange(location: 4, length: 16))
+    }
+
+    @Test func wikilinkCarriesAliasAndHeading() {
+        let styled = MarkdownStyler.styleRanges(in: "[[Plan#Budget|the plan]]\n")
+        guard case let .wikilink(parsed) = styled.first(where: {
+            if case .wikilink = $0.kind {
+                true
+            } else {
+                false
+            }
+        })?.kind else {
+            Issue.record("expected a wikilink")
+            return
+        }
+        #expect(parsed.target == "Plan")
+        #expect(parsed.heading == "Budget")
+        #expect(parsed.alias == "the plan")
+    }
+
+    @Test func embedKeepsItsBracketsHidingAndBangPlain() {
+        let text = "![[Diagram]] after\n"
+        let styled = MarkdownStyler.styleRanges(in: text)
+        let link = styled.first {
+            if case .wikilink = $0.kind {
+                true
+            } else {
+                false
+            }
+        }
+        #expect(link?.range == NSRange(location: 1, length: 11), "the styled span excludes the bang")
+        let markers = SyntaxMarkers.markerRanges(in: text, styled: styled)
+            .map { (text as NSString).substring(with: $0) }
+        #expect(markers.sorted() == ["[[", "]]"])
     }
 
     @Test func highlightMarkDetected() {

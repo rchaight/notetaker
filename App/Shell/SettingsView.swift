@@ -370,9 +370,11 @@ struct SettingsView: View {
                         Text(mode.title).tag(mode)
                     }
                 }
-                Text("⌘E cycles Source → Live Preview → Reading. ⌘/ flips between Source and Live Preview.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text(
+                    "⌘E cycles Source → Live Preview → Reading. ⌘/ flips between Source and Live Preview — all shortcuts are in the menu bar."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
             Section("Proofing") {
                 Toggle("Check spelling while typing", isOn: $proofSpelling)

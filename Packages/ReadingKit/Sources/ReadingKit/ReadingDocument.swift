@@ -373,8 +373,8 @@ struct ReadingBuilder {
 
     private func inline(for span: ExtendedSpan) -> ReadingInline {
         switch span.kind {
-        case let .wikilink(target):
-            return .wikilink(target: target)
+        case let .wikilink(link):
+            return .wikilink(link)
         case .highlightMark:
             // "==text==" — recurse so a token inside a highlight keeps its
             // own styling.

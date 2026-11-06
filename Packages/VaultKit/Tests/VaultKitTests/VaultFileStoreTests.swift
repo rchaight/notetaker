@@ -68,6 +68,26 @@ struct VaultFileStoreTests {
         #expect(contents == "moving")
     }
 
+    /// Rename's case-only path (`Plan.md` → `plan.md`) rides on this: on a
+    /// case-insensitive volume (the default for APFS, and iCloud Drive) the
+    /// two names are the same file. On a case-sensitive host it is an ordinary
+    /// move, so the assertions hold either way.
+    @Test func moveRenamesCaseOnly() async throws {
+        let root = try makeTempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = VaultFileStore()
+        let source = root.appendingPathComponent("Note.md")
+        let destination = root.appendingPathComponent("note.md")
+
+        try await store.writeString("same file", to: source)
+        try await store.move(from: source, to: destination)
+
+        let names = try FileManager.default.contentsOfDirectory(atPath: root.path)
+        #expect(names == ["note.md"], "exactly one entry, spelled with the new case")
+        let contents = try await store.readString(at: destination)
+        #expect(contents == "same file")
+    }
+
     @Test func readMissingFileThrows() async throws {
         let root = try makeTempRoot()
         defer { try? FileManager.default.removeItem(at: root) }

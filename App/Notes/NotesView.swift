@@ -28,6 +28,9 @@ struct NotesView: View {
     /// Owned by AppShell: tab switches must not reset vault/tab/selection
     /// state (a fresh model also re-blocks on cold container resolution).
     let model: NotesModel
+    /// Menu-bar commands: this view performs the Notes-tab scopes and
+    /// publishes what is enabled (see `ShellCommandBus`).
+    let commands: ShellCommandBus
     /// Remembered globally (Obsidian's default); per-note memory is a
     /// deliberate non-goal for now.
     @AppStorage("editorMode") private var editorMode = EditorMode.live
@@ -61,14 +64,12 @@ struct NotesView: View {
     @AppStorage("proofSpelling") private var proofSpelling = true
     @AppStorage("proofGrammar") private var proofGrammar = true
     @AppStorage("proofAutocorrect") private var proofAutocorrect = false
-    @State private var searchText = ""
     @State private var semanticIds: [String] = []
     @State private var showingImporter = false
     @State private var showingImagePicker = false
     @State private var showingVaultPicker = false
     @State private var showingVaultImporter = false
     @AppStorage(VaultRegistry.activeKey) private var activeVault = VaultRegistry.iCloudId
-    @State private var selectedTag: String?
     @State private var allTags: [(tag: String, count: Int)] = []
     @State private var pinnedIds: [String] = []
     @State private var bookmarkedIds: [String] = []
@@ -78,12 +79,58 @@ struct NotesView: View {
     @State private var newAreaName = ""
     @AppStorage("savedNoteSearches") private var savedSearchesData = "[]"
     @AppStorage("favoriteFolders") private var favoriteFoldersData = "[]"
+    /// Sidebar state that has to survive a tab switch lives on the model, not here: the Notes tab
+    /// is unmounted while another tab shows, and `@State` went with it (spec ux-phase2/03).
+    private var searchText: String {
+        get { model.sidebar.searchText }
+        nonmutating set { model.sidebar.searchText = newValue }
+    }
+
+    private var selectedTag: String? {
+        get { model.sidebar.selectedTag }
+        nonmutating set { model.sidebar.selectedTag = newValue }
+    }
+
+    private var tagsExpanded: Bool {
+        get { model.sidebar.tagsExpanded }
+        nonmutating set { model.sidebar.tagsExpanded = newValue }
+    }
+
+    /// List selection for VAULT rows only; decoupled from model.selectedID
+    /// so a click in Favorites/Recents highlights THAT row instead.
+    private var listSelection: String? {
+        get { model.sidebar.listSelection }
+        nonmutating set { model.sidebar.listSelection = newValue }
+    }
+
+    /// "section|noteId" of the clicked section row, nil when the Vault
+    /// list owns the highlight.
+    private var sectionHighlight: String? {
+        get { model.sidebar.sectionHighlight }
+        nonmutating set { model.sidebar.sectionHighlight = newValue }
+    }
+
+    /// Open folders persist across relaunches too (a JSON array like `favoriteFolders`). Entries
+    /// are `section|folder` keys; one for a folder that no longer exists is simply never asked for.
+    @AppStorage("ui.notes.expandedFolders") private var expandedFoldersData = "[]"
+    private var expandedFolders: Set<String> {
+        get { Set((try? JSONDecoder().decode([String].self, from: Data(expandedFoldersData.utf8))) ?? []) }
+        nonmutating set {
+            expandedFoldersData = (try? JSONEncoder().encode(newValue.sorted()))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? expandedFoldersData
+        }
+    }
+
     @State private var importStatus: String?
     @State private var aiStatus: String?
     @State private var showingNewFolder = false
     @State private var newFolderName = ""
     @State private var newFolderParent = ""
-    @State private var showInspector = false
+    #if os(macOS)
+        @AppStorage("ui.notes.inspector") private var showInspector = false
+    #else
+        @State private var showInspector = false
+    #endif
     @State private var scrollTarget: NSRange?
     @State private var editorCommand: EditorCommandRequest?
     @State private var findSignal = 0
@@ -107,20 +154,18 @@ struct NotesView: View {
     @State private var showingTrash = false
     /// The note whose sync conflict the sheet is resolving (spec ux-phase1/05).
     @State private var conflictNote: VaultItem?
+    /// Rename flow (spec ux-phase2/05): the note the Rename sheet is for, and the inbound notes
+    /// whose link rewrite failed (the Try Again alert).
+    @State private var renameCandidate: VaultItem?
+    @State private var linkRetry: LinkRetry?
+    /// An unresolved ⌘-clicked / tapped wikilink awaiting "Create Note" (spec ux-phase2/06).
+    @State private var createLinkCandidate: Wikilink?
     @State private var showingLockSheet = false
     @State private var showingUnlockSheet = false
     @State private var lockPassphrase = ""
     @State private var lockConfirm = ""
     @State private var lockError: String?
-    /// List selection for VAULT rows only; decoupled from model.selectedID
-    /// so a click in Favorites/Recents highlights THAT row instead.
-    @State private var listSelection: String?
-    /// "section|noteId" of the clicked section row, nil when the Vault
-    /// list owns the highlight.
-    @State private var sectionHighlight: String?
-    @State private var expandedFolders: Set<String> = []
     @AppStorage("noteSortOrder") private var noteSortOrder = "name"
-    @State private var tagsExpanded = false
     // Proofread (LanguageTool) — spec 02.
     @State private var showingProofread = false
     @State private var proofreadState = ProofreadState.idle
@@ -131,6 +176,39 @@ struct NotesView: View {
     @AppStorage("languageToolLanguage") private var languageToolLanguage = "auto"
 
     var body: some View {
+        notesContent
+            .task {
+                // After the appear, so a vault switch (old view out, new view
+                // in) cannot leave the flag false.
+                publishCommandState()
+            }
+            .onAppear { publishCommandState() }
+            .onDisappear { commands.publish(\.notesTabVisible, false) }
+            .onChange(of: model.selectedID) { publishCommandState() }
+            .onChange(of: model.lockedPlaceholder) { publishCommandState() }
+            .onChange(of: editorMode) { publishCommandState() }
+            .onChange(of: model.selectedIsLockable) { publishCommandState() }
+            .onChange(of: languageToolConfigured) { publishCommandState() }
+            .onChange(of: showInspector) { publishCommandState() }
+            .onReceive(windowDidBecomeKey) { _ in publishCommandState() }
+            .onChange(of: commands.requestID) {
+                guard let command = commands.pending, command.scope != .shell else { return }
+                performMenuCommand(command)
+            }
+    }
+
+    /// The LanguageTool URL is saved in the Settings window, which never
+    /// re-renders this view: the menu re-reads it when a window takes key.
+    private var windowDidBecomeKey: NotificationCenter.Publisher {
+        #if os(macOS)
+            NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)
+        #else
+            // The command bus is macOS-only in effect; nothing to re-read.
+            NotificationCenter.default.publisher(for: Notification.Name("NotetakerWindowKeyIsMacOnly"))
+        #endif
+    }
+
+    private var notesContent: some View {
         NavigationSplitView {
             sidebar
                 .navigationSplitViewColumnWidth(min: 200, ideal: 260, max: 420)
@@ -170,7 +248,7 @@ struct NotesView: View {
         // the macOS 27 beta (NSToolbar insert exception) — macOS gets an
         // in-sidebar field instead; iOS keeps the system search UI.
         #if os(iOS)
-        .searchable(text: $searchText, prompt: "Search all notes")
+        .searchable(text: Bindable(model).sidebar.searchText, prompt: "Search all notes")
         #endif
         // Two alerts must NOT share one attachment point — SwiftUI honors
         // only one .alert per view (New Folder went dead, user-reported).
@@ -234,6 +312,39 @@ struct NotesView: View {
                 await indexService.rescan()
             }
         }
+        .sheet(item: $renameCandidate) { note in
+            RenameNoteSheet(note: note, model: model, indexService: indexService) { name in
+                await performRename(note, to: name)
+            }
+        }
+        .background(
+            EmptyView().alert(
+                "Some Links Weren't Updated",
+                isPresented: Binding(
+                    get: { linkRetry != nil },
+                    set: {
+                        if !$0 {
+                            linkRetry = nil
+                        }
+                    }
+                ),
+                presenting: linkRetry
+            ) { retry in
+                Button("Try Again") {
+                    Task {
+                        await rewriteInboundLinks(
+                            for: retry.receipt, pool: retry.pool, only: Set(retry.failed.map(\.id))
+                        )
+                    }
+                }
+                Button("OK", role: .cancel) { linkRetry = nil }
+            } message: { retry in
+                Text(
+                    "These notes still link to “\(retry.receipt.oldTitle)”:\n"
+                        + retry.failed.map { "\($0.title): \($0.reason)" }.joined(separator: "\n")
+                )
+            }
+        )
         .confirmationDialog(
             trashCandidate.map { "Move “\(noteTitle($0))” to Trash?" } ?? "Move to Trash?",
             isPresented: Binding(
@@ -292,7 +403,7 @@ struct NotesView: View {
             // .toolbar/.navigationTitle modifiers (duplicate buttons).
             VStack(spacing: 0) {
                 #if os(macOS)
-                    TextField("Search all notes", text: $searchText)
+                    TextField("Search all notes", text: Bindable(model).sidebar.searchText)
                         .textFieldStyle(.roundedBorder)
                         .padding(.horizontal, 10)
                         .padding(.top, 6)
@@ -310,7 +421,6 @@ struct NotesView: View {
             actionIcon("square.and.pencil", "New note (⌘N)") {
                 model.createNote()
             }
-            .keyboardShortcut("n", modifiers: [.command])
             sidebarMoreMenu
             actionIcon("square.and.arrow.down", "Import a document (convert to markdown)") {
                 showingImporter = true
@@ -328,7 +438,6 @@ struct NotesView: View {
                 actionIcon("arrow.clockwise", "Refresh notes from iCloud (⌘R)") {
                     Task { await refreshVault() }
                 }
-                .keyboardShortcut("r", modifiers: .command)
             }
             Menu {
                 Picker("Sort", selection: $noteSortOrder) {
@@ -417,21 +526,14 @@ struct NotesView: View {
         .menuIndicator(.hidden)
         .buttonStyle(.plain)
         .help("New folder, templates, daily note, vaults")
-        // The shortcut rides a hidden button, not the menu item: menu-item
-        // key equivalents only register while the menu's host is mounted.
-        .background(
-            Button("") { model.openDailyNote() }
-                .keyboardShortcut("d", modifiers: [.command, .shift])
-                .hidden()
-        )
         #if os(macOS)
-        .fileImporter(
-            isPresented: $showingVaultPicker, allowedContentTypes: [.folder]
-        ) { outcome in
-            guard case let .success(url) = outcome,
-                  let entry = VaultRegistry.add(url: url) else { return }
-            activeVault = entry.id
-        }
+            .fileImporter(
+                isPresented: $showingVaultPicker, allowedContentTypes: [.folder]
+            ) { outcome in
+                guard case let .success(url) = outcome,
+                      let entry = VaultRegistry.add(url: url) else { return }
+                activeVault = entry.id
+            }
         #endif
     }
 
@@ -592,7 +694,7 @@ struct NotesView: View {
                 }
                 if !allTags.isEmpty {
                     Section {
-                        DisclosureGroup(isExpanded: $tagsExpanded) {
+                        DisclosureGroup(isExpanded: Bindable(model).sidebar.tagsExpanded) {
                             ForEach(topTags, id: \.tag) { entry in
                                 tagChipRow(entry.tag, count: entry.count)
                             }
@@ -621,7 +723,16 @@ struct NotesView: View {
                 }
             }
         }
-        .onAppear { listSelection = model.selectedID }
+        .onAppear {
+            // Another tab may have opened a different note since a Favorites/Recents row was
+            // clicked; that highlight belongs to the old note, so the Vault list takes over.
+            if let highlight = sectionHighlight, !highlight.hasSuffix("|" + (model.selectedID ?? "")) {
+                sectionHighlight = nil
+            }
+            if sectionHighlight == nil {
+                listSelection = model.selectedID
+            }
+        }
         // Pull down on the list to pull from iCloud (iOS gesture; on macOS
         // the action bar's ⌘R button runs the same refresh).
         .refreshable { await refreshVault() }
@@ -637,11 +748,13 @@ struct NotesView: View {
             }
         }
         .onChange(of: model.noteText) {
-            guard let line = model.consumeJumpLine() else { return }
-            let lines = splitLines(model.noteText)
-            guard line < lines.count else { return }
-            let offset = lines.prefix(line).reduce(0) { $0 + $1.utf16.count + 1 }
-            scrollTarget = NSRange(location: offset, length: 0)
+            // A cross-tab line jump, or a wikilink's #heading / #^block anchor (spec 06),
+            // resolved against the text that just loaded. A missing anchor opens at the top.
+            let anchor = model.consumeJumpAnchor()
+            guard let line = model.consumeJumpLine() ?? anchor.flatMap({
+                WikilinkSyntax.anchorLine(heading: $0.heading, blockId: $0.blockId, in: model.noteText)
+            }) else { return }
+            jump(toLine: line)
         }
         .onChange(of: model.selectedID) {
             if sectionHighlight == nil {
@@ -654,6 +767,8 @@ struct NotesView: View {
             bookmarkedIds = indexService.bookmarkedNoteIds()
             favoriteIds = indexService.favoriteNoteIds()
             areas = indexService.areaAssignments()
+            // The Note menu's Make / Remove Project title follows the index.
+            publishCommandState()
         }
         .overlay {
             if visibleNotes.isEmpty {
@@ -663,6 +778,7 @@ struct NotesView: View {
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 2) {
                 trashNotice
+                renameNotice
                 EmptyView()
                     .fileImporter(
                         isPresented: $showingVaultImporter,
@@ -707,6 +823,55 @@ struct NotesView: View {
                 guard !Task.isCancelled else { return }
                 model.dismissTrashNotice()
             }
+            // Rename's Undo toast: the same 6 s, counted from when the sheet (and any Try Again
+            // alert) is gone, so the window to undo isn't spent behind them.
+            .task(id: renameToastKey) {
+                guard model.lastRenamed != nil, renameCandidate == nil, linkRetry == nil else { return }
+                try? await Task.sleep(for: .seconds(6))
+                guard !Task.isCancelled else { return }
+                model.dismissRenameNotice()
+            }
+            .task(id: model.renameFailure) {
+                guard model.renameFailure != nil, model.lastRenamed == nil else { return }
+                try? await Task.sleep(for: .seconds(6))
+                guard !Task.isCancelled else { return }
+                model.dismissRenameNotice()
+            }
+        }
+    }
+
+    private var renameToastKey: String? {
+        model.lastRenamed.map { "\($0.oldId)|\($0.newId)|\(renameCandidate == nil && linkRetry == nil)" }
+    }
+
+    /// "Renamed “Plan” to “Plan 2026” — Undo", or why a rename's follow-up failed. Same look
+    /// as `trashNotice`.
+    @ViewBuilder private var renameNotice: some View {
+        if let receipt = model.lastRenamed {
+            HStack(spacing: 8) {
+                Image(systemName: "pencil")
+                    .foregroundStyle(.secondary)
+                Text("Renamed “\(receipt.oldTitle)” to “\(receipt.newTitle)”")
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 4)
+                Button("Undo") { undoRename() }
+                    .buttonStyle(.borderless)
+                    .fontWeight(.semibold)
+            }
+            .font(.callout)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.headerBackground, in: RoundedRectangle(cornerRadius: 8))
+            .padding(.horizontal, 8)
+            .padding(.bottom, 4)
+        }
+        if let failure = model.renameFailure {
+            Text(failure)
+                .font(.caption)
+                .foregroundStyle(.red)
+                .padding(.horizontal, 10)
+                .padding(.bottom, 4)
         }
     }
 
@@ -799,6 +964,29 @@ struct NotesView: View {
                     }
                 }
             }
+            .confirmationDialog(
+                createLinkCandidate.map { "Create “\(NotesModel.sanitizeFileName($0.title))”?" } ?? "Create Note?",
+                isPresented: Binding(
+                    get: { createLinkCandidate != nil },
+                    set: {
+                        if !$0 {
+                            createLinkCandidate = nil
+                        }
+                    }
+                ),
+                titleVisibility: .visible,
+                presenting: createLinkCandidate
+            ) { link in
+                Button("Create Note") {
+                    model.createNote(titled: link.title, in: selectedNoteFolderPath)
+                }
+            } message: { _ in
+                Text(
+                    selectedNoteFolderPath.isEmpty
+                        ? "No note has this name yet. It will be created at the top of the vault."
+                        : "No note has this name yet. It will be created in “\(selectedNoteFolderPath)”."
+                )
+            }
         } else {
             ContentUnavailableView(
                 "Select a Note",
@@ -808,70 +996,99 @@ struct NotesView: View {
         }
     }
 
-    /// WYSIWYG affordances over plain markdown: every button writes syntax.
-    /// One opaque in-content row above the editor: scrolling formatting
-    /// controls on the left, fixed note actions on the right. Nothing here
-    /// may use `.safeAreaInset` or a window toolbar — both let editor text
-    /// slide underneath a translucent strip on the beta (user report ×3).
-    private var editorHeader: some View {
-        HStack(spacing: 0) {
-            formatBar
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Divider().frame(height: 18)
-            // Outside the scrolling format bar on purpose: the mode picker
-            // must never scroll out of reach.
-            modePicker
-                .padding(.horizontal, 8)
-            Divider().frame(height: 18)
-            noteActionBar
+    #if os(macOS)
+        /// WYSIWYG affordances over plain markdown: every button writes syntax.
+        /// macOS: a title row (file name, daily-note arrows, ⋯ overflow) over one
+        /// tool row (format cluster left, mode picker right), both on one opaque
+        /// tone (spec ux-phase2/04). Nothing here may use `.safeAreaInset`, a
+        /// material or a window toolbar — all let editor text slide underneath
+        /// a translucent strip on the beta (user report ×3).
+        private var editorHeader: some View {
+            VStack(spacing: 0) {
+                titleRow
+                toolRow
+            }
+            .background(Color.headerBackground)
         }
-        .background(Color.headerBackground)
-    }
 
-    /// Source / Live Preview / Reading. Replaces the old single eye/code
-    /// toggle; ⌘E cycles it, ⌘/ still flips Source↔Live.
-    private var modePicker: some View {
-        Picker("Editor mode", selection: modeBinding) {
-            ForEach(EditorMode.allCases, id: \.self) { mode in
-                Image(systemName: mode.symbol)
-                    .help(mode.title)
-                    .tag(mode)
+        private var titleRow: some View {
+            HStack(spacing: 8) {
+                Text(selectedTitle)
+                    .font(.title2.weight(.semibold))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    // Double-click opens Rename (spec ux-phase2/04 + 05).
+                    .onTapGesture(count: 2) { openRenameFromTitleRow() }
+                Spacer(minLength: 8)
+                if let day = model.openDailyNoteDate {
+                    HStack(spacing: 4) {
+                        actionIcon("chevron.backward", "Previous day") {
+                            stepDailyNote(from: day, by: -1)
+                        }
+                        actionIcon("chevron.forward", "Next day") {
+                            stepDailyNote(from: day, by: 1)
+                        }
+                    }
+                }
+                overflowMenu
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 2)
+        }
+
+        private var toolRow: some View {
+            HStack(spacing: 0) {
+                formatBar
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                // Outside the scrolling format bar on purpose: the mode picker
+                // must never scroll out of reach.
+                modePicker
+                    .padding(.leading, 8)
+                    .padding(.trailing, 16)
             }
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .frame(width: 108)
-        .help("Source / Live Preview / Reading — ⌘E cycles, ⌘/ toggles Source and Live")
-    }
 
-    /// Note-level actions, formerly the detail pane's `.toolbar` items.
-    private var noteActionBar: some View {
-        HStack(spacing: 4) {
-            if let day = model.openDailyNoteDate {
-                actionIcon("chevron.backward", "Previous day") {
-                    model.openDailyNote(
-                        for: Calendar.current.date(byAdding: .day, value: -1, to: day) ?? day
-                    )
-                }
-                actionIcon("chevron.forward", "Next day") {
-                    model.openDailyNote(
-                        for: Calendar.current.date(byAdding: .day, value: 1, to: day) ?? day
-                    )
-                }
-            }
-            Menu {
-                Button("Summarize Note", systemImage: "text.append") {
-                    runAI(summarize: true)
-                }
-                Button("Extract Action Items", systemImage: "checklist") {
-                    runAI(summarize: false)
-                }
+        /// Double-clicking the title opens the Rename sheet (spec 05), the same
+        /// route as the ⋯ menu's Rename Note… and File ▸ Rename Note… (⌥⌘R).
+        private func openRenameFromTitleRow() {
+            performMenuCommand(.renameNote)
+        }
+
+        /// Everything the old icon strip held that is not a format button,
+        /// built from the shared `ShellCommand` table so titles, icons and
+        /// availability match the menu bar. No `.keyboardShortcut` here:
+        /// shortcuts belong to the menu bar (a second owner would double-fire).
+        private var overflowMenu: some View {
+            let aiRunning = aiStatus?.hasSuffix("…") == true
+            let isProject = model.selectedID.map(indexService.isProject) ?? false
+            return Menu {
+                overflowItem(.renameNote)
+                overflowItem(.proofread)
+                overflowItem(.summarize, disabled: aiRunning)
+                overflowItem(.extractActions, disabled: aiRunning)
                 if let aiStatus {
                     Divider()
                     Text(aiStatus)
                 }
+                Divider()
+                overflowItem(
+                    .lockNote,
+                    title: model.selectedIsLockable ? "Remove Lock" : "Lock Note",
+                    icon: model.selectedIsLockable ? "lock.open" : "lock"
+                )
+                overflowItem(
+                    .toggleProject,
+                    title: isProject ? "Remove Project Flag" : "Make Project"
+                )
+                Divider()
+                overflowToggle(.focusMode, isOn: focusMode)
+                overflowToggle(.inspector, isOn: showInspector)
+                overflowItem(.linkGraph)
+                Divider()
+                overflowItem(.moveToTrash)
             } label: {
-                Image(systemName: "sparkles")
+                Image(systemName: "ellipsis.circle")
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
                     .frame(width: 24, height: 24)
@@ -879,75 +1096,170 @@ struct NotesView: View {
             }
             .menuIndicator(.hidden)
             .buttonStyle(.plain)
-            .disabled(aiStatus?.hasSuffix("…") == true)
-            .help("Summarize the note or extract its action items")
-            // Editing modes only: Reading has no MarkdownEditor mounted, so
-            // nothing would consume the Apply command (critic-caught).
-            if model.selectedID != nil, !model.lockedPlaceholder, editorMode != .reading {
-                actionIcon(
-                    "text.badge.checkmark",
-                    languageToolConfigured
-                        ? "Proofread with LanguageTool (⇧⌘P)"
-                        : "Proofread — configure a LanguageTool URL in Settings › AI & Import"
-                ) {
-                    runProofread()
-                }
-                .keyboardShortcut("p", modifiers: [.command, .shift])
-                .disabled(!languageToolConfigured)
-            }
-            if model.selectedID != nil, !model.lockedPlaceholder {
-                actionIcon(
-                    model.selectedIsLockable ? "lock.open" : "lock",
-                    model.selectedIsLockable
-                        ? "Decrypt this note back to plain markdown"
-                        : "Encrypt this note with a passphrase (unrecoverable if forgotten)"
-                ) {
-                    if model.selectedIsLockable {
-                        Task { await model.removeLockFromSelected() }
-                    } else {
-                        lockPassphrase = ""
-                        lockConfirm = ""
-                        lockError = nil
-                        showingLockSheet = true
-                    }
-                }
-            }
-            if let id = model.selectedID {
-                let isProject = indexService.isProject(id)
-                actionIcon(
-                    "calendar.day.timeline.left",
-                    isProject
-                        ? "This note is a project — click to remove the project flag"
-                        : "Turn this note into a project (adds project: true frontmatter)"
-                ) {
-                    Task {
-                        await indexService.setNoteFlag(id, key: "project", value: !isProject)
-                    }
-                }
-            }
-            actionIcon("point.3.connected.trianglepath.dotted", "Link graph of your vault") {
-                showingGraph = true
-            }
-            actionIcon(
-                focusMode ? "circle.circle.fill" : "circle.circle",
-                focusMode ? "Focus mode on — dims other paragraphs" : "Focus mode"
-            ) {
-                focusMode.toggle()
-            }
-            actionIcon("sidebar.right", "Outline, backlinks & mentions (⌥⌘0)") {
-                showInspector.toggle()
-            }
-            .keyboardShortcut("0", modifiers: [.command, .option])
+            .help("Note actions: proofread, summarize, lock, project, focus mode, inspector, graph, trash")
         }
-        .padding(.trailing, 8)
+
+        private func overflowItem(
+            _ command: ShellCommand, title: String? = nil, icon: String? = nil, disabled: Bool = false
+        ) -> some View {
+            Button(title ?? command.title, systemImage: icon ?? command.systemImage) {
+                performMenuCommand(command)
+            }
+            .disabled(disabled || !command.isAvailable(commands))
+        }
+
+        private func overflowToggle(_ command: ShellCommand, isOn: Bool) -> some View {
+            Toggle(command.title, isOn: Binding(get: { isOn }, set: { _ in performMenuCommand(command) }))
+                .disabled(!command.isAvailable(commands))
+        }
+    #else
+        /// WYSIWYG affordances over plain markdown: every button writes syntax.
+        /// One opaque in-content row above the editor: scrolling formatting
+        /// controls on the left, fixed note actions on the right. Nothing here
+        /// may use `.safeAreaInset` or a window toolbar — both let editor text
+        /// slide underneath a translucent strip on the beta (user report ×3).
+        private var editorHeader: some View {
+            HStack(spacing: 0) {
+                formatBar
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Divider().frame(height: 18)
+                // Outside the scrolling format bar on purpose: the mode picker
+                // must never scroll out of reach.
+                modePicker
+                    .padding(.horizontal, 8)
+                Divider().frame(height: 18)
+                noteActionBar
+            }
+            .background(Color.headerBackground)
+        }
+    #endif
+
+    /// Source / Live / Reading. Replaces the old single eye/code toggle;
+    /// ⌘E cycles it, ⌘/ still flips Source↔Live. macOS shows text labels
+    /// (spec ux-phase2/04); iOS keeps the icon segments.
+    private var modePicker: some View {
+        Picker("Editor mode", selection: modeBinding) {
+            ForEach(EditorMode.allCases, id: \.self) { mode in
+                #if os(macOS)
+                    Text(mode.shortTitle)
+                        .help(mode.title)
+                        .tag(mode)
+                #else
+                    Image(systemName: mode.symbol)
+                        .help(mode.title)
+                        .tag(mode)
+                #endif
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        #if os(macOS)
+            .frame(width: 220)
+        #else
+            .frame(width: 108)
+        #endif
+            .help("Source / Live Preview / Reading — ⌘E cycles, ⌘/ toggles Source and Live")
     }
+
+    /// Daily-note ◀ ▶: opens the day before/after `day`.
+    private func stepDailyNote(from day: Date, by days: Int) {
+        model.openDailyNote(
+            for: Calendar.current.date(byAdding: .day, value: days, to: day) ?? day
+        )
+    }
+
+    #if !os(macOS)
+        /// Note-level actions, formerly the detail pane's `.toolbar` items. iOS
+        /// only now: macOS moved them into the title row and its ⋯ menu.
+        private var noteActionBar: some View {
+            HStack(spacing: 4) {
+                if let day = model.openDailyNoteDate {
+                    actionIcon("chevron.backward", "Previous day") {
+                        stepDailyNote(from: day, by: -1)
+                    }
+                    actionIcon("chevron.forward", "Next day") {
+                        stepDailyNote(from: day, by: 1)
+                    }
+                }
+                Menu {
+                    Button("Summarize Note", systemImage: "text.append") {
+                        runAI(summarize: true)
+                    }
+                    Button("Extract Action Items", systemImage: "checklist") {
+                        runAI(summarize: false)
+                    }
+                    if let aiStatus {
+                        Divider()
+                        Text(aiStatus)
+                    }
+                } label: {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
+                }
+                .menuIndicator(.hidden)
+                .buttonStyle(.plain)
+                .disabled(aiStatus?.hasSuffix("…") == true)
+                .help("Summarize the note or extract its action items")
+                // Editing modes only: Reading has no MarkdownEditor mounted, so
+                // nothing would consume the Apply command (critic-caught).
+                if model.selectedID != nil, !model.lockedPlaceholder, editorMode != .reading {
+                    actionIcon(
+                        "text.badge.checkmark",
+                        languageToolConfigured
+                            ? "Proofread with LanguageTool (⇧⌘P)"
+                            : "Proofread — configure a LanguageTool URL in Settings › AI & Import"
+                    ) {
+                        runProofread()
+                    }
+                    .disabled(!languageToolConfigured)
+                }
+                if model.selectedID != nil, !model.lockedPlaceholder {
+                    actionIcon(
+                        model.selectedIsLockable ? "lock.open" : "lock",
+                        model.selectedIsLockable
+                            ? "Decrypt this note back to plain markdown"
+                            : "Encrypt this note with a passphrase (unrecoverable if forgotten)"
+                    ) {
+                        toggleLock()
+                    }
+                }
+                if let id = model.selectedID {
+                    let isProject = indexService.isProject(id)
+                    actionIcon(
+                        "calendar.day.timeline.left",
+                        isProject
+                            ? "This note is a project — click to remove the project flag"
+                            : "Turn this note into a project (adds project: true frontmatter)"
+                    ) {
+                        toggleProjectFlag()
+                    }
+                }
+                actionIcon("point.3.connected.trianglepath.dotted", "Link graph of your vault") {
+                    showingGraph = true
+                }
+                actionIcon(
+                    focusMode ? "circle.circle.fill" : "circle.circle",
+                    focusMode ? "Focus mode on — dims other paragraphs" : "Focus mode"
+                ) {
+                    focusMode.toggle()
+                }
+                actionIcon("sidebar.right", "Outline, backlinks & mentions (⌥⌘0)") {
+                    showInspector.toggle()
+                }
+            }
+            .padding(.trailing, 8)
+        }
+    #endif
 
     private var formatBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 2) {
                 // Reading mode has nothing to format, so the whole cluster
-                // goes away; the note-action cluster and the mode picker
-                // (both in editorHeader) stay put.
+                // goes away; the mode picker (and, on iOS, the note-action
+                // cluster) stay put.
                 if editorMode.isEditing {
                     formattingControls
                 }
@@ -956,7 +1268,13 @@ struct NotesView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
         }
+        #if os(macOS)
+        // One tone with the title row (no material), and a fixed row height
+        // so switching to Reading, which empties the cluster, does not jump.
+        .frame(height: 32)
+        #else
         .background(.bar)
+        #endif
     }
 
     @ViewBuilder private var formattingControls: some View {
@@ -980,54 +1298,47 @@ struct NotesView: View {
         .help("Text style")
         Divider().frame(height: 16)
         formatButton(
-            "bold", "Bold (⌘B)",
+            "bold", "Bold (⌘B)", .bold,
             isActive: selectionContext.bold, dimmed: selectionContext.inCodeBlock
-        ) { .wrap(prefix: "**", suffix: "**") }
-            .keyboardShortcut("b", modifiers: [.command])
+        )
         formatButton(
-            "italic", "Italic (⌘⇧I)",
+            "italic", "Italic (⌘⇧I)", .italic,
             isActive: selectionContext.italic, dimmed: selectionContext.inCodeBlock
-        ) { .wrap(prefix: "*", suffix: "*") }
-            .keyboardShortcut("i", modifiers: [.command, .shift])
+        )
         formatButton(
-            "strikethrough", "Strikethrough",
+            "strikethrough", "Strikethrough", .strikethrough,
             isActive: selectionContext.strikethrough, dimmed: selectionContext.inCodeBlock
-        ) { .wrap(prefix: "~~", suffix: "~~") }
+        )
         // ⌥⌘C, not ⌘E: ⌘E cycles the three view modes now.
         formatButton(
-            "chevron.left.forwardslash.chevron.right", "Code (⌥⌘C)",
+            "chevron.left.forwardslash.chevron.right", "Code (⌥⌘C)", .code,
             isActive: selectionContext.code, dimmed: selectionContext.inCodeBlock
-        ) { .wrap(prefix: "`", suffix: "`") }
-            .keyboardShortcut("c", modifiers: [.command, .option])
+        )
         Divider().frame(height: 16)
         formatButton(
-            "list.bullet", "Bullet list", isActive: selectionContext.inList
-        ) { .toggleLinePrefix("- ") }
+            "list.bullet", "Bullet list", .bulletList, isActive: selectionContext.inList
+        )
         formatButton(
-            "list.number", "Numbered list", isActive: selectionContext.inList
-        ) { .toggleLinePrefix("1. ") }
+            "list.number", "Numbered list", .numberedList, isActive: selectionContext.inList
+        )
         formatButton(
-            "checklist", "To-do (⌘⇧T)", isActive: selectionContext.inList
-        ) { .toggleLinePrefix("- [ ] ") }
-            .keyboardShortcut("t", modifiers: [.command, .shift])
+            "checklist", "To-do (⌘⇧T)", .todoList, isActive: selectionContext.inList
+        )
         formatButton(
-            "quote.opening", "Quote", isActive: selectionContext.inQuote
-        ) { .toggleLinePrefix("> ") }
+            "quote.opening", "Quote", .quote, isActive: selectionContext.inQuote
+        )
         Divider().frame(height: 16)
         linkButton
         Divider().frame(height: 16)
         Menu {
             Button("Table", systemImage: "tablecells") {
-                editorCommand = EditorCommandRequest(.insertBlock(
-                    "| Column 1 | Column 2 |\n| --- | --- |\n|  |  |",
-                    cursorOffset: 2
-                ))
+                sendEditorCommand(.insertTable)
             }
             Button("Image…", systemImage: "photo") {
                 showingImagePicker = true
             }
             Button("Horizontal Rule", systemImage: "minus") {
-                editorCommand = EditorCommandRequest(.insertBlock("---", cursorOffset: nil))
+                sendEditorCommand(.insertRule)
             }
             // Table structure: every item is a no-op when the
             // cursor is not in a table, so none of them disable.
@@ -1072,12 +1383,11 @@ struct NotesView: View {
     }
 
     private func formatButton(
-        _ icon: String, _ help: String,
-        isActive: Bool = false, dimmed: Bool = false,
-        _ command: @escaping () -> EditorCommand
+        _ icon: String, _ help: String, _ command: ShellCommand,
+        isActive: Bool = false, dimmed: Bool = false
     ) -> some View {
         Button {
-            editorCommand = EditorCommandRequest(command())
+            sendEditorCommand(command)
         } label: {
             Image(systemName: icon)
                 .frame(width: 26, height: 22)
@@ -1112,22 +1422,12 @@ struct NotesView: View {
     /// (placeholder text + URL, cursor on the URL) as before.
     private var linkButton: some View {
         Button {
-            if let link = selectionContext.link,
-               NSMaxRange(link.range) <= (model.noteText as NSString).length {
-                linkEditRange = link.range
-                linkEditSource = (model.noteText as NSString).substring(with: link.range)
-                linkPopoverText = linkLabel(range: link.range, in: model.noteText)
-                linkPopoverURL = link.destination
-                showingLinkPopover = true
-            } else {
-                editorCommand = EditorCommandRequest(.link)
-            }
+            linkAction()
         } label: {
             Image(systemName: "link")
                 .frame(width: 26, height: 22)
         }
         .help("Link (⇧⌘K)")
-        .keyboardShortcut("k", modifiers: [.command, .shift])
         // A sheet, not .popover: the format bar lives in a safeAreaInset,
         // and popovers anchored inside inset bars are in the same beta
         // bridge family as the toolbar traps — sheets are the pattern this
@@ -1260,6 +1560,13 @@ struct NotesView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// The editor's text-container cap on macOS (spec ux-phase2/04 asks for
+    /// Reading mode's 780 pt column). Reading's 780 pt frame holds 24 pt of
+    /// padding each side, while editor text sits 5 pt inside its container
+    /// (line-fragment padding), so 780 - 2*24 + 2*5 puts the text edges of
+    /// both modes in the same place and the switch does not shift the page.
+    private static let editorColumnWidth: CGFloat = 742
+
     @ViewBuilder private var editorPane: some View {
         if model.lockedPlaceholder {
             ContentUnavailableView {
@@ -1293,7 +1600,7 @@ struct NotesView: View {
                         imageBase: selectedNoteFolder,
                         scrollToLine: $readingScrollLine,
                         onToggleTask: { toggleReadingTask(line: $0) },
-                        onOpenNote: { openWikilink($0) },
+                        onOpenNote: { openWikilink(raw: $0) },
                         onTopLineChanged: { readingPosition.topLine = $0 }
                     )
                 } else {
@@ -1317,32 +1624,14 @@ struct NotesView: View {
                         grammarChecking: proofGrammar,
                         autocorrect: proofAutocorrect,
                         onSelectionContext: { selectionContext = $0 },
-                        onOpenAttachment: { openAttachment($0) }
+                        onOpenAttachment: { openAttachment($0) },
+                        onOpenWikilink: { openWikilink($0) },
+                        // macOS centres the text in a capped column; iOS ignores
+                        // it this pass.
+                        maxTextWidth: Self.editorColumnWidth
                     )
                 }
             }
-            // Hidden shortcut buttons, the pattern ⌘F already uses: these
-            // must live outside the format bar because Reading mode hides
-            // the formatting controls.
-            .background(
-                ZStack {
-                    Button("") { findSignal += 1 }
-                        .keyboardShortcut("f", modifiers: [.command])
-                    Button("") { setMode(editorMode.next) }
-                        .keyboardShortcut("e", modifiers: [.command])
-                    Button("") { setMode(editorMode == .source ? .live : .source) }
-                        .keyboardShortcut("/", modifiers: [.command])
-                    // Zoom the active mode's font size — plain ⌘0 only, so
-                    // this can't collide with the inspector's ⌥⌘0 below.
-                    Button("") { zoomActiveMode(by: 1) }
-                        .keyboardShortcut("=", modifiers: [.command])
-                    Button("") { zoomActiveMode(by: -1) }
-                        .keyboardShortcut("-", modifiers: [.command])
-                    Button("") { resetActiveModeZoom() }
-                        .keyboardShortcut("0", modifiers: [.command])
-                }
-                .hidden()
-            )
             .overlay(alignment: .bottomTrailing) {
                 Text(statsChip)
                     .font(.caption)
@@ -1364,6 +1653,99 @@ struct NotesView: View {
             .navigationBarTitleDisplayMode(.inline)
             #endif
         }
+    }
+
+    // MARK: - Menu commands
+
+    /// What the menu bar may enable right now. Written only when a value
+    /// changes (`ShellCommandBus.publish`), because each write re-renders
+    /// the menu.
+    private func publishCommandState() {
+        // Also "this Notes view is mounted": after a vault switch the OLD view's onDisappear
+        // can land after the NEW view's appear, so the newest view re-asserts it here.
+        commands.publish(\.notesTabVisible, true)
+        let open = model.selectedID != nil && !model.lockedPlaceholder
+        commands.publish(\.hasOpenNote, open)
+        commands.publish(\.isEditing, open && editorMode.isEditing)
+        commands.publish(\.editorMode, editorMode)
+        commands.publish(\.languageToolConfigured, languageToolConfigured)
+        commands.publish(\.selectedIsLockable, model.selectedIsLockable)
+        commands.publish(\.selectedIsProject, model.selectedID.map(indexService.isProject) ?? false)
+        commands.publish(\.inspectorVisible, showInspector)
+    }
+
+    /// The Notes-tab half of the command bus (`AppShell` takes `.shell`).
+    /// Each case runs the same code as the button it mirrors.
+    private func performMenuCommand(_ command: ShellCommand) {
+        switch command {
+        case .findInNote: findSignal += 1
+        case .nextMode: setMode(editorMode.next)
+        case .toggleSourceLive: setMode(editorMode == .source ? .live : .source)
+        case .modeSource: setMode(.source)
+        case .modeLive: setMode(.live)
+        case .modeReading: setMode(.reading)
+        case .zoomIn: zoomActiveMode(by: 1)
+        case .zoomOut: zoomActiveMode(by: -1)
+        case .actualSize: resetActiveModeZoom()
+        case .focusMode: focusMode.toggle()
+        case .inspector: showInspector.toggle()
+        case .link: linkAction()
+        case .insertImage: showingImagePicker = true
+        case .proofread: runProofread()
+        case .lockNote: toggleLock()
+        case .toggleProject: toggleProjectFlag()
+        case .summarize: runAI(summarize: true)
+        case .extractActions: runAI(summarize: false)
+        case .linkGraph: showingGraph = true
+        case .moveToTrash: trashCandidate = model.selectedID.flatMap { model.notesById[$0] }
+        case .renameNote:
+            // Not for the locked placeholder (`hasOpenNote` is false there, so the menu is off
+            // too); the context menu can still rename a locked note's FILE.
+            guard !model.lockedPlaceholder else { return }
+            renameCandidate = model.selectedID.flatMap { model.notesById[$0] }
+        default: sendEditorCommand(command)
+        }
+    }
+
+    /// The Format menu and the format bar both end here.
+    private func sendEditorCommand(_ command: ShellCommand) {
+        guard let editorCommand = command.editorCommand else { return }
+        self.editorCommand = EditorCommandRequest(editorCommand)
+    }
+
+    /// ⇧⌘K: caret in an existing link opens an edit popover pre-filled with
+    /// its text/destination; otherwise falls through to the insert command
+    /// (placeholder text + URL, cursor on the URL).
+    private func linkAction() {
+        if let link = selectionContext.link,
+           NSMaxRange(link.range) <= (model.noteText as NSString).length {
+            linkEditRange = link.range
+            linkEditSource = (model.noteText as NSString).substring(with: link.range)
+            linkPopoverText = linkLabel(range: link.range, in: model.noteText)
+            linkPopoverURL = link.destination
+            showingLinkPopover = true
+        } else {
+            editorCommand = EditorCommandRequest(.link)
+        }
+    }
+
+    /// The lock icon / Note ▸ Lock Note: encrypt, or decrypt back to markdown.
+    private func toggleLock() {
+        if model.selectedIsLockable {
+            Task { await model.removeLockFromSelected() }
+        } else {
+            lockPassphrase = ""
+            lockConfirm = ""
+            lockError = nil
+            showingLockSheet = true
+        }
+    }
+
+    /// The project icon / Note ▸ Make Project: flips `project: true` frontmatter.
+    private func toggleProjectFlag() {
+        guard let id = model.selectedID else { return }
+        let isProject = indexService.isProject(id)
+        Task { await indexService.setNoteFlag(id, key: "project", value: !isProject) }
     }
 
     // MARK: - View mode
@@ -1515,13 +1897,103 @@ struct NotesView: View {
         Task { await indexService.toggle(task) }
     }
 
-    /// Wikilink taps resolve the way the link graph resolves edges:
-    /// case-insensitive match on the note's title.
-    private func openWikilink(_ title: String) {
-        let target = title.lowercased()
-        guard let note = model.notes.first(where: { noteTitle($0).lowercased() == target })
+    /// Every wikilink click (⌘-click in Source/Live, a tap in Reading) ends here and resolves
+    /// through the one resolver (`WikilinkSyntax.resolve`, spec ux-phase2/05-06): path first,
+    /// then title, preferring the source note's folder. `#Heading` / `#^block` anchors land on
+    /// their line; `[[#Heading]]` jumps within this note; an unknown title offers to create it.
+    private func openWikilink(_ link: Wikilink) {
+        let anchor: (heading: String?, blockId: String?)? =
+            link.heading != nil || link.blockId != nil ? (link.heading, link.blockId) : nil
+        let pool = model.notes.map { (id: $0.id, title: noteTitle($0)) }
+        if let id = WikilinkSyntax.resolve(link, among: pool, from: model.selectedID) {
+            if id == model.selectedID {
+                jumpToAnchorInOpenNote(anchor)
+            } else {
+                model.openNote(id, jumpToAnchor: anchor)
+            }
+        } else if link.target.isEmpty {
+            jumpToAnchorInOpenNote(anchor)
+        } else {
+            createLinkCandidate = link
+        }
+    }
+
+    /// Reading mode hands over the raw text between the brackets (`Plan|alias`).
+    private func openWikilink(raw: String) {
+        guard let link = WikilinkSyntax.links(in: "[[\(raw)]]").first else { return }
+        openWikilink(link)
+    }
+
+    private func jumpToAnchorInOpenNote(_ anchor: (heading: String?, blockId: String?)?) {
+        guard let anchor,
+              let line = WikilinkSyntax.anchorLine(heading: anchor.heading, blockId: anchor.blockId, in: model.noteText)
         else { return }
-        model.openNote(note.id, jumpToLine: nil)
+        jump(toLine: line)
+    }
+
+    /// Caret (Source/Live) or scroll (Reading) to a 0-based file line.
+    private func jump(toLine line: Int) {
+        if editorMode == .reading {
+            readingScrollLine = line
+            return
+        }
+        let lines = splitLines(model.noteText)
+        guard line < lines.count else { return }
+        let offset = lines.prefix(line).reduce(0) { $0 + $1.utf16.count + 1 }
+        scrollTarget = NSRange(location: offset, length: 0)
+    }
+
+    /// The open note's folder as a vault-relative path ("" = root): where "Create Note" puts
+    /// a note for an unresolved link.
+    private var selectedNoteFolderPath: String {
+        guard let id = model.selectedID, id.contains("/") else { return "" }
+        return (id as NSString).deletingLastPathComponent
+    }
+
+    // MARK: - Rename (spec ux-phase2/05)
+
+    /// The sheet's Rename: the model renames the file (heading, move, retarget, self links),
+    /// then the service rewrites the other notes' links. Returns the message the sheet shows
+    /// when the rename itself was refused or failed; nil once the file is renamed (link
+    /// failures go to the Try Again alert, not the sheet).
+    private func performRename(_ note: VaultItem, to name: String) async -> String? {
+        // The listing BEFORE the move: links resolve against it, so one that points at a
+        // different note with the same title is left alone.
+        let pool = model.notes.map { (id: $0.id, title: noteTitle($0)) }
+        switch await model.rename(note, to: name) {
+        case let .failure(error):
+            return NotesModel.message(for: error, base: NotesModel.renameBaseName(name))
+        case let .success(receipt):
+            guard receipt.oldId != receipt.newId else { return nil }
+            await rewriteInboundLinks(for: receipt, pool: pool)
+            return nil
+        }
+    }
+
+    /// Step 8: inbound links, then a rescan so the renamed note is indexed under its new id
+    /// and the old row is pruned. Undo and Try Again come through here too.
+    private func rewriteInboundLinks(
+        for receipt: NotesModel.RenameReceipt, pool: [(id: String, title: String)], only: Set<String>? = nil
+    ) async {
+        let report = await indexService.rewriteInboundLinks(
+            oldTitle: receipt.oldTitle, newTitle: receipt.newTitle, renamedId: receipt.oldId,
+            among: pool, skipping: [receipt.oldId, receipt.newId], only: only
+        )
+        await indexService.rescan()
+        if !report.failed.isEmpty {
+            linkRetry = LinkRetry(receipt: receipt, pool: pool, failed: report.failed)
+        }
+    }
+
+    private func undoRename() {
+        Task {
+            let pool = model.notes.map { (id: $0.id, title: noteTitle($0)) }
+            if let reverse = await model.undoLastRename() {
+                await rewriteInboundLinks(for: reverse, pool: pool)
+            } else {
+                await indexService.rescan()
+            }
+        }
     }
 
     /// AI actions edit the note text like any other edit — autosave and the
@@ -2188,6 +2660,9 @@ struct NotesView: View {
             Button("Duplicate", systemImage: "plus.square.on.square") {
                 model.duplicate(note)
             }
+            Button("Rename…", systemImage: "pencil") {
+                renameCandidate = note
+            }
             Menu("Move To") {
                 Button("Vault Root") { model.move(note, toFolder: "") }
                 ForEach(model.folders, id: \.self) { folder in
@@ -2391,4 +2866,12 @@ private enum ProofreadState: Equatable {
     case noIssues
     case results
     case error(String)
+}
+
+/// Inbound notes whose link rewrite failed after a rename (or its Undo), for Try Again.
+private struct LinkRetry {
+    let receipt: NotesModel.RenameReceipt
+    /// The resolution pool the failed pass used (the listing before that rename).
+    let pool: [(id: String, title: String)]
+    let failed: [LinkRewriteFailure]
 }
