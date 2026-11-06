@@ -1966,9 +1966,11 @@ struct NotesView: View {
     }
 
     private func subfolders(of folder: String) -> [String] {
-        model.folders.filter {
+        let children = model.folders.filter {
             $0.hasPrefix(folder + "/") && !$0.dropFirst(folder.count + 1).contains("/")
         }
+        // Daily's year/month folders, like its notes, go newest first.
+        return VaultPath.isDailyFolder(folder) ? Array(children.reversed()) : children
     }
 
     /// Main Vault rows carry the List selection tag; auxiliary-section
@@ -2010,7 +2012,9 @@ struct NotesView: View {
     private func notes(in folder: String) -> [VaultItem] {
         let group = model.notesByFolder[folder] ?? []
         guard searching || selectedTag != nil else {
-            return noteSortOrder == "modified"
+            // Daily keeps its newest-first name order whatever the global sort is set to: a
+            // note's modified date says when it was last edited, not which day it is.
+            return noteSortOrder == "modified" && !VaultPath.isDailyFolder(folder)
                 ? group.sorted {
                     ($0.modificationDate ?? .distantPast) > ($1.modificationDate ?? .distantPast)
                 }

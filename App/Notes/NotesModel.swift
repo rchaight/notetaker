@@ -213,6 +213,11 @@ final class NotesModel {
         notesByFolder = Dictionary(grouping: notes) {
             $0.relativePath.split(separator: "/").dropLast().joined(separator: "/")
         }
+        // `notes` is sorted by path ascending, so a grouped folder is too. Daily notes are named
+        // by date: the newest goes on top.
+        for folder in notesByFolder.keys where VaultPath.isDailyFolder(folder) {
+            notesByFolder[folder]?.reverse()
+        }
         notesByModified = notes.sorted {
             ($0.modificationDate ?? .distantPast) > ($1.modificationDate ?? .distantPast)
         }

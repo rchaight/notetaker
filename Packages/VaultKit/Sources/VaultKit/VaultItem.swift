@@ -77,6 +77,14 @@ public enum VaultPath {
         return isDirectory && (relativePath.split(separator: "/").last?.hasPrefix(".") ?? false)
     }
 
+    /// True for the vault's Daily folder and anything inside it (`Daily`, `Daily/2026`). The
+    /// notes there are named by date, so the Notes list shows them newest first. The folder name
+    /// is the one `NotesModel.openDailyNote` creates; the comparison ignores case because the
+    /// vault lives on a case-insensitive filesystem.
+    public static func isDailyFolder(_ relativeFolder: String) -> Bool {
+        relativeFolder.split(separator: "/").first?.lowercased() == "daily"
+    }
+
     /// Path of `url` relative to `root`, "" when url IS the root.
     public static func relativePath(of url: URL, in root: URL) -> String {
         relativePath(of: url, inRootComponents: components(of: root))

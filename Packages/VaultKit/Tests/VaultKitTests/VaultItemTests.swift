@@ -59,3 +59,20 @@ struct RelativePaths {
         #expect(item.id == "a.md")
     }
 }
+
+struct DailyFolderDetection {
+    @Test func dailyAndItsSubfoldersCount() {
+        #expect(VaultPath.isDailyFolder("Daily"))
+        #expect(VaultPath.isDailyFolder("daily"))
+        #expect(VaultPath.isDailyFolder("Daily/2026"))
+        #expect(VaultPath.isDailyFolder("Daily/2026/11"))
+    }
+
+    @Test func otherFoldersDoNot() {
+        #expect(!VaultPath.isDailyFolder(""))
+        #expect(!VaultPath.isDailyFolder("Work"))
+        #expect(!VaultPath.isDailyFolder("Work/Daily"))
+        #expect(!VaultPath.isDailyFolder("Dailyish"))
+        #expect(!VaultPath.isDailyFolder("Daily notes"))
+    }
+}
