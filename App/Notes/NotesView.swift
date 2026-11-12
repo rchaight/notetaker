@@ -157,6 +157,8 @@ struct NotesView: View {
     /// Rename flow (spec ux-phase2/05): the note the Rename sheet is for, and the inbound notes
     /// whose link rewrite failed (the Try Again alert).
     @State private var renameCandidate: VaultItem?
+    /// The inbound-link rewrite that follows a rename, which keeps going after the sheet closes.
+    @State private var linkRewriteTask: Task<Void, Never>?
     @State private var linkRetry: LinkRetry?
     /// An unresolved ⌘-clicked / tapped wikilink awaiting "Create Note" (spec ux-phase2/06).
     @State private var createLinkCandidate: Wikilink?
@@ -1965,7 +1967,15 @@ struct NotesView: View {
             return NotesModel.message(for: error, base: NotesModel.renameBaseName(name))
         case let .success(receipt):
             guard receipt.oldId != receipt.newId else { return nil }
-            await rewriteInboundLinks(for: receipt, pool: pool)
+            // The file is renamed and everything keyed by its id is retargeted, so the sheet
+            // can close now. Rewriting the other notes' links re-reads the vault and can take
+            // a while on a phone; it runs behind the sheet (failures surface in the Try Again
+            // alert) and Undo waits for it.
+            let previous = linkRewriteTask
+            linkRewriteTask = Task {
+                await previous?.value
+                await rewriteInboundLinks(for: receipt, pool: pool)
+            }
             return nil
         }
     }
@@ -1987,6 +1997,8 @@ struct NotesView: View {
 
     private func undoRename() {
         Task {
+            // Undo must not race the forward rewrite of the other notes' links.
+            await linkRewriteTask?.value
             let pool = model.notes.map { (id: $0.id, title: noteTitle($0)) }
             if let reverse = await model.undoLastRename() {
                 await rewriteInboundLinks(for: reverse, pool: pool)

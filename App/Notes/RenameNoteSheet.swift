@@ -47,6 +47,11 @@ struct RenameNoteSheet: View {
 
     /// The reason Rename is disabled, as the line under the field shows it.
     private var problem: String? {
+        // Once the rename is underway `note` is stale: its old path is gone and the name being
+        // asked for belongs to this very file, so validating again would report "already exists".
+        if working {
+            return nil
+        }
         if note.hasUnresolvedConflicts {
             return "This note has an unresolved sync conflict. Resolve it first."
         }
@@ -185,17 +190,21 @@ struct RenameNoteSheet: View {
         .font(.callout)
     }
 
-    /// Dry run. The first pass flushes the editor and catches the index up, so a link typed a
-    /// moment ago is counted. While the name is unchanged or invalid the preview still counts
+    /// Dry run. The first pass flushes the editor so the file on disk is current. It does NOT
+    /// rescan the vault: that walks every note on the main actor (many seconds on a phone, and
+    /// it froze this sheet), and the rename's own rewrite step re-reads from disk before it
+    /// writes anything, so a link typed a moment ago is still updated even if this preview
+    /// hasn't counted it yet. While the name is unchanged or invalid the preview still counts
     /// the links that point here (a name no title can equal stands in for the new one).
     private func loadPreview() async {
         try? await Task.sleep(for: .milliseconds(caughtUp ? 250 : 0))
         guard !Task.isCancelled else { return }
         if !caughtUp {
             await model.flushSave(allowRename: false)
-            await indexService.rescan()
             caughtUp = true
         }
+        // A rename is running: `note` is stale, and the sheet is about to close.
+        guard !working else { return }
         let target = !unchanged && problem == nil ? cleaned : "\u{1}" + UUID().uuidString
         let result = await indexService.previewInboundLinks(
             toTitle: oldTitle, renamedTo: target, renamedId: note.id,
