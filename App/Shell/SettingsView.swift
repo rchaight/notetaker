@@ -19,6 +19,7 @@ struct SettingsView: View {
     @State private var calendarList: [(id: String, title: String, account: String)] = []
     @State private var excludedIds: Set<String> = []
     #if os(macOS)
+        @AppStorage(MeetingNotesLinker.enabledKey) private var linkMeetingNotes = true
         @AppStorage("calendarShareWithMCP") private var calendarShareWithMCP = false
         @State private var lastSnapshot: Date?
     #endif
@@ -244,6 +245,14 @@ struct SettingsView: View {
                         Text(lastSnapshot.map { $0.formatted(date: .abbreviated, time: .standard) } ?? "none")
                             .foregroundStyle(.secondary)
                     }
+                }
+                Section("Meeting notes") {
+                    Toggle("Link meeting notes into the daily note", isOn: $linkMeetingNotes)
+                    Text(
+                        "When Audio Transcribe saves meeting notes (type: meeting-notes) from the last \(MeetingNotesLinker.lookbackDays) days, a link, the summary and the open action-item count go under that meeting's heading in the day's daily note, once. Tasks stay in the notes file. A daily note that doesn't exist yet is never created; it's filled in once you open that day. A private (remote: false) note gets the link but not its summary."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
             #endif
             Section("Daily note template") {

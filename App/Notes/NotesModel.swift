@@ -87,6 +87,14 @@ final class NotesModel {
     private var saveTask: Task<Void, Never>?
     private var loadedURL: URL?
     private var dirty = false
+    /// When the user last typed in the open note (drives `applyAutomaticEdit`'s idle check).
+    private var lastEditAt: Date?
+    /// Note ids with a save captured but not yet finished — including the save of a note just
+    /// switched away from, which outlives the selection. Automatic writers stay off these files.
+    private var writesInFlight: [String: Int] = [:]
+    /// Bumped per note each time a save of it is captured, so an automatic writer can tell
+    /// that a save started AND finished while it was reading (`editorClearance`).
+    private var saveGenerations: [String: Int] = [:]
 
     private var started = false
     /// UserDefaults hint for the note to reopen at launch (macOS). Never trusted: it is checked
@@ -487,10 +495,81 @@ final class NotesModel {
         }
     }
 
+    // MARK: Automatic edits (MeetingNotesLinker)
+
+    /// Nil while `noteId` is in the editor's hands — on screen (or loading), or with a save in
+    /// flight. Otherwise a token: an automatic writer that reads the file, then sees the SAME
+    /// token again just before writing, knows no save of that note began in between (a save
+    /// that began and finished inside its read changes the token).
+    func editorClearance(for noteId: String) -> Int? {
+        guard selectedID != noteId, writesInFlight[noteId] == nil else { return nil }
+        return saveGenerations[noteId] ?? 0
+    }
+
+    enum AutomaticEditResult: Equatable {
+        /// The note is not on screen: the caller writes the file instead.
+        case notOpen
+        case applied
+        /// `transform` had nothing to change.
+        case unchanged
+        /// On screen but busy (unsaved typing, typed within the idle window, still loading,
+        /// locked placeholder): try again later.
+        case deferred
+    }
+
+    /// An edit the app makes on its own to the note ON SCREEN goes through the editor's own
+    /// model, never around it: `transform` sees exactly the text the editor shows (the macOS
+    /// editor pushes every keystroke into `noteText` synchronously in `textDidChange`; the iOS
+    /// one defers some pushes, so this is for the Mac only) and its result replaces it in the
+    /// same main-actor step, so no keystroke can fall between the read and the write. Even so,
+    /// it only runs while the note is saved and the user has not typed for `idle` seconds —
+    /// replacing the text resets the cursor, which must not happen mid-sentence.
+    func applyAutomaticEdit(
+        to noteId: String, idle: TimeInterval, transform: (String) -> String?
+    ) async -> AutomaticEditResult {
+        guard selectedID == noteId else { return .notOpen }
+        guard let url = loadedURL, notesById[noteId]?.url == url, !lockedPlaceholder, !dirty,
+              lastEditAt.map({ Date().timeIntervalSince($0) >= idle }) ?? true
+        else { return .deferred }
+        // The editor never reloads an open note when the FILE changes underneath it (an edit
+        // made on the phone and synced down), so `noteText` may be older than the disk. The
+        // user typing into a stale editor is one thing; an unattended write must never
+        // overwrite a newer file. Read it back and only proceed while the editor still shows
+        // exactly what is on disk; otherwise refresh the (clean) editor and try next pass.
+        guard let onDisk = try? await store.readString(at: url) else { return .deferred }
+        // Everything may have changed across that await: check again.
+        guard selectedID == noteId, loadedURL == url, !lockedPlaceholder, !dirty,
+              lastEditAt.map({ Date().timeIntervalSince($0) >= idle }) ?? true
+        else { return .deferred }
+        guard let current = diskText(onDisk, for: noteId) else { return .deferred }
+        guard current == noteText else {
+            noteText = current
+            return .deferred
+        }
+        guard let updated = transform(noteText), updated != noteText else { return .unchanged }
+        noteText = updated
+        dirty = true
+        // allowRename: false, as for every service mutation (see `flushSave`).
+        await flushSave(allowRename: false)
+        return .applied
+    }
+
+    /// What the editor would show for a file's contents: the text itself, or the decrypted
+    /// body of a locked note that is currently unlocked. Nil when it cannot be decrypted.
+    private func diskText(_ contents: String, for noteId: String) -> String? {
+        let document = MarkdownDocument(source: contents)
+        guard let envelope = LockedNoteFile.parse(
+            frontmatterValues: document.frontmatter?.values ?? [:], body: document.body
+        ) else { return contents }
+        guard let key = unlockedKeys[noteId] else { return nil }
+        return try? NoteCrypto.decrypt(envelope.ciphertext, key: key)
+    }
+
     /// Called on every editor keystroke; schedules a debounced autosave.
     func textChanged() {
         guard loadedURL != nil else { return }
         dirty = true
+        lastEditAt = Date()
         saveTask?.cancel()
         saveTask = Task {
             try? await Task.sleep(for: .milliseconds(800))
@@ -517,12 +596,21 @@ final class NotesModel {
         let text: String
     }
 
+    /// Every non-nil capture is followed by exactly one `commit`, which ends the in-flight mark.
     private func capturePendingWrite() -> PendingWrite? {
         guard dirty, let url = loadedURL, let id = selectedID else { return nil }
+        writesInFlight[id, default: 0] += 1
+        saveGenerations[id, default: 0] += 1
         return PendingWrite(id: id, url: url, text: noteText)
     }
 
     private func commit(_ pending: PendingWrite, allowRename: Bool) async {
+        defer {
+            writesInFlight[pending.id, default: 1] -= 1
+            if writesInFlight[pending.id] == 0 {
+                writesInFlight[pending.id] = nil
+            }
+        }
         do {
             // Unlocked locked-notes re-encrypt on every save: plaintext
             // only ever exists in memory.
@@ -552,9 +640,10 @@ final class NotesModel {
 
     /// Clears the dirty flag only while the written note is still the one on
     /// screen — a save that lands after the user moved on must not mark the
-    /// NEW note's unsaved edits as clean.
+    /// NEW note's unsaved edits as clean. Nor may it clear typing that arrived while the
+    /// write was in flight: that text is not on disk yet.
     private func markClean(_ pending: PendingWrite) {
-        if loadedURL == pending.url {
+        if loadedURL == pending.url, noteText == pending.text {
             dirty = false
         }
     }

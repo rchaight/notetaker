@@ -56,6 +56,10 @@ final class VaultIndexService {
     /// whether one links to the renamed note can't be known without decrypting it, which the
     /// rename never does.
     private var lockedNoteIds: Set<String> = []
+    /// `type: meeting-notes` files (Audio Transcribe) → their frontmatter `date`, seen by the last
+    /// scan that read them. Derived exactly like `lockedNoteIds`; `MeetingNotesLinker` reads it so
+    /// a pass never has to open every note to find the few recent meetings.
+    @ObservationIgnored private(set) var meetingNoteDays: [String: String] = [:]
     private var started = false
     private let embeddings = AppleEmbeddingProvider()
     private var embeddingTasks: [String: Task<Void, Never>] = [:]
@@ -182,10 +186,16 @@ final class VaultIndexService {
                     continue
                 }
                 guard let contents = try? await store.readString(at: item.url) else { continue }
-                if MarkdownDocument(source: contents).frontmatter?.values["locked"] == "true" {
+                let frontmatter = MarkdownDocument(source: contents).frontmatter
+                if frontmatter?.values["locked"] == "true" {
                     lockedNoteIds.insert(path)
                 } else {
                     lockedNoteIds.remove(path)
+                }
+                if frontmatter?.string("type") == "meeting-notes", let day = frontmatter?.string("date") {
+                    meetingNoteDays[path] = day
+                } else {
+                    meetingNoteDays[path] = nil
                 }
                 let didChange = (try? indexer.index(
                     noteId: path, contents: contents, modifiedAt: item.modificationDate
@@ -213,6 +223,7 @@ final class VaultIndexService {
             }
         }
         lockedNoteIds.formIntersection(present)
+        meetingNoteDays = meetingNoteDays.filter { present.contains($0.key) }
         // Always bump: views key their queries on this counter, and the
         // FIRST scan after launch must refresh them even when no file
         // changed (favorites/pins read the db before it opened otherwise).
@@ -1387,6 +1398,50 @@ final class VaultIndexService {
         }
         knownMTimes[task.noteId] = nil
         tasksVersion += 1
+    }
+
+    enum AutomaticEditOutcome: Equatable {
+        case written
+        /// `transform` had nothing to change; nothing was written.
+        case unchanged
+        /// Not now (the note is in the editor's hands, conflicted, or the write failed); try later.
+        case deferred
+        /// Never by this path: a locked note's file is ciphertext.
+        case skipped
+    }
+
+    /// A rewrite the app makes ON ITS OWN (no user action), e.g. `MeetingNotesLinker`, of a note
+    /// the editor does NOT hold — same read → transform → coordinated write → reindex →
+    /// `onNoteMutated` discipline as the To-Do writes above. `editorIsClear` is asked before the
+    /// read and again right before the write (both on the main actor, so no keystroke lands in
+    /// between): while it says no — the note is open, or a save of it is in flight — nothing is
+    /// written, because a write here could otherwise race the editor's own autosave and drop
+    /// typing. `transform` returning nil means "no change".
+    func applyAutomaticEdit(
+        to noteId: String, editorIsClear: () -> Bool, transform: (String) -> String?
+    ) async -> AutomaticEditOutcome {
+        guard let root, let indexer, editorIsClear() else { return .deferred }
+        await beforeNoteMutation?(noteId)
+        let url = root.appendingPathComponent(noteId)
+        guard let contents = try? await store.readString(at: url) else { return .deferred }
+        if ExportPolicy.looksLocked(contents) {
+            return .skipped
+        }
+        if !VaultConflictCenter().unresolvedVersions(for: url).isEmpty {
+            return .deferred
+        }
+        guard let updated = transform(contents), updated != contents else { return .unchanged }
+        guard editorIsClear() else { return .deferred }
+        do {
+            try await store.writeString(updated, to: url)
+        } catch {
+            return .deferred
+        }
+        try? indexer.index(noteId: noteId, contents: updated, modifiedAt: nil)
+        knownMTimes[noteId] = nil
+        tasksVersion += 1
+        onNoteMutated?(noteId)
+        return .written
     }
 }
 
