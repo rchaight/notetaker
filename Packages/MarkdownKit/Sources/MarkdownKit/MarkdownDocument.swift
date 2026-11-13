@@ -56,6 +56,32 @@ public struct Frontmatter: Equatable, Sendable {
         self.init(rawBlock: "---\n\(lines)\n---\n", values: values)
     }
 
+    /// `values[key]` with one level of YAML scalar quoting removed:
+    /// `"a \"b\""` → `a "b"`, `'it''s'` → `it's`; an unquoted value is
+    /// returned as written. Nil when the key is absent.
+    public func string(_ key: String) -> String? {
+        guard let raw = values[key] else { return nil }
+        if raw.count >= 2, raw.hasPrefix("\""), raw.hasSuffix("\"") {
+            var result = ""
+            var escaping = false
+            for character in raw.dropFirst().dropLast() {
+                if escaping {
+                    result.append(character)
+                    escaping = false
+                } else if character == "\\" {
+                    escaping = true
+                } else {
+                    result.append(character)
+                }
+            }
+            return result
+        }
+        if raw.count >= 2, raw.hasPrefix("'"), raw.hasSuffix("'") {
+            return String(raw.dropFirst().dropLast()).replacingOccurrences(of: "''", with: "'")
+        }
+        return raw
+    }
+
     /// A copy with `key` set to `value` (nil removes it), editing the raw
     /// block minimally: unrelated lines keep their exact bytes.
     public func updating(key: String, value: String?) -> Frontmatter {
