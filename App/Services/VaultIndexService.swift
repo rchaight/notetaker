@@ -60,6 +60,8 @@ final class VaultIndexService {
     /// scan that read them. Derived exactly like `lockedNoteIds`; `MeetingNotesLinker` reads it so
     /// a pass never has to open every note to find the few recent meetings.
     @ObservationIgnored private(set) var meetingNoteDays: [String: String] = [:]
+    /// The same for `type: meeting-brief` files (Audio Transcribe's pre-meeting briefs).
+    @ObservationIgnored private(set) var meetingBriefDays: [String: String] = [:]
     private var started = false
     private let embeddings = AppleEmbeddingProvider()
     private var embeddingTasks: [String: Task<Void, Never>] = [:]
@@ -192,11 +194,10 @@ final class VaultIndexService {
                 } else {
                     lockedNoteIds.remove(path)
                 }
-                if frontmatter?.string("type") == "meeting-notes", let day = frontmatter?.string("date") {
-                    meetingNoteDays[path] = day
-                } else {
-                    meetingNoteDays[path] = nil
-                }
+                let meetingType = frontmatter?.string("type")
+                let meetingDay = frontmatter?.string("date")
+                meetingNoteDays[path] = meetingType == "meeting-notes" ? meetingDay : nil
+                meetingBriefDays[path] = meetingType == "meeting-brief" ? meetingDay : nil
                 let didChange = (try? indexer.index(
                     noteId: path, contents: contents, modifiedAt: item.modificationDate
                 )) ?? false
@@ -224,6 +225,7 @@ final class VaultIndexService {
         }
         lockedNoteIds.formIntersection(present)
         meetingNoteDays = meetingNoteDays.filter { present.contains($0.key) }
+        meetingBriefDays = meetingBriefDays.filter { present.contains($0.key) }
         // Always bump: views key their queries on this counter, and the
         // FIRST scan after launch must refresh them even when no file
         // changed (favorites/pins read the db before it opened otherwise).

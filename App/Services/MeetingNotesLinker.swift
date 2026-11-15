@@ -5,8 +5,10 @@
 
     /// Links Audio Transcribe's `type: meeting-notes` files into their day's daily note: a
     /// `[[link]]`, the notes' `## Summary` and an open-action-item count go under the meeting's
-    /// `# <time> — <title>` heading (`MeetingNotesInsertion` plans it). The link in the daily
-    /// note is the ONLY record that this happened — no flags, nothing outside the files.
+    /// `# <time> — <title>` heading (`MeetingNotesInsertion` plans it). A `type: meeting-brief`
+    /// file (written before the meeting) gets one `Brief: [[link]]` line under the same heading
+    /// and nothing of its content. The link in the daily note is the ONLY record that this
+    /// happened — no flags, nothing outside the files.
     ///
     /// Mac only: one device inserts, the edit syncs (two devices inserting at once would
     /// duplicate the block). Writes go through the editor's model when the daily note is on
@@ -28,6 +30,13 @@
         nonisolated static func isEnabled() -> Bool {
             (UserDefaults.standard.object(forKey: enabledKey) as? Bool) ?? true
         }
+
+        /// One linker for the whole app, like `RemoteReplicaService.shared`: every window's shell
+        /// calls `start`, and a second instance per window would run passes against the same
+        /// daily note at once.
+        static let shared = MeetingNotesLinker()
+
+        private init() {}
 
         private weak var indexService: VaultIndexService?
         private weak var notesModel: NotesModel?
@@ -99,15 +108,21 @@
             }
         }
 
-        /// One pass over the recent meeting notes. Returns true when something was skipped
-        /// for now (editor busy, conflict, failed write) and a later pass should retry.
+        /// One pass over the recent meeting notes and the upcoming briefs. Returns true when
+        /// something was skipped for now (editor busy, conflict, failed write) and a later pass
+        /// should retry.
         private func pass() async -> Bool {
             guard Self.isEnabled(), let indexService, let notesModel, indexService.state == .ready,
                   let root = indexService.vaultRootURL else { return false }
             let policy = ExportPolicy(excludedFolders: RemoteReplicaService.excludedFolders())
             var retry = false
-            for (noteId, day) in indexService.meetingNoteDays.sorted(by: { $0.key < $1.key })
-                where Self.isRecent(day) {
+            // A file has one `type`, so a note id is in at most one of the two maps.
+            let candidates = (
+                indexService.meetingNoteDays.map { (noteId: $0.key, day: $0.value, kind: MeetingNote.Kind.notes) }
+                    + indexService.meetingBriefDays
+                    .map { (noteId: $0.key, day: $0.value, kind: MeetingNote.Kind.brief) }
+            ).sorted { $0.noteId < $1.noteId }
+            for (noteId, day, kind) in candidates where Self.isLinkable(day, kind: kind) {
                 let dailyId = "Daily/\(day).md"
                 // Only ever a daily note: never the notes file itself, `_index.md` or `.trash/`.
                 guard MeetingNote.isDay(day), dailyId != noteId, !VaultPath.isInsideHiddenFolder(noteId),
@@ -119,10 +134,18 @@
                 guard FileManager.default.fileExists(atPath: dailyURL.path),
                       FileManager.default.fileExists(atPath: noteURL.path),
                       let source = try? await store.readString(at: noteURL),
-                      let note = MeetingNote.parse(noteId: noteId, source: source, policy: policy)
+                      let note = MeetingNote.parse(noteId: noteId, source: source, policy: policy),
+                      note.kind == kind
                 else { continue }
 
+                // The pass reads `root` once; a vault switch while it runs must not carry one
+                // vault's link into the other vault's daily note. Checked again immediately
+                // before each write (inside `transform` and `editorIsClear`, which both run just
+                // before it), not only here.
+                let sameVault: () -> Bool = { [weak indexService] in indexService?.vaultRootURL == root }
+                guard sameVault() else { return true }
                 let transform: (String) -> String? = { text in
+                    guard sameVault() else { return nil }
                     if case let .insert(updated) = MeetingNotesInsertion.plan(dailyNote: text, note: note) {
                         return updated
                     }
@@ -141,7 +164,7 @@
                 let outcome = await indexService.applyAutomaticEdit(
                     to: dailyId,
                     editorIsClear: { [weak notesModel] in
-                        clearance != nil && notesModel?.editorClearance(for: dailyId) == clearance
+                        sameVault() && clearance != nil && notesModel?.editorClearance(for: dailyId) == clearance
                     },
                     transform: transform
                 )
@@ -152,17 +175,13 @@
             return retry
         }
 
-        /// `yyyy-MM-dd` from today back `lookbackDays` days, inclusive.
-        nonisolated static func isRecent(_ day: String, now: Date = Date(), calendar: Calendar = .current) -> Bool {
-            let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "en_US_POSIX")
-            formatter.calendar = calendar
-            formatter.timeZone = calendar.timeZone
-            formatter.dateFormat = "yyyy-MM-dd"
-            guard let date = formatter.date(from: day) else { return false }
-            let today = calendar.startOfDay(for: now)
-            guard let earliest = calendar.date(byAdding: .day, value: -lookbackDays, to: today) else { return false }
-            return date >= earliest && date <= today
+        /// Whether a note or brief dated `day` is still worth linking today. The rule is pure and
+        /// tested in MarkdownKit (`MeetingNote.isLinkable`): notes from `lookbackDays` ago through
+        /// today; briefs only from today on, since a brief for a meeting that is over is no use.
+        nonisolated static func isLinkable(
+            _ day: String, kind: MeetingNote.Kind, now: Date = Date(), calendar: Calendar = .current
+        ) -> Bool {
+            MeetingNote.isLinkable(day: day, kind: kind, lookbackDays: lookbackDays, now: now, calendar: calendar)
         }
     }
 #endif

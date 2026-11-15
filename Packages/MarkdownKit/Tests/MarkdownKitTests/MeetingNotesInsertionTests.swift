@@ -334,6 +334,159 @@ struct MeetingNotesInsertionTests {
         #expect(result.hasSuffix("# 8:30 AM — IPE Consult\n[[Meetings/Notes/2026-11-12 0830 IPE Consult.notes]]\n\n"))
     }
 
+    // MARK: Briefs (type: meeting-brief)
+
+    static let briefLink = "Briefs/IPE Consult — 2026-11-12.brief"
+    static let briefLine = "Brief: [[Briefs/IPE Consult — 2026-11-12.brief]]"
+
+    func brief(
+        title: String? = "IPE Consult",
+        eventStart: String? = "2026-11-12T08:30:00-06:00",
+        body: String = "## Last time\nBRIEF-BODY-MARKER\n- [ ] BRIEF-TASK-MARKER\n"
+    ) -> MeetingNote {
+        MeetingNote(
+            kind: .brief,
+            link: Self.briefLink,
+            title: title,
+            eventStart: eventStart.map(Self.date),
+            start: nil,
+            body: body
+        )
+    }
+
+    @Test func briefIsOneLineUnderAnExactHeadingMatch() {
+        let result = inserted(Self.daily, brief())
+        let expected = Self.daily.replacingOccurrences(
+            of: "# 8:30 AM–9:30 AM — IPE Consult\n",
+            with: "# 8:30 AM–9:30 AM — IPE Consult\n\(Self.briefLine)\n"
+        )
+        #expect(result == expected)
+    }
+
+    @Test func briefWithNoMatchingHeadingGetsAHeadingByTheThreePlacementRules() {
+        // After the last meeting section.
+        let after = inserted(Self.daily, brief(title: "Hallway chat", eventStart: "2026-11-12T10:15:00-06:00")) ?? ""
+        #expect(after
+            .contains(
+                "# 1:00 PM–2:00 PM — Budget\n\n\n# 10:15 AM — Hallway chat\n\(Self.briefLine)\n\n# To-Do This Week"
+            ))
+        // Before To-Do This Week when there are no meeting headings.
+        let todo = inserted("# 2026-11-12\n\n# To-Do This Week\n- a\n", brief(title: nil)) ?? ""
+        #expect(todo == "# 2026-11-12\n\n# 8:30 AM — Meeting\n\(Self.briefLine)\n\n# To-Do This Week\n- a\n")
+        // At the end otherwise.
+        let end = inserted("# 2026-11-12\n", brief()) ?? ""
+        #expect(end == "# 2026-11-12\n\n# 8:30 AM — IPE Consult\n\(Self.briefLine)\n\n")
+    }
+
+    @Test func briefAlreadyLinkedChangesNothingAndAppliedTwiceEqualsOnce() throws {
+        for daily in [Self.daily, "# 2026-11-12\n", "", "# To-Do This Week\n"] {
+            let once = try #require(inserted(daily, brief()))
+            #expect(MeetingNotesInsertion.plan(dailyNote: once, note: brief(), calendar: calendar) == .alreadyLinked)
+        }
+        // A link the user wrote by hand, anywhere, counts.
+        let byHand = Self.daily + "\n[[\(Self.briefLink)|brief]]\n"
+        #expect(MeetingNotesInsertion.plan(dailyNote: byHand, note: brief(), calendar: calendar) == .alreadyLinked)
+    }
+
+    @Test func briefBlockNeverContainsTheBriefBody() throws {
+        let result = try #require(inserted(Self.daily, brief()))
+        #expect(!result.contains("BRIEF-BODY-MARKER"))
+        #expect(!result.contains("BRIEF-TASK-MARKER"))
+        #expect(!result.contains("Last time"))
+        #expect(MeetingNotesInsertion.blockLines(for: brief()) == [Self.briefLine])
+        // Not even when the notes-style rules would copy a summary and count tasks.
+        let summarised = brief(body: "## Summary\nBRIEF-BODY-MARKER\n- [ ] one\n")
+        #expect(MeetingNotesInsertion.blockLines(for: summarised) == [Self.briefLine])
+    }
+
+    @Test func notesThenBriefAndBriefThenNotesBothSurviveUnderOneHeading() throws {
+        let daily = "# 8:30 AM–9:30 AM — IPE Consult\nmy own notes\n\n# To-Do This Week\n"
+        let notesFirst = try #require(inserted(daily, note()))
+        let both = try #require(inserted(notesFirst, brief()))
+        #expect(both ==
+            "# 8:30 AM–9:30 AM — IPE Consult\n\(Self.briefLine)\n\n\(Self.block)\n\nmy own notes\n\n# To-Do This Week\n")
+
+        let briefFirst = try #require(inserted(daily, brief()))
+        #expect(briefFirst ==
+            "# 8:30 AM–9:30 AM — IPE Consult\n\(Self.briefLine)\n\nmy own notes\n\n# To-Do This Week\n")
+        let reversed = try #require(inserted(briefFirst, note()))
+        #expect(reversed ==
+            "# 8:30 AM–9:30 AM — IPE Consult\n\(Self.block)\n\n\(Self.briefLine)\n\nmy own notes\n\n# To-Do This Week\n")
+
+        // Both are then recognised as linked, whichever order they went in.
+        for text in [both, reversed] {
+            #expect(MeetingNotesInsertion.plan(dailyNote: text, note: note(), calendar: calendar) == .alreadyLinked)
+            #expect(MeetingNotesInsertion.plan(dailyNote: text, note: brief(), calendar: calendar) == .alreadyLinked)
+        }
+    }
+
+    @Test func briefInACRLFDailyNoteStaysCRLF() {
+        let daily = "# 2026-11-12\r\n\r\n# 8:30 AM–9:30 AM — IPE Consult\r\nmine\r\n"
+        let result = inserted(daily, brief()) ?? ""
+        #expect(result == "# 2026-11-12\r\n\r\n# 8:30 AM–9:30 AM — IPE Consult\r\n\(Self.briefLine)\r\n\r\nmine\r\n")
+    }
+
+    static let briefFile = """
+    ---
+    type: meeting-brief
+    title: "IPE Consult"
+    date: 2026-11-12
+    event_start: 2026-11-12T08:30:00-06:00
+    attendees: ["Ramona Example"]
+    ---
+
+    ## Last time
+    BRIEF-BODY-MARKER
+
+    """
+
+    @Test func parsesABriefAndOnlyTheTwoKinds() {
+        let parsed = MeetingNote.parse(noteId: "Briefs/IPE Consult — 2026-11-12.brief.md", source: Self.briefFile)
+        #expect(parsed?.kind == .brief)
+        #expect(parsed?.link == Self.briefLink)
+        #expect(parsed?.title == "IPE Consult")
+        #expect(parsed?.day == "2026-11-12")
+        #expect(parsed?.eventStart == Self.date("2026-11-12T08:30:00-06:00"))
+        #expect(MeetingNote.parse(noteId: "a.md", source: Self.notesFile)?.kind == .notes)
+        for other in ["meeting-transcript", "meeting-briefing", "brief", "Meeting-Brief"] {
+            let source = Self.briefFile.replacingOccurrences(of: "type: meeting-brief", with: "type: \(other)")
+            #expect(MeetingNote.parse(noteId: "a.md", source: source) == nil)
+        }
+        // A parsed brief's block still carries none of its body.
+        if let parsed {
+            #expect(inserted("# 2026-11-12\n", parsed)?.contains("BRIEF-BODY-MARKER") == false)
+        }
+    }
+
+    // MARK: Which days are worth linking
+
+    @Test func notesAreLinkableFromSevenDaysAgoThroughToday() {
+        let now = Self.date("2026-11-13T09:00:00-06:00")
+        func linkable(_ day: String) -> Bool {
+            MeetingNote.isLinkable(day: day, kind: .notes, lookbackDays: 7, now: now, calendar: calendar)
+        }
+        #expect(linkable("2026-11-13"))
+        #expect(linkable("2026-11-06"))
+        #expect(!linkable("2026-11-05"))
+        #expect(!linkable("2026-11-14"))
+        #expect(!linkable("../../etc"))
+    }
+
+    @Test func pastDatedBriefsAreSkipped() {
+        let now = Self.date("2026-11-13T09:00:00-06:00")
+        func linkable(_ day: String, _ at: Date = now) -> Bool {
+            MeetingNote.isLinkable(day: day, kind: .brief, lookbackDays: 7, now: at, calendar: calendar)
+        }
+        #expect(linkable("2026-11-13")) // today, even when the meeting is earlier in the day
+        #expect(linkable("2026-11-13", Self.date("2026-11-13T23:59:00-06:00")))
+        #expect(linkable("2026-11-14"))
+        #expect(linkable("2026-11-20"))
+        #expect(!linkable("2026-11-21")) // beyond the window
+        #expect(!linkable("2026-11-12")) // yesterday: that meeting is over
+        #expect(!linkable("2026-11-06"))
+        #expect(!linkable("not-a-day"))
+    }
+
     // MARK: Parsing the notes file
 
     static let notesFile = """
