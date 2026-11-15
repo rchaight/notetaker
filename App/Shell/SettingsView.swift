@@ -249,7 +249,7 @@ struct SettingsView: View {
                 Section("Meeting notes") {
                     Toggle("Link meeting notes into the daily note", isOn: $linkMeetingNotes)
                     Text(
-                        "When Audio Transcribe saves meeting notes (type: meeting-notes) from the last \(MeetingNotesLinker.lookbackDays) days, a link, the summary and the open action-item count go under that meeting's heading in the day's daily note, once. Tasks stay in the notes file. A daily note that doesn't exist yet is never created; it's filled in once you open that day. A private (remote: false) note gets the link but not its summary."
+                        "When Audio Transcribe saves meeting notes (type: meeting-notes) from the last \(MeetingNotesLinker.lookbackDays) days, a link, the summary and the open action-item count go under that meeting's heading in the day's daily note. Its pre-meeting brief (type: meeting-brief) gets a one-line Brief: link under the same heading, for meetings from today up to \(MeetingNotesLinker.lookbackDays) days ahead; the brief's contents are never copied. Tasks stay in the notes file. A daily note that doesn't exist yet is never created; it's filled in once you open that day. A private (remote: false) note gets the link but not its summary. Each link is added once, but if you delete one it comes back while the note is under \(MeetingNotesLinker.lookbackDays) days old (a brief, until its day has passed); turn this off to stop that."
                     )
                     .font(.caption)
                     .foregroundStyle(.secondary)

@@ -1,9 +1,18 @@
 import Foundation
 
-/// A `type: meeting-notes` file written into the vault by Audio Transcribe
-/// (frontmatter contract: Audio Transcribe spec 00), reduced to what the
+/// A `type: meeting-notes` or `type: meeting-brief` file written into the vault by Audio
+/// Transcribe (frontmatter contract: Audio Transcribe spec 00), reduced to what the
 /// daily-note planner needs.
 public struct MeetingNote: Equatable, Sendable {
+    /// What the file is. The frontmatter `type` says so; any other `type` is not a meeting note.
+    public enum Kind: String, Equatable, Sendable {
+        /// `type: meeting-notes` — written after the meeting; its summary goes in the daily note.
+        case notes = "meeting-notes"
+        /// `type: meeting-brief` — written before the meeting; only a link goes in the daily note.
+        case brief = "meeting-brief"
+    }
+
+    public let kind: Kind
     /// Vault-relative path without `.md` — what the inserted `[[…]]` says.
     public let link: String
     /// The meeting's title (frontmatter `title`); nil when no calendar event matched.
@@ -21,6 +30,7 @@ public struct MeetingNote: Equatable, Sendable {
     public let copiesSummary: Bool
 
     public init(
+        kind: Kind = .notes,
         link: String,
         title: String?,
         day: String? = nil,
@@ -29,6 +39,7 @@ public struct MeetingNote: Equatable, Sendable {
         body: String,
         copiesSummary: Bool = true
     ) {
+        self.kind = kind
         self.link = link
         self.title = title
         self.day = day
@@ -38,8 +49,8 @@ public struct MeetingNote: Equatable, Sendable {
         self.copiesSummary = copiesSummary
     }
 
-    /// Reads a vault file as a meeting note. Nil unless its frontmatter says
-    /// `type: meeting-notes`. `policy` is the remote-export gate: a note it
+    /// Reads a vault file as a meeting note or brief. Nil unless its frontmatter says
+    /// `type: meeting-notes` or `type: meeting-brief`. `policy` is the remote-export gate: a note it
     /// would not export keeps its summary out of the daily note. A locked
     /// note's body is ciphertext and is never read as prose.
     public static func parse(
@@ -48,13 +59,14 @@ public struct MeetingNote: Equatable, Sendable {
         guard noteId.lowercased().hasSuffix(".md") else { return nil }
         let document = MarkdownDocument(source: source)
         guard let frontmatter = document.frontmatter,
-              frontmatter.string("type")?.trimmingCharacters(in: .whitespaces) == "meeting-notes"
+              let kind = frontmatter.string("type").flatMap({ Kind(rawValue: $0.trimmingCharacters(in: .whitespaces)) })
         else { return nil }
         let locked = ExportPolicy.looksLocked(source)
         let exportable = policy.decide(relativePath: noteId, contents: source) == .export
         let title = frontmatter.string("title")?.trimmingCharacters(in: .whitespaces)
         let day = frontmatter.string("date")?.trimmingCharacters(in: .whitespaces)
         return MeetingNote(
+            kind: kind,
             link: String(noteId.dropLast(3)),
             title: (title?.isEmpty ?? true) ? nil : title,
             day: day.flatMap { isDay($0) ? $0 : nil },
@@ -72,6 +84,31 @@ public struct MeetingNote: Equatable, Sendable {
         return parts.allSatisfy { $0.allSatisfy { $0.isASCII && $0.isNumber } }
     }
 
+    /// Whether a note or brief dated `day` (`yyyy-MM-dd`) is still worth linking from `now`.
+    /// Notes: from `lookbackDays` ago through today. Briefs: today through `lookbackDays` ahead
+    /// only — a brief for a meeting that is already over is not worth inserting on a later day.
+    /// Dates are compared as local calendar days.
+    public static func isLinkable(
+        day: String, kind: Kind, lookbackDays: Int, now: Date = Date(), calendar: Calendar = .current
+    ) -> Bool {
+        guard isDay(day) else { return false }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard let date = formatter.date(from: day) else { return false }
+        let today = calendar.startOfDay(for: now)
+        switch kind {
+        case .notes:
+            guard let earliest = calendar.date(byAdding: .day, value: -lookbackDays, to: today) else { return false }
+            return date >= earliest && date <= today
+        case .brief:
+            guard let latest = calendar.date(byAdding: .day, value: lookbackDays, to: today) else { return false }
+            return date >= today && date <= latest
+        }
+    }
+
     static func parseTimestamp(_ text: String) -> Date? {
         let trimmed = text.trimmingCharacters(in: .whitespaces)
         let formatter = ISO8601DateFormatter()
@@ -83,7 +120,7 @@ public struct MeetingNote: Equatable, Sendable {
     }
 }
 
-/// Plans where a meeting note's link and summary go in a daily note. Pure: the
+/// Plans where a meeting note's (or brief's) link and summary go in a daily note. Pure: the
 /// caller reads and writes the files. The `[[link]]` in the daily note is the
 /// only record that linking happened, so planning is idempotent by design.
 public enum MeetingNotesInsertion {
@@ -158,8 +195,12 @@ public enum MeetingNotesInsertion {
 
     // MARK: Block
 
-    /// `[[link]]`, the `## Summary` body, the open-action-item line.
+    /// Notes: `[[link]]`, the `## Summary` body, the open-action-item line. A brief: one
+    /// `Brief: [[link]]` line and nothing from the brief's body (it quotes other meetings).
     static func blockLines(for note: MeetingNote) -> [String] {
+        if note.kind == .brief {
+            return ["Brief: [[\(note.link)]]"]
+        }
         var lines = ["[[\(note.link)]]"]
         if note.copiesSummary {
             lines += summaryLines(of: note.body)

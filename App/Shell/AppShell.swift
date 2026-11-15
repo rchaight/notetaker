@@ -31,7 +31,7 @@ struct AppShell: View {
     #if os(macOS)
         @State private var calendarSnapshotPublisher = CalendarSnapshotPublisher()
         @State private var remoteReplicaService = RemoteReplicaService.shared
-        @State private var meetingNotesLinker = MeetingNotesLinker()
+        @State private var meetingNotesLinker = MeetingNotesLinker.shared
         @AppStorage("calendarShareWithMCP") private var calendarShareWithMCP = false
     #endif
 

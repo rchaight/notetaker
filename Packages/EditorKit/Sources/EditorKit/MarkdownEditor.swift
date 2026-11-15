@@ -144,8 +144,7 @@ struct EditorParseCache {
                 textView.maxTextWidth = maxTextWidth
                 var textSwapped = false
                 if textView.string != text {
-                    textView.string = text
-                    context.coordinator.restyle(textView)
+                    context.coordinator.replaceTextFromOutside(text, in: textView)
                     textSwapped = true
                 }
                 context.coordinator.applyProofing(proofing, to: textView, recheck: textSwapped)
@@ -256,10 +255,11 @@ struct EditorParseCache {
             context.coordinator.onSelectionContext = onSelectionContext
             context.coordinator.onOpenAttachment = onOpenAttachment
             context.coordinator.onOpenWikilink = onOpenWikilink
+            // A cached view that was swapped while off screen has no undo manager yet.
+            context.coordinator.finishPendingUndoReset(in: textView)
             var textSwapped = false
             if textView.string != text {
-                textView.string = text
-                context.coordinator.restyle(textView)
+                context.coordinator.replaceTextFromOutside(text, in: textView)
                 textSwapped = true
             } else if modeChanged {
                 context.coordinator.restyle(textView)
@@ -356,6 +356,35 @@ struct EditorParseCache {
             init(text: Binding<String>, theme: MarkdownTheme) {
                 self.text = text
                 self.theme = theme
+            }
+
+            /// Set when a cached, off-screen view had its text replaced (no undo manager to clear
+            /// until it is back in a window); `finishPendingUndoReset` clears it on the next update.
+            private var undoResetPending = false
+
+            /// Replaces the whole text of the view with text that did NOT come from typing: the
+            /// app swapped the note (another note, or an automatic edit such as a meeting link).
+            /// Typing never lands here, because every keystroke is pushed into the binding first,
+            /// so the view and the binding already agree.
+            ///
+            /// `NSTextView.string = …` registers no undo of its own and leaves the existing undo
+            /// stack in place, and those entries hold ranges and substrings of the OLD text; the
+            /// next ⌘Z would apply them to the new text. So the history is dropped with the swap:
+            /// there is nothing coherent left to undo.
+            func replaceTextFromOutside(_ text: String, in textView: NSTextView) {
+                textView.string = text
+                if let undoManager = textView.undoManager {
+                    undoManager.removeAllActions()
+                } else {
+                    undoResetPending = true
+                }
+                restyle(textView)
+            }
+
+            func finishPendingUndoReset(in textView: NSTextView) {
+                guard undoResetPending, let undoManager = textView.undoManager else { return }
+                undoManager.removeAllActions()
+                undoResetPending = false
             }
 
             func restyle(_ textView: NSTextView) {
