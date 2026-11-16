@@ -232,8 +232,16 @@ struct EditorParseCache {
         /// The image and wikilink click monitors are app-wide (`NSEvent` local monitors), so
         /// they come off when the editor leaves the window. A cached view reinstalls them in
         /// `makeNSView`.
-        public static func dismantleNSView(_: NSScrollView, coordinator: Coordinator) {
+        ///
+        /// An editor that is not the cached one (a second window's) is never shown again, so its
+        /// undo history goes with it: the history lives on the text view, and its actions must
+        /// not be what keeps a closed window's editor in memory.
+        public static func dismantleNSView(_ scrollView: NSScrollView, coordinator: Coordinator) {
             coordinator.removeClickMonitors()
+            if scrollView !== SharedEditorCache.scrollView,
+               let textView = scrollView.documentView as? MarkdownTextView {
+                textView.editorUndoManager.removeAllActions()
+            }
         }
 
         public func updateNSView(_ scrollView: NSScrollView, context: Context) {
@@ -255,8 +263,6 @@ struct EditorParseCache {
             context.coordinator.onSelectionContext = onSelectionContext
             context.coordinator.onOpenAttachment = onOpenAttachment
             context.coordinator.onOpenWikilink = onOpenWikilink
-            // A cached view that was swapped while off screen has no undo manager yet.
-            context.coordinator.finishPendingUndoReset(in: textView)
             var textSwapped = false
             if textView.string != text {
                 context.coordinator.replaceTextFromOutside(text, in: textView)
@@ -358,9 +364,15 @@ struct EditorParseCache {
                 self.theme = theme
             }
 
-            /// Set when a cached, off-screen view had its text replaced (no undo manager to clear
-            /// until it is back in a window); `finishPendingUndoReset` clears it on the next update.
-            private var undoResetPending = false
+            /// The editor's own undo manager, not the window's: the window's is shared with every
+            /// other field in the window, and a cached editor that is off screen has no window at
+            /// all, so its history could be neither cleared alone nor cleared at the moment of a
+            /// swap. It lives on the text view (per view, because a second window shares this
+            /// coordinator but must not share ⌘Z with the first; freed with the view). Any other
+            /// text view falls back to the window's.
+            public func undoManager(for view: NSTextView) -> UndoManager? {
+                (view as? MarkdownTextView)?.editorUndoManager ?? view.window?.undoManager
+            }
 
             /// Replaces the whole text of the view with text that did NOT come from typing: the
             /// app swapped the note (another note, or an automatic edit such as a meeting link).
@@ -370,21 +382,18 @@ struct EditorParseCache {
             /// `NSTextView.string = …` registers no undo of its own and leaves the existing undo
             /// stack in place, and those entries hold ranges and substrings of the OLD text; the
             /// next ⌘Z would apply them to the new text. So the history is dropped with the swap:
-            /// there is nothing coherent left to undo.
+            /// there is nothing coherent left to undo. The editor's own undo manager exists with
+            /// or without a window, so this happens at once, and nothing else in the window loses
+            /// its history.
+            ///
+            /// An input-method composition in progress is dropped by the assignment itself, which
+            /// reports the NEW text to `textDidChange`. Never `unmarkText()` first: that commits
+            /// the composition and reports the OLD text plus it, which the binding would save
+            /// into the note that is now open.
             func replaceTextFromOutside(_ text: String, in textView: NSTextView) {
                 textView.string = text
-                if let undoManager = textView.undoManager {
-                    undoManager.removeAllActions()
-                } else {
-                    undoResetPending = true
-                }
+                undoManager(for: textView)?.removeAllActions()
                 restyle(textView)
-            }
-
-            func finishPendingUndoReset(in textView: NSTextView) {
-                guard undoResetPending, let undoManager = textView.undoManager else { return }
-                undoManager.removeAllActions()
-                undoResetPending = false
             }
 
             func restyle(_ textView: NSTextView) {
@@ -1353,7 +1362,11 @@ struct EditorParseCache {
             context.coordinator.onSelectionContext = onSelectionContext
             context.coordinator.applyProofing(proofing, to: textView)
             if textView.text != text {
+                // A swap from outside (another note, an automatic edit), never typing: typing
+                // pushes into the binding first. The old history's ranges point into text
+                // that is gone, so ⌘Z must not replay them (same rule as the Mac editor).
                 textView.text = text
+                textView.undoManager?.removeAllActions()
                 context.coordinator.restyle(textView)
             } else if modeChanged {
                 context.coordinator.restyle(textView)
