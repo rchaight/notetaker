@@ -14,6 +14,10 @@ import UniformTypeIdentifiers
     import AppKit
 
     public final class MarkdownTextView: NSTextView {
+        /// The editor's own undo history, returned by the coordinator's `undoManager(for:)`
+        /// (see `MarkdownEditor.Coordinator.replaceTextFromOutside`).
+        let editorUndoManager = UndoManager()
+
         /// nil = image import off (the default until the app wires it).
         /// Set by `MarkdownEditor` from its own `importAttachments` param.
         public var importAttachments: (([AttachmentDrop]) async -> [String])?
