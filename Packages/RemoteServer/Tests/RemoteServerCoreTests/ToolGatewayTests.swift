@@ -285,6 +285,41 @@ struct ToolGatewayTests {
         #expect(everything(in: result).contains("tool timed out"))
     }
 
+    /// Vault work is synchronous (file scans, SQLite) and can't be cancelled. When as many slow
+    /// calls as the shared task pool has threads block at once, the deadline must still answer
+    /// each one: the work may not occupy the threads the deadline and the server run on.
+    /// `blockThisThread` stands in for a stuck synchronous vault call.
+    @Test func deadlineFiresWhileSlowCallsBlockEveryPoolThread() async throws {
+        let fixture = try ReplicaFixture()
+        defer { fixture.cleanUp() }
+        let snapshot = try await readySnapshot(fixture)
+        var limits = ToolGateway.Limits()
+        limits.toolTimeout = .milliseconds(150)
+        let gate = gateway(snapshot, limits: limits, dispatch: { _, _, _ in
+            blockThisThread(seconds: 10)
+            return CallTool.Result(content: [], isError: false)
+        })
+        let calls = ProcessInfo.processInfo.activeProcessorCount + 2
+        let started = Date()
+        let timedOut = await withTaskGroup(of: Bool.self) { group in
+            for _ in 0 ..< calls {
+                group.addTask {
+                    let result = await gate.call(name: "vault_overview", arguments: [:])
+                    return result.isError == true && everything(in: result).contains("tool timed out")
+                }
+            }
+            var count = 0
+            for await hit in group where hit {
+                count += 1
+            }
+            return count
+        }
+        // The decisive check: without the fix the calls return the tool's own result after
+        // 10 s instead of timing out. The bound is loose for a loaded runner.
+        #expect(timedOut == calls)
+        #expect(Date().timeIntervalSince(started) < 8)
+    }
+
     // MARK: catalog
 
     @Test func catalogIsTheSevenReadOnlyToolsWithKeywordSearch() {
@@ -318,4 +353,10 @@ struct ToolGatewayTests {
             #expect(!containsKey(tool.inputSchema), "\(tool.name)")
         }
     }
+}
+
+/// Blocks the calling thread, the way a synchronous vault call does (a plain function, so it
+/// can be called from async code where `Thread.sleep` is disallowed).
+private func blockThisThread(seconds: TimeInterval) {
+    Thread.sleep(forTimeInterval: seconds)
 }
