@@ -264,6 +264,10 @@ struct ToolGatewayTests {
 
     // MARK: timeout
 
+    /// The call answers at the deadline instead of waiting for the slow tool. The tool takes a
+    /// minute and the bound is 20 s: far enough apart that a loaded CI runner (where the 150 ms
+    /// timer has been seen to fire ~4.5 s late) still passes, while a gateway that waited for
+    /// the loser would still fail. The "tool timed out" text can only come from the deadline.
     @Test func slowToolsTimeOutPromptly() async throws {
         let fixture = try ReplicaFixture()
         defer { fixture.cleanUp() }
@@ -271,12 +275,12 @@ struct ToolGatewayTests {
         var limits = ToolGateway.Limits()
         limits.toolTimeout = .milliseconds(150)
         let gate = gateway(snapshot, limits: limits, dispatch: { _, _, _ in
-            try? await Task.sleep(for: .seconds(5))
+            try? await Task.sleep(for: .seconds(60))
             return CallTool.Result(content: [], isError: false)
         })
         let started = Date()
         let result = await gate.call(name: "vault_overview", arguments: [:])
-        #expect(Date().timeIntervalSince(started) < 3)
+        #expect(Date().timeIntervalSince(started) < 20)
         #expect(result.isError == true)
         #expect(everything(in: result).contains("tool timed out"))
     }
