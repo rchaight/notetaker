@@ -52,6 +52,12 @@ struct ModernPathTests {
             .split(separator: "\n").map(String.init)
     }
 
+    /// `value` as JSON with sorted keys, so two equal values give identical text on every platform.
+    private static func canonicalJSON(_ value: Any) throws -> String {
+        let data = try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
+        return String(decoding: data, as: UTF8.self)
+    }
+
     // MARK: 1
 
     @Test func discoverAnswersStatelessly() async throws {
@@ -80,7 +86,10 @@ struct ModernPathTests {
                         ],
                     ],
                 ]
-                #expect(try (#require(reply.result) as NSDictionary).isEqual(to: expected))
+                // Compared as canonical JSON text: `NSDictionary.isEqual` against a Swift literal
+                // with nested arrays and dictionaries is false on Linux's Foundation even when
+                // the values match, and a text comparison shows both sides when it fails.
+                #expect(try Self.canonicalJSON(#require(reply.result)) == Self.canonicalJSON(expected))
                 #expect((reply.result?["instructions"] as? String)?.contains("read-only replica") == true)
             }
         }
