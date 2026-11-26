@@ -339,6 +339,7 @@ struct ToolGatewayTests {
                 #expect(mkfifo(pipe, 0o644) == 0)
             }
             defer { releaseReaders(of: pipes) }
+            FileHandle.standardError.write("PROBEC cores=\(ProcessInfo.processInfo.activeProcessorCount) exists=\(FileManager.default.fileExists(atPath: pipes[0]))\n".data(using: .utf8)!)
             var limits = ToolGateway.Limits()
             limits.toolTimeout = .milliseconds(150)
             let gate = gateway(snapshot, limits: limits)
@@ -346,10 +347,13 @@ struct ToolGatewayTests {
             let timedOut = await withTaskGroup(of: Bool.self) { group in
                 for index in 0 ..< calls {
                     group.addTask {
+                        let t0 = Date()
                         let result = await gate.call(
                             name: "read_note",
                             arguments: ["path": .string("Stuck\(index).md")]
                         )
+                        let line = "PROBEC call \(index) after \(Date().timeIntervalSince(t0))s isError=\(String(describing: result.isError)) text=\(everything(in: result).prefix(300))"
+                        FileHandle.standardError.write((line.replacingOccurrences(of: "\n", with: " ") + "\n").data(using: .utf8)!)
                         return result.isError == true && everything(in: result).contains("tool timed out")
                     }
                 }
