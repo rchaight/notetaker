@@ -113,7 +113,11 @@ Tests/RemoteServerCoreTests/…
      ≤ 60 days (else `isError` "range too large (max 60 days)"); `path`
      and `query` ≤ 1,024 chars; `due_within_days ≤ 3660`.
   3. Dispatch `NotetakerMCPServer.call(name:arguments:service:)` under a
-     30 s deadline (task group race; on timeout `isError` "tool timed out").
+     30 s deadline (on timeout `isError` "tool timed out"). The race does not
+     wait for the loser, because the vault calls are synchronous and can't be
+     cancelled, and the tool work runs on its own executor (`ToolWorkExecutor`,
+     a dispatch queue) so stuck calls can never occupy the concurrency pool the
+     deadline timer and the HTTP server run on.
   4. Post-caps on the structured `Value`: `read_note.content` > 200 KB →
      truncated at a UTF-8 boundary + `truncated:true` + `content_bytes`;
      `list_folder.notes` > 500 → first 500 + `truncated:true`;

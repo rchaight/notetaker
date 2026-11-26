@@ -189,9 +189,11 @@ enum NoteReader {
         }
 
         /// NSFileCoordinator so we never read a half-written file out from under
-        /// the app or the iCloud daemon.
+        /// the app or the iCloud daemon. A plain `Task`, not a detached one: this function is
+        /// nonisolated, so there is no actor to leave, and the task keeps the caller's task
+        /// executor (the remote server runs tool work on its own, off the shared pool).
         private static func coordinatedRead(_ url: URL) async throws -> String {
-            try await Task.detached(priority: .userInitiated) {
+            try await Task(priority: .userInitiated) {
                 let coordinator = NSFileCoordinator(filePresenter: nil)
                 var coordinationError: NSError?
                 var result: Result<String, any Error>?
@@ -214,8 +216,11 @@ enum NoteReader {
             }
         }
 
+        /// A plain `Task`, not a detached one, so the read stays on the caller's task executor:
+        /// the remote server runs tool work off the shared pool, and a blocked read must not
+        /// take a pool thread.
         private static func coordinatedRead(_ url: URL) async throws -> String {
-            try await Task.detached(priority: .userInitiated) {
+            try await Task(priority: .userInitiated) {
                 try String(contentsOf: url, encoding: .utf8)
             }.value
         }

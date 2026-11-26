@@ -285,6 +285,85 @@ struct ToolGatewayTests {
         #expect(everything(in: result).contains("tool timed out"))
     }
 
+    /// Vault work is synchronous (file scans, SQLite) and can't be cancelled. When as many slow
+    /// calls as the shared task pool has threads block at once, the deadline must still answer
+    /// each one: the work may not occupy the threads the deadline and the server run on.
+    /// `blockThisThread` stands in for a stuck synchronous vault call.
+    @Test func deadlineFiresWhileSlowCallsBlockEveryPoolThread() async throws {
+        let fixture = try ReplicaFixture()
+        defer { fixture.cleanUp() }
+        let snapshot = try await readySnapshot(fixture)
+        var limits = ToolGateway.Limits()
+        limits.toolTimeout = .milliseconds(150)
+        let gate = gateway(snapshot, limits: limits, dispatch: { _, _, _ in
+            blockThisThread(seconds: 10)
+            return CallTool.Result(content: [], isError: false)
+        })
+        let calls = ProcessInfo.processInfo.activeProcessorCount + 2
+        let started = Date()
+        let timedOut = await withTaskGroup(of: Bool.self) { group in
+            for _ in 0 ..< calls {
+                group.addTask {
+                    let result = await gate.call(name: "vault_overview", arguments: [:])
+                    return result.isError == true && everything(in: result).contains("tool timed out")
+                }
+            }
+            var count = 0
+            for await hit in group where hit {
+                count += 1
+            }
+            return count
+        }
+        // The decisive check: without the fix the calls return the tool's own result after
+        // 10 s instead of timing out. The bound is loose for a loaded runner.
+        #expect(timedOut == calls)
+        #expect(Date().timeIntervalSince(started) < 8)
+    }
+
+    #if os(Linux)
+        /// Linux only, where the server runs and `NoteReader` reads with a plain
+        /// `String(contentsOf:)`. (On macOS the coordinated read never holds a pool thread on a
+        /// stuck pipe, so the test would pass with or without the fix.)
+        ///
+        /// The same through the real `read_note` path (no stubbed dispatch): a note that is a
+        /// named pipe blocks its reader in `open` until a writer appears, the way a read from
+        /// stalled storage does. One pipe per call, so nothing serialises them. Every call must
+        /// still time out.
+        @Test func deadlineFiresWhileRealNoteReadsAreStuck() async throws {
+            let fixture = try ReplicaFixture()
+            defer { fixture.cleanUp() }
+            let snapshot = try await readySnapshot(fixture)
+            let calls = ProcessInfo.processInfo.activeProcessorCount + 2
+            let pipes = (0 ..< calls).map { fixture.replica.appendingPathComponent("vault/Stuck\($0).md").path }
+            for pipe in pipes {
+                #expect(mkfifo(pipe, 0o644) == 0)
+            }
+            defer { releaseReaders(of: pipes) }
+            var limits = ToolGateway.Limits()
+            limits.toolTimeout = .milliseconds(150)
+            let gate = gateway(snapshot, limits: limits)
+            let started = Date()
+            let timedOut = await withTaskGroup(of: Bool.self) { group in
+                for index in 0 ..< calls {
+                    group.addTask {
+                        let result = await gate.call(
+                            name: "read_note",
+                            arguments: ["path": .string("Stuck\(index).md")]
+                        )
+                        return result.isError == true && everything(in: result).contains("tool timed out")
+                    }
+                }
+                var count = 0
+                for await hit in group where hit {
+                    count += 1
+                }
+                return count
+            }
+            #expect(timedOut == calls)
+            #expect(Date().timeIntervalSince(started) < 8)
+        }
+    #endif
+
     // MARK: catalog
 
     @Test func catalogIsTheSevenReadOnlyToolsWithKeywordSearch() {
@@ -319,3 +398,28 @@ struct ToolGatewayTests {
         }
     }
 }
+
+/// Blocks the calling thread, the way a synchronous vault call does (a plain function, so it
+/// can be called from async code where `Thread.sleep` is disallowed).
+private func blockThisThread(seconds: TimeInterval) {
+    Thread.sleep(forTimeInterval: seconds)
+}
+
+#if os(Linux)
+    /// Lets every reader blocked opening the named pipes at `paths` through: a non-blocking open
+    /// for writing succeeds while a reader is waiting, and closing it gives that reader
+    /// end-of-file. Stops once no reader has been waiting for half a second.
+    private func releaseReaders(of paths: [String]) {
+        var idle = Date()
+        while Date().timeIntervalSince(idle) < 0.5 {
+            for path in paths {
+                let fd = open(path, O_WRONLY | O_NONBLOCK)
+                if fd >= 0 {
+                    close(fd)
+                    idle = Date()
+                }
+            }
+            usleep(10000)
+        }
+    }
+#endif
