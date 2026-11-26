@@ -203,11 +203,15 @@ public struct ToolGateway: Sendable {
     /// Races the work against the clock WITHOUT waiting for the loser: the vault
     /// calls are synchronous and cannot be cancelled, so a structured task group
     /// would block on them and defeat the deadline.
+    ///
+    /// The work runs on `ToolWorkExecutor`, not the shared concurrency pool. That pool has
+    /// one thread per core; enough stuck vault calls at once would occupy all of them, and
+    /// then neither this timer nor the HTTP server could run until one returned.
     private func withDeadline(_ work: @escaping @Sendable () async -> CallTool.Result) async -> CallTool.Result? {
         let timeout = limits.toolTimeout
         return await withCheckedContinuation { (continuation: CheckedContinuation<CallTool.Result?, Never>) in
             let gate = OneShot(continuation)
-            Task { await gate.resume(with: work()) }
+            Task(executorPreference: ToolWorkExecutor.shared) { await gate.resume(with: work()) }
             Task {
                 try? await Task.sleep(for: timeout)
                 gate.resume(with: nil)
@@ -345,6 +349,23 @@ extension Calendar {
         calendar.timeZone = TimeZone(identifier: "UTC") ?? .gmt
         return calendar
     }()
+}
+
+/// Where tool work runs: a concurrent dispatch queue whose threads may block in synchronous
+/// vault calls without taking threads from the shared concurrency pool. The task executor
+/// preference carries over to the nonisolated async code the tools call, so their
+/// synchronous file and SQLite work lands here too. It does not carry into a
+/// `Task.detached`, so nothing on the tool path may use one (MCPKit's `NoteReader` doesn't).
+final class ToolWorkExecutor: TaskExecutor {
+    static let shared = ToolWorkExecutor()
+
+    private let queue = DispatchQueue(label: "notetaker.remote.tool-work", attributes: .concurrent)
+
+    func enqueue(_ job: consuming ExecutorJob) {
+        let job = UnownedJob(job)
+        let executor = asUnownedTaskExecutor()
+        queue.async { job.runSynchronously(on: executor) }
+    }
 }
 
 /// Resumes a continuation exactly once, from whichever of two tasks gets there first.
